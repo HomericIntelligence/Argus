@@ -78,6 +78,18 @@ test-scrape:
 scrape-agamemnon:
     ./scripts/scrape-agamemnon.sh {{AGAMEMNON_URL}}
 
+# === Alertmanager ===
+
+# Hot-reload Alertmanager configuration via SIGHUP
+reload-alertmanager:
+    {{compose_cmd}} kill -s HUP alertmanager && echo "Alertmanager config reloaded."
+
+# Verify Alertmanager is healthy and check Prometheus sees it
+check-alertmanager:
+    curl -s http://localhost:9093/-/healthy
+    @echo ""
+    curl -s http://localhost:9090/api/v1/alertmanagers | jq '.data.activeAlertmanagers'
+
 # === Backup & Restore ===
 
 # Back up Prometheus and Loki data volumes to ./backups/
