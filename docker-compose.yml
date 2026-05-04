@@ -99,6 +99,7 @@ services:
       - ./configs/promtail.yml:/etc/promtail/config.yml:ro
       - /var/log:/var/log:ro
       - ${NATS_LOG_DIR:-/home/mvillmow/.local/share/nats}:/logs/nats:ro
+      - /tmp/hermes.log:/logs/hermes.log:ro
     environment:
       HOSTNAME: ${HOSTNAME}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
@@ -270,3 +271,4 @@ volumes:
   loki_data:
   grafana_data:
   alertmanager_data:
+  promtail_positions:
