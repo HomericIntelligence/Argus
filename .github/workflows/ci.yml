@@ -84,6 +84,31 @@ jobs:
       - name: Lint shell scripts
         run: shellcheck --severity=warning scripts/*.sh
 
+  unit-tests:
+    name: Python unit tests + coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: pixi install
+
+      - name: Run tests with coverage
+        run: pixi run test-unit
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
   atlas-dashboard:
     name: Atlas dashboard (Go)
     runs-on: ubuntu-latest
