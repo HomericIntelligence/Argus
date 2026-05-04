@@ -155,7 +155,7 @@ services:
           cpus: "0.25"
 
   argus-exporter:
-    build: ./exporter
+    image: ghcr.io/mvillmow/argus-exporter:0.1.0
     container_name: argus-exporter
     restart: unless-stopped
     logging:

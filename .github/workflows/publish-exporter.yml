@@ -1,0 +1,72 @@
+name: Publish argus-exporter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "exporter/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "exporter/**"
+  schedule:
+    # Weekly Monday rebuild for base-image security patches
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    name: build-and-push
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2  # v3.10.0
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1  # v6.16.0
+        with:
+          context: ./exporter
+          load: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/argus-exporter:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/argus-exporter:0.1.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/argus-exporter:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1  # v6.16.0
+        with:
+          context: ./exporter
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/argus-exporter:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/argus-exporter:0.1.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -94,3 +94,20 @@ restore VOLUME FILE:
 import-dashboards:
     @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
+
+    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD=$(echo "{{GRAFANA_AUTH}}" | cut -d: -f2) ./scripts/import-dashboards.sh
+
+# === Exporter ===
+
+# Build argus-exporter image locally (tagged argus-exporter:local)
+build-exporter:
+    docker build -t argus-exporter:local ./exporter
+
+# Start the stack using a locally built exporter (offline dev — bypasses registry pull)
+run-exporter-local: build-exporter
+    docker run --rm --network argus \
+        -e AGAMEMNON_URL=${AGAMEMNON_URL} \
+        -e NESTOR_URL=${NESTOR_URL} \
+        -e NATS_URL=${NATS_URL} \
+        -p 127.0.0.1:9100:9100 \
+        argus-exporter:local
