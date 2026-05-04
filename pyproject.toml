@@ -1,10 +1,7 @@
 [tool.pytest.ini_options]
-addopts = [
-  "--cov=exporter",
-  "--cov-report=term-missing",
-  "--cov-report=html",
-  "--cov-report=xml",
-]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-v --strict-markers --cov=exporter --cov-report=term-missing --cov-report=html --cov-report=xml"
 
 [tool.coverage.run]
 source = ["exporter"]
