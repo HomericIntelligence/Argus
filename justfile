@@ -6,6 +6,8 @@ container_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "pod
 AGAMEMNON_URL := "http://172.20.0.1:8080"
 GRAFANA_PORT := "3000"
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
+GRAFANA_ADMIN_PASSWORD := env_var_or_default("GRAFANA_ADMIN_PASSWORD", "admin")
+GRAFANA_AUTH := "admin:" + GRAFANA_ADMIN_PASSWORD
 
 # === Default ===
 
