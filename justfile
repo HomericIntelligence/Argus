@@ -125,6 +125,14 @@ test-jetstream:
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
 import-dashboards:
-    @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
-
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD={{GRAFANA_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+
+# === Versioning ===
+
+# Bump version and promote CHANGELOG (patch|minor|major)
+bump TYPE:
+    bash scripts/bump-version.sh {{TYPE}}
+
+# Preview CHANGELOG entries since last tag without committing
+generate-changelog:
+    bash scripts/generate-changelog.sh

@@ -2,41 +2,68 @@ name: Release
 
 on:
   push:
-    tags: ["v*.*.*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to release (e.g. v0.1.0)"
-        required: true
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
 
 jobs:
   release:
-    name: Publish GitHub release
+    name: Create GitHub Release
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Extract release notes from CHANGELOG.md
-        id: notes
-        env:
-          VERSION: ${{ github.ref_name || inputs.tag }}
-        run: |
-          VER="${VERSION#v}"
-          awk "/^## \[$VER\]/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md \
-            > /tmp/release-notes.md
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name || inputs.tag }}
-          name: ${{ github.ref_name || inputs.tag }}
-          body_path: /tmp/release-notes.md
-          draft: false
-          prerelease: false
+      - name: Install dependencies
+        run: pixi install
+
+      - name: Validate tag matches pixi.toml version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          pixi run python3 - <<'EOF'
+          import os
+          import sys
+          import tomllib
+
+          tag = os.environ["TAG"]
+          expected_version = tag.lstrip("v")
+
+          with open("pixi.toml", "rb") as f:
+              data = tomllib.load(f)
+
+          section = data.get("workspace") or data.get("project")
+          if section is None:
+              print("ERROR: pixi.toml has neither [workspace] nor [project] section", file=sys.stderr)
+              sys.exit(1)
+
+          actual_version = section["version"]
+          if actual_version != expected_version:
+              print(
+                  f"ERROR: Tag {tag!r} does not match pixi.toml version {actual_version!r}",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print(f"OK: tag {tag} matches pixi.toml version {actual_version}")
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            --generate-notes \
+            --title "Release $TAG"
 
   publish-atlas-image:
     name: Build & push Atlas image to GHCR
@@ -51,33 +78,9 @@ jobs:
       # carries it on tag pushes; workflow_dispatch supplies it as an input.
       - name: Resolve version
         id: version
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
-        run: |
-          if [ -n "${GITHUB_REF_NAME:-}" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Set up QEMU (multi-arch)
         uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Lower-case the owner segment because GHCR rejects uppercase
-      # (HomericIntelligence → homericintelligence).
-      - name: Compute image name
-        id: image
-        run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/atlas" >> "$GITHUB_OUTPUT"
 
       - name: Build & push multi-arch image
         uses: docker/build-push-action@v7
