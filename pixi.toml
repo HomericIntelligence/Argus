@@ -28,3 +28,15 @@ start  = "just start"
 stop   = "just stop"
 status = "just status"
 test   = "python -m pytest tests/ -v"
+
+[feature.lint.dependencies]
+python = ">=3.11"
+
+[feature.lint.pypi-dependencies]
+pip-audit = ">=2.8"
+
+[feature.lint.tasks]
+pip-audit = "pip-audit"
+
+[environments]
+lint = { features = ["lint"], no-default-feature = true }
