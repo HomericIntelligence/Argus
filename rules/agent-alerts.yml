@@ -86,3 +86,21 @@ groups:
         annotations:
           summary: "NATS slow consumers detected"
           description: "NATS broker detected {{ $value }} slow consumers for 5 minutes. Consumer lag may be increasing."
+
+      - alert: JetstreamConsumerStale
+        expr: time() - hi_jetstream_consumer_scrape_timestamp > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "JetStream consumer scrape is stale"
+          description: "No scrape from jetstream-consumer in more than 5 minutes."
+
+      - alert: JetstreamConsumerNotConnected
+        expr: absent(hi_jetstream_consumer_scrape_timestamp)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JetStream consumer is not running"
+          description: "hi_jetstream_consumer_scrape_timestamp metric is absent."

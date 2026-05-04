@@ -228,6 +228,21 @@ services:
     networks:
       - argus
 
+  jetstream-consumer:
+    image: python:3.11-slim
+    container_name: argus-jetstream-consumer
+    restart: unless-stopped
+    ports:
+      - "9101:9101"
+    volumes:
+      - ./jetstream-consumer/consumer.py:/consumer.py:ro
+    command: sh -c "pip install nats-py -q && python /consumer.py"
+    environment:
+      NATS_URL: "nats://172.24.0.1:4222"
+      EXPORTER_PORT: "9101"
+    networks:
+      - argus
+
 volumes:
   prometheus_data:
   loki_data:
