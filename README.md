@@ -42,6 +42,9 @@ Then access Grafana at <http://localhost:3000> (credentials: admin / the passwor
   backed by Prometheus.
 - **Log Explorer**: Syslog and NATS log streams. Log panels backed by Loki.
 
+- **Argus Stack Health**: Prometheus scrape-target up/down status, exporter health
+- **Log Explorer**: Syslog and NATS log streams via Loki
+
 ## Configuration
 
 Copy `.env.example` to `.env` and set your values before starting the stack:
