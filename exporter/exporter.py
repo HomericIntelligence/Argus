@@ -11,6 +11,7 @@ import os
 import signal
 import threading
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,7 +42,7 @@ def _fetch(url: str) -> dict | None:
     try:
         r = urllib.request.urlopen(url, timeout=SCRAPE_TIMEOUT)
         return json.loads(r.read())
-    except Exception as e:
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as e:
         log.warning("fetch %s failed: %s", url, e)
         return None
 
@@ -51,7 +52,7 @@ def _health_check(url: str) -> int:
     try:
         r = urllib.request.urlopen(url, timeout=SCRAPE_TIMEOUT)
         return 1 if r.status == 200 else 0
-    except Exception:
+    except Exception:  # broad catch: probe must never propagate
         return 0
 
 
