@@ -6,13 +6,13 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 
 [dependencies]
-just = ">=1.13"
-yamllint = ">=1.35"
-ruff = ">=0.4"
-bandit = ">=1.7"
-pyyaml = ">=6.0"
-pytest = ">=8.0"
-python = ">=3.11"
+just = ">=1.13,<2"
+jq = ">=1.6,<2"
+yamllint = ">=1.35,<2"
+ruff = ">=0.4,<1"
+bandit = ">=1.7,<2"
+pytest = ">=8.0,<9"
+python = ">=3.11,<3.14"
 
 [target.linux-64.dependencies]
 jq = ">=1.6"
