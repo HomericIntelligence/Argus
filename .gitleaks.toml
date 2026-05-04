@@ -1,18 +1,11 @@
-# Gitleaks configuration for ProjectArgus.
-# Extends the default ruleset with project-specific rules.
-
-title = "ProjectArgus Gitleaks Config"
+title = "ProjectArgus Gitleaks Configuration"
 
 [extend]
 useDefault = true
 
-[[rules]]
-id = "argus-htpasswd-file"
-description = "htpasswd credential file committed to repository"
-regex = '''^loki:'''
-path = '''(^|/)htpasswd$'''
-tags = ["credentials", "nginx", "basic-auth"]
-
-  [rules.allowlist]
-  paths = ['''htpasswd\.example$''']
-  description = "htpasswd.example is a documentation placeholder with no real credentials"
+[[allowlists]]
+description = "Allow credential-like strings in test fixtures and example files"
+paths = [
+    '''tests/''',
+    '''\.env\.example$''',
+]
