@@ -172,6 +172,10 @@ class TestCollectFormat(unittest.TestCase):
         output = self._run_collect()
         self.assertIn("# TYPE", output, "output must contain at least one # TYPE declaration")
 
+    def test_contains_help_lines(self):
+        output = self._run_collect()
+        self.assertIn("# HELP", output, "output must contain at least one # HELP line")
+
     def test_no_exception_when_all_upstreams_down(self):
         """collect() must not raise even if every upstream returns None."""
         hc_patch, fetch_patch = _patch_collect(

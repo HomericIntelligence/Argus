@@ -93,14 +93,6 @@ test-scrape:
     @echo "Querying Prometheus for 'up' metric..."
     {{compose_cmd}} exec prometheus wget -qO- "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
 
-# Debug Prometheus from inside its container (port not exposed to host)
-debug-prometheus:
-    {{compose_cmd}} exec prometheus sh
-
-# Debug Loki from inside its container (port not exposed to host)
-debug-loki:
-    {{compose_cmd}} exec loki sh
-
 # Manually test Agamemnon and Nestor health endpoints
 scrape-agamemnon:
     ./scripts/scrape-agamemnon.sh {{AGAMEMNON_URL}}
@@ -134,7 +126,6 @@ test-jetstream:
     curl -s http://localhost:9101/metrics | grep hi_jetstream
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
+# Reads GRAFANA_ADMIN_PASSWORD from .env (required — never hardcoded)
 import-dashboards:
-    @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
-
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD={{GRAFANA_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
