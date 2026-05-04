@@ -88,6 +88,17 @@ backup:
 restore VOLUME FILE:
     CONTAINER_CMD={{container_cmd}} ./scripts/restore.sh {{VOLUME}} {{FILE}}
 
+# === Alertmanager ===
+
+# Reload Alertmanager configuration
+reload-alertmanager:
+    curl -s -X POST http://localhost:9093/-/reload && echo "Alertmanager config reloaded."
+
+# Check Alertmanager health and cluster status
+test-alertmanager:
+    curl -s http://localhost:9093/-/healthy && echo ""
+    curl -s http://localhost:9093/api/v2/status | jq '.cluster.status'
+
 # === Grafana ===
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
