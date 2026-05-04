@@ -23,11 +23,28 @@ jq = ">=1.6,<2"
 
 [target.osx-64.dependencies]
 jq = ">=1.6,<2"
+
+[feature.test.dependencies]
 python = ">=3.11"
 pytest = ">=7.0"
 
+[feature.lint.dependencies]
+python = ">=3.11"
+ruff = ">=0.4"
+
+[feature.security.dependencies]
+python = ">=3.11"
+bandit = ">=1.7"
+
+[environments]
+test = ["test"]
+lint = ["lint"]
+security = ["security"]
+
 [tasks]
-start     = "just start"
-stop      = "just stop"
-status    = "just status"
-test-unit = "pytest tests/ -v"
+start  = "just start"
+stop   = "just stop"
+status = "just status"
+test   = "python -m pytest tests/ -v"
+lint   = "ruff check exporter/ tests/"
+security = "bandit -ll --skip B310,B202 -r exporter/"

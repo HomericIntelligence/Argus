@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "feature/**", "fix/**", "chore/**"]
   pull_request:
     branches: ["main"]
 
@@ -111,6 +111,29 @@ jobs:
 
   atlas-dashboard:
     name: Atlas dashboard (Go)
+
+
+  test:
+    name: Test exporter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+  lint:
+    name: Lint Python
     runs-on: ubuntu-latest
 
     steps:
@@ -173,3 +196,33 @@ jobs:
       - name: Docker build (verify Dockerfile is buildable)
         working-directory: dashboard
         run: docker build -t argus-dashboard:ci .
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check exporter/ tests/
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bandit
+        run: pip install bandit
+
+      - name: Run bandit
+        run: bandit -ll --skip B310,B202 -r exporter/

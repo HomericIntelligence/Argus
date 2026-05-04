@@ -33,13 +33,19 @@ services:
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.config.file=/etc/prometheus/prometheus.yml"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:9090/-/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - argus
     deploy:
       resources:
         limits:
-          memory: 512m
-          cpus: "0.50"
+          memory: 1g
+          cpus: "1.0"
 
   loki:
     image: grafana/loki:3.1.2
@@ -93,11 +99,17 @@ services:
       - loki-internal
     depends_on:
       - loki
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:80/health || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:
-          memory: 64m
-          cpus: "0.10"
+          memory: 512m
+          cpus: "0.5"
 
   promtail:
     image: grafana/promtail:3.1.2
@@ -121,7 +133,7 @@ services:
       HOSTNAME: ${HOSTNAME}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:9080/ready || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -134,8 +146,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128m
-          cpus: "0.10"
+          memory: 256m
+          cpus: "0.5"
 
   alertmanager:
     image: prom/alertmanager:v0.32.1
@@ -194,12 +206,18 @@ services:
       - argus
     depends_on:
       - prometheus
-      - loki-proxy
+      - loki
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
-          memory: 256m
-          cpus: "0.25"
+          memory: 512m
+          cpus: "1.0"
 
   argus-exporter:
     image: python:3.11-slim

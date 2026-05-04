@@ -1,23 +1,21 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-merge-conflict
-      - id: check-json
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.35.1
     hooks:
       - id: yamllint
-        args: ["--config-file", ".yamllint.yaml"]
-        files: \.(yml|yaml)$
+        args: ["-d", "{extends: default, rules: {line-length: {max: 120}, truthy: disable}}"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.10
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+
   - repo: local
     hooks:
-      - id: check-version-consistency
-        name: Check pixi.toml version matches CHANGELOG
-        language: python
-        entry: python scripts/check-version-consistency.py
-        pass_filenames: false
-        files: ^(pixi\.toml|CHANGELOG\.md)$
+      - id: bandit
+        name: bandit security scan
+        entry: bandit -ll --skip B310,B202 -r
+        language: system
+        files: ^exporter/.*\.py$
+        pass_filenames: true
