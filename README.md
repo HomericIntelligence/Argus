@@ -21,6 +21,13 @@ components of the HomericIntelligence ecosystem.
 | Promtail   | Log shipping to Loki         | —    |
 | Grafana    | Dashboards and visualization | 3000 |
 
+| Component  | Role                          | Port |
+|------------|-------------------------------|------|
+| Prometheus | Metrics scraping and storage  | 9090 |
+| Loki       | Log aggregation               | 3100 |
+| Promtail   | Log shipping to Loki          | —    |
+| Grafana    | Dashboards and visualization  | 3001 |
+
 ## Quick Start
 
 ```bash
@@ -32,6 +39,35 @@ generates a `.env` (with a fresh bearer token and Grafana admin password)
 on first run. It is idempotent — safe to re-run.
 
 Then access Grafana at <http://localhost:3000> (credentials: admin / the password set in `.env`).
+
+cp .env.example .env   # copy and edit for your environment
+just start
+```
+
+Then access Grafana at http://localhost:3001 (default credentials: admin / admin).
+
+## Environment Configuration
+
+All environment-specific values live in a `.env` file that is **not** committed to version control. A fully-documented template is provided:
+
+```bash
+cp .env.example .env
+```
+
+Key variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `AGAMEMNON_URL` | `http://172.20.0.1:8080` | Agamemnon API base URL |
+| `NESTOR_URL` | `http://172.20.0.1:8081` | Nestor API base URL |
+| `NATS_URL` | `http://172.24.0.1:8222` | NATS monitoring endpoint |
+| `GF_SECURITY_ADMIN_PASSWORD` | `admin` | Grafana admin password |
+| `GRAFANA_PORT` | `3001` | Host port for Grafana |
+| `PROMETHEUS_PORT` | `9090` | Host port for Prometheus |
+| `LOKI_PORT` | `3100` | Host port for Loki |
+| `EXPORTER_PORT` | `9100` | Host port for argus-exporter |
+
+`docker compose` and `just` both load `.env` automatically — no extra steps required.
 
 ## Dashboards
 

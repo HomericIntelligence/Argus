@@ -7,8 +7,8 @@ networks:
 
 services:
   prometheus:
-    image: prom/prometheus:v2.54.1
-    container_name: argus-prometheus
+    image: prom/prometheus:latest
+    container_name: ${PROMETHEUS_CONTAINER_NAME:-argus-prometheus}
     restart: unless-stopped
     user: "65534:65534"
     cap_drop: [ALL]
@@ -44,8 +44,8 @@ services:
           cpus: "0.50"
 
   loki:
-    image: grafana/loki:3.1.2
-    container_name: argus-loki
+    image: grafana/loki:latest
+    container_name: ${LOKI_CONTAINER_NAME:-argus-loki}
     restart: unless-stopped
     expose:
       - "3100"
@@ -99,9 +99,8 @@ services:
           cpus: "0.10"
 
   promtail:
-    image: grafana/promtail:3.1.2
-    container_name: argus-promtail
-    hostname: hermes
+    image: grafana/promtail:latest
+    container_name: ${PROMTAIL_CONTAINER_NAME:-argus-promtail}
     restart: unless-stopped
     user: "65534:65534"
     cap_drop: [ALL]
@@ -154,8 +153,8 @@ services:
       - prometheus
 
   grafana:
-    image: grafana/grafana:11.2.2
-    container_name: argus-grafana
+    image: grafana/grafana:latest
+    container_name: ${GRAFANA_CONTAINER_NAME:-argus-grafana}
     restart: unless-stopped
     user: "472:472"
     cap_drop: [ALL]
@@ -166,7 +165,7 @@ services:
         max-size: "50m"
         max-file: "3"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - ./configs/grafana:/etc/grafana/provisioning:ro
@@ -197,8 +196,8 @@ services:
           cpus: "0.25"
 
   argus-exporter:
-    build: ./exporter
-    container_name: argus-exporter
+    image: python:3.11-slim
+    container_name: ${EXPORTER_CONTAINER_NAME:-argus-exporter}
     restart: unless-stopped
     user: "1000:1000"
     cap_drop: [ALL]
@@ -211,7 +210,7 @@ services:
     expose:
       - "9100"
     ports:
-      - "127.0.0.1:9100:9100"
+      - "127.0.0.1:${EXPORTER_PORT:-9100}:9100"
     volumes:
       - ./exporter/exporter.py:/exporter.py:ro
     command: python /exporter.py
