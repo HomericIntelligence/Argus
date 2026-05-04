@@ -147,12 +147,40 @@ services:
       - argus
     depends_on:
       - prometheus
-      - loki-proxy
+      - loki
+      - alertmanager
     deploy:
       resources:
         limits:
           memory: 256m
           cpus: "0.25"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: argus-alertmanager
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - argus
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.10"
 
   argus-exporter:
     build: ./exporter

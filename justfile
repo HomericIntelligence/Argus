@@ -94,3 +94,16 @@ restore VOLUME FILE:
 import-dashboards:
     @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
+
+    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD=$(echo "{{GRAFANA_AUTH}}" | cut -d: -f2) ./scripts/import-dashboards.sh
+
+# === Alertmanager ===
+
+# Check Alertmanager health endpoint
+check-alertmanager:
+    @echo "Checking Alertmanager health..."
+    wget -qO- http://localhost:9093/-/healthy && echo "Alertmanager is healthy."
+
+# Hot-reload Alertmanager configuration
+reload-alertmanager:
+    curl -s -X POST http://localhost:9093/-/reload && echo "Alertmanager config reloaded."
