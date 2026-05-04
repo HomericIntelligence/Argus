@@ -3,6 +3,9 @@ auth_enabled: false
 server:
   http_listen_port: 3100
   grpc_listen_port: 9096
+  http_tls_config:
+    cert_file: /etc/loki/tls/loki.crt
+    key_file:  /etc/loki/tls/loki.key
 
 common:
   instance_addr: 127.0.0.1

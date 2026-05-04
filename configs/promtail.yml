@@ -6,7 +6,9 @@ positions:
   filename: /run/promtail/positions.yaml
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  - url: https://loki:3100/loki/api/v1/push
+    tls_config:
+      ca_file: /etc/promtail/tls/ca.crt
 
 scrape_configs:
   # Tail syslog for host-level events (available in WSL2)

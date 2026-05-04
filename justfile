@@ -16,6 +16,12 @@ GRAFANA_AUTH := "admin:" + GRAFANA_ADMIN_PASSWORD
 default:
     @just --list
 
+# === Certificates ===
+
+# Generate self-signed CA and per-service TLS certificates
+gen-certs:
+    bash certs/gen-certs.sh
+
 # === Services ===
 
 # One-command bootstrap: prereqs, pixi install, .env generation
@@ -92,6 +98,15 @@ reload-prometheus:
 test-scrape:
     @echo "Querying Prometheus for 'up' metric..."
     {{compose_cmd}} exec prometheus wget -qO- "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
+
+
+# Debug Prometheus from inside its container (port not exposed to host)
+debug-prometheus:
+    {{compose_cmd}} exec prometheus sh
+
+# Debug Loki from inside its container (port not exposed to host)
+debug-loki:
+    {{compose_cmd}} exec loki sh
 
 # Manually test Agamemnon and Nestor health endpoints
 scrape-agamemnon:

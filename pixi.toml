@@ -22,6 +22,8 @@ jq = ">=1.6,<2"
 
 [target.osx-64.dependencies]
 jq = ">=1.6,<2"
+python = ">=3.11"
+pytest = ">=7.0"
 
 [tasks]
 start  = "just start"
