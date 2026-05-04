@@ -15,8 +15,6 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
-    ports:
-      - "127.0.0.1:9090:9090"
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./rules:/etc/prometheus/rules:ro
