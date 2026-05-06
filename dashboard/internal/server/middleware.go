@@ -10,6 +10,12 @@ import (
 // NATS dashboard URLs so that embedded iframes are permitted by CSP.
 // X-Frame-Options is set to SAMEORIGIN to allow the Atlas dashboard to embed
 // its own panels.
+//
+// The iframe-target URLs are guaranteed safe to interpolate here because
+// config.Config.Validate (called at startup in cmd/argus-dashboard/main.go)
+// rejects any value containing whitespace, semicolons, quotes, or non-http(s)
+// schemes. Do NOT concatenate user-controlled or unvalidated strings into
+// header values without re-running that validation.
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")

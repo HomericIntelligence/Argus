@@ -14,13 +14,19 @@ func (s *Server) routes() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(s.securityHeaders)
 
-	// Health probes and metrics are unprotected — auth middleware is applied below.
-	r.Get("/healthz", s.handleHealthz)
-	r.Get("/readyz", s.handleHealthz)
-	r.Get("/metrics", s.MetricsHandler())
+	// /livez is the unauthenticated liveness probe required by k8s — it must
+	// always return 200 if the process is up. /healthz is kept as an alias for
+	// back-compat. /readyz and /metrics are auth-gated below: readiness reveals
+	// upstream component status (operational data), and metrics expose internal
+	// Prometheus state that should not be public.
+	r.Get("/livez", s.handleLivez)
+	r.Get("/healthz", s.handleLivez)
 
 	r.Group(func(r chi.Router) {
 		r.Use(Middleware(AuthMode(s.cfg.AuthMode), s.cfg.AuthUser, s.cfg.AuthPass, s.cfg.AuthBearerToken))
+
+		r.Get("/readyz", s.handleReadyz)
+		r.Get("/metrics", s.MetricsHandler())
 
 		r.Get("/", s.handleOverview)
 		r.Get("/hosts", s.hostsHandler.ServeHTTP)
@@ -44,10 +50,19 @@ func (s *Server) routes() http.Handler {
 	return r
 }
 
-func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+// handleLivez is the unauthenticated liveness probe. It returns 200 if the
+// process is up — it does NOT validate upstream connectivity. Use /readyz for
+// component-level readiness aggregation.
+func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
+}
+
+// handleReadyz is wired in PR 3; until then it falls back to liveness so the
+// route is reserved and authenticated.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	s.handleLivez(w, r)
 }
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
