@@ -49,7 +49,7 @@ func (a APISource) Devices(ctx context.Context) ([]Device, error) {
 	if err != nil {
 		return nil, fmt.Errorf("tailscale api: HTTP GET: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("tailscale api: unexpected status %d", resp.StatusCode)

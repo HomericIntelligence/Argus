@@ -45,8 +45,12 @@ type base struct {
 // newBase initialises a base with a no-op metrics sink. Callers should call
 // SetMetrics from the composition root (cmd/argus-dashboard/main.go) once the
 // real metrics object exists.
-func newBase(name string, client *http.Client) base {
-	b := base{name: name, client: client}
+//
+// Returns *base (pointer) because base contains a sync.RWMutex, which must
+// never be copied (govet copylocks). Concrete pollers (AgamemnonPoller,
+// NATSPoller) therefore embed *base, not base.
+func newBase(name string, client *http.Client) *base {
+	b := &base{name: name, client: client}
 	var sink MetricsSink = noopMetrics{}
 	b.metrics.Store(&sink)
 	return b
@@ -112,7 +116,7 @@ func (b *base) getJSON(ctx context.Context, url string, dst any) error {
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
 	}

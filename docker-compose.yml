@@ -197,14 +197,19 @@ services:
       ATLAS_GRAFANA_URL: "http://argus-grafana:3000"
       ATLAS_LOKI_URL: "http://argus-loki-proxy:80"
       ATLAS_PROMETHEUS_URL: "http://argus-prometheus:9090"
-      ATLAS_AUTH_MODE: ${ATLAS_AUTH_MODE:-none}
+      # Atlas defaults to bearer auth and refuses to start without
+      # ATLAS_AUTH_BEARER_TOKEN. Operators who genuinely need an
+      # unauthenticated dashboard (single-host dev, fully isolated
+      # network) must set ATLAS_AUTH_MODE=none explicitly in their .env.
+      ATLAS_AUTH_MODE: ${ATLAS_AUTH_MODE:-bearer}
       ATLAS_AUTH_BEARER_TOKEN: ${ATLAS_AUTH_BEARER_TOKEN:-}
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3002/healthz"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
+    # No container-level healthcheck: the Atlas image is built on
+    # gcr.io/distroless/static-debian12:nonroot which has no shell,
+    # no wget, no curl, and no busybox to invoke. Operators should rely
+    # on Docker's process-up signal plus external HTTP probes against
+    # http://<host>:3002/livez (always 200 if the process is up) for
+    # liveness and /readyz (200 only when every component is loaded,
+    # enabled, and reporting valid results without error) for readiness.
     networks:
       - argus
     deploy:

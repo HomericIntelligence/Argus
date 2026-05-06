@@ -101,7 +101,7 @@ func doProbe(ctx context.Context, client *http.Client, host HostAddr, svc Servic
 		resp, doErr := client.Do(req)
 		if doErr == nil {
 			ok = resp.StatusCode < 400
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 	}
 

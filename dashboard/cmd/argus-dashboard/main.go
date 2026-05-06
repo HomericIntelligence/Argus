@@ -48,7 +48,7 @@ func main() {
 	// avoids flapping while still surfacing genuine outages within a few
 	// seconds.
 	const natsPollInterval = 5 * time.Second
-	agamemnonReadyMaxAge := 2 * cfg.PollAgamemnonMs
+	agamemnonReadyMaxAge := 2 * cfg.PollAgamemnon
 	natsReadyMaxAge := 2 * natsPollInterval
 
 	// Start Tailscale device refresher.
@@ -65,7 +65,7 @@ func main() {
 	agamemnonPoller := poller.NewAgamemnonPoller(cfg, cache)
 	agamemnonPoller.SetMetrics(metrics)
 	ready.Register(server.PollerCheck(agamemnonPoller, agamemnonReadyMaxAge))
-	go agamemnonPoller.Start(ctx, cfg.PollAgamemnonMs)
+	go agamemnonPoller.Start(ctx, cfg.PollAgamemnon)
 
 	// Start NATS monitoring poller (varz + jsz every 5s).
 	natsPoller := poller.NewNATSPoller(cfg, cache)

@@ -1,0 +1,28 @@
+# Test scaffolding — never needs to land in the image.
+tests/
+**/*_test.go
+
+# Editor & IDE state.
+.vscode/
+.idea/
+
+# Build artifacts that the multi-stage build produces fresh.
+bin/
+out/
+
+# Go cache leftovers (host paths).
+*.test
+*.out
+
+# Documentation lives in the repo, not the image.
+docs/
+README.md
+
+# CI / dev tooling configs not needed at runtime.
+.golangci.yml
+
+# Secrets — defence in depth even though we never put secrets here.
+.env
+.env.*
+*.pem
+*.key

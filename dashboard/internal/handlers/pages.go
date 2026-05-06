@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -56,7 +57,7 @@ func (h *HostsHandler) WithNATSURLs(dashURL, topURL, monURL string) *HostsHandle
 func (h *HostsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	views := store.BuildHostViews(h.cache)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.HostsPage(views).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.HostsPage(views), "/hosts")
 }
 
 // Partial renders a single host card fragment for HTMX polling.
@@ -66,7 +67,7 @@ func (h *HostsHandler) Partial(w http.ResponseWriter, r *http.Request) {
 	for _, v := range views {
 		if v.Hostname == name {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			templates.HostCard(v).Render(r.Context(), w) //nolint:errcheck
+			renderTempl(w, r, templates.HostCard(v), "/partials/host/{name}")
 			return
 		}
 	}
@@ -81,7 +82,7 @@ func (h *HostsHandler) AgentsPage(w http.ResponseWriter, r *http.Request) {
 	hostF := r.URL.Query().Get("host")
 	filtered := filterAgents(agents, search, statusF, hostF)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.AgentsPage(filtered, search, statusF, hostF).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.AgentsPage(filtered, search, statusF, hostF), "/agents")
 }
 
 // AgentsTablePartial renders only the table rows for HTMX partial updates.
@@ -93,7 +94,7 @@ func (h *HostsHandler) AgentsTablePartial(w http.ResponseWriter, r *http.Request
 	filtered := filterAgents(agents, search, statusF, hostF)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	for _, a := range filtered {
-		templates.AgentRow(a).Render(r.Context(), w) //nolint:errcheck
+		renderTempl(w, r, templates.AgentRow(a), "/partials/agents/table")
 	}
 }
 
@@ -135,7 +136,7 @@ func (h *HostsHandler) GrafanaPage(w http.ResponseWriter, r *http.Request) {
 		to = "now"
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.GrafanaPage(grafana.KnownPanels, h.grafanaURL, from, to).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.GrafanaPage(grafana.KnownPanels, h.grafanaURL, from, to), "/grafana")
 }
 
 // NATSPage renders the /nats page with JetStream streams and connections.
@@ -143,19 +144,19 @@ func (h *HostsHandler) NATSPage(w http.ResponseWriter, r *http.Request) {
 	streams := h.cache.GetNATSStreams()
 	conns := h.cache.GetNATSConns()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.NATSPage(streams, conns, h.natsDashURL, h.natsTopURL, h.natsMon).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.NATSPage(streams, conns, h.natsDashURL, h.natsTopURL, h.natsMon), "/nats")
 }
 
 // NATSStreamsPartial renders only the streams table rows for HTMX partial updates.
 func (h *HostsHandler) NATSStreamsPartial(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.NATSStreamRows(h.cache.GetNATSStreams()).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.NATSStreamRows(h.cache.GetNATSStreams()), "/partials/nats/streams")
 }
 
 // NATSConnsPartial renders only the connections table rows for HTMX partial updates.
 func (h *HostsHandler) NATSConnsPartial(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.NATSConnRows(h.cache.GetNATSConns()).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.NATSConnRows(h.cache.GetNATSConns()), "/partials/nats/connections")
 }
 
 // MnemosynePage renders the /mnemosyne skill registry browser page.
@@ -163,9 +164,13 @@ func (h *HostsHandler) MnemosynePage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	var skills []mnemosyne.Skill
 	if h.mnemoReader != nil {
-		skills, _ = h.mnemoReader.Skills() //nolint:errcheck
+		var err error
+		skills, err = h.mnemoReader.Skills()
+		if err != nil {
+			slog.Warn("mnemosyne: failed to load skills", "err", err)
+		}
 	}
 	filtered := mnemosyne.Filter(skills, q)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.MnemosynePage(filtered, q).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.MnemosynePage(filtered, q), "/mnemosyne")
 }

@@ -34,7 +34,11 @@ type Config struct {
 	AuthUser           string
 	AuthPass           string
 	AuthBearerToken    string
-	PollAgamemnonMs    time.Duration
+	// PollAgamemnon is the interval between Agamemnon poller cycles. Sourced
+	// from ATLAS_POLL_AGAMEMNON_MS (named with the "Ms" suffix in the env
+	// var to communicate the unit; the field is a time.Duration so the
+	// suffix is dropped on the Go side per staticcheck ST1011).
+	PollAgamemnon      time.Duration
 }
 
 func getenv(key, def string) string {
@@ -50,7 +54,7 @@ func getenv(key, def string) string {
 // Defaults of note:
 //   - AuthMode defaults to "bearer" (fail-secure). An explicit ATLAS_AUTH_MODE=none
 //     is required to disable auth, and Validate logs a warning when that happens.
-//   - PollAgamemnonMs defaults to 2000ms.
+//   - PollAgamemnon defaults to 2000ms (env: ATLAS_POLL_AGAMEMNON_MS).
 func Load() *Config {
 	logLevelStr := getenv("ATLAS_LOG_LEVEL", "info")
 	var logLevel slog.Level
@@ -86,7 +90,7 @@ func Load() *Config {
 		AuthUser:           getenv("ATLAS_AUTH_USER", ""),
 		AuthPass:           getenv("ATLAS_AUTH_PASS", ""),
 		AuthBearerToken:    getenv("ATLAS_AUTH_BEARER_TOKEN", ""),
-		PollAgamemnonMs:    time.Duration(pollMs) * time.Millisecond,
+		PollAgamemnon:      time.Duration(pollMs) * time.Millisecond,
 	}
 }
 

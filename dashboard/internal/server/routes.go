@@ -61,5 +61,5 @@ func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(overviewHTML) //nolint:errcheck
+	_, _ = w.Write(overviewHTML)
 }
