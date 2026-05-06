@@ -22,7 +22,12 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	slog.SetDefault(logger)
 
-	slog.Info("starting atlas", "version", version.Version, "addr", cfg.ListenAddr)
+	if err := cfg.Validate(logger); err != nil {
+		slog.Error("invalid configuration — refusing to start", "err", err)
+		os.Exit(2)
+	}
+
+	slog.Info("starting atlas", "version", version.Version, "addr", cfg.ListenAddr, "auth_mode", cfg.AuthMode)
 
 	cache := store.NewCache()
 	bus := events.NewBus(256)
@@ -39,9 +44,9 @@ func main() {
 	prober := store.NewProber(cache, 10*time.Second)
 	go prober.Start(ctx)
 
-	// Start Agamemnon poller (agents + tasks every 2s).
+	// Start Agamemnon poller (agents + tasks at the configured interval).
 	agamemnonPoller := poller.NewAgamemnonPoller(cfg, cache)
-	go agamemnonPoller.Start(ctx, 2*time.Second)
+	go agamemnonPoller.Start(ctx, cfg.PollAgamemnonMs)
 
 	// Start NATS monitoring poller (varz + jsz every 5s).
 	natsPoller := poller.NewNATSPoller(cfg, cache)
