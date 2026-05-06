@@ -29,15 +29,44 @@ func SetHeartbeatInterval(d time.Duration) {
 	heartbeatNanos.Store(int64(d))
 }
 
+// SSEMetrics is the metric-recording surface the SSE handler uses. The server
+// passes its AtlasMetrics in via SetMetrics. The default no-op preserves
+// behaviour for tests that construct an SSE handler without a Server.
+type SSEMetrics interface {
+	SetSSEConnectedClients(n int64)
+}
+
+type noopSSEMetrics struct{}
+
+func (noopSSEMetrics) SetSSEConnectedClients(int64) {}
+
 // SSE is the Server-Sent Events handler. It streams events from the bus to
 // connected HTTP clients using the text/event-stream protocol.
+//
+// The connected client count is exposed via atlas_sse_connected_clients when
+// SetMetrics has been called with a real SSEMetrics implementation.
 type SSE struct {
-	bus *events.Bus
+	bus       *events.Bus
+	connected atomic.Int64
+	metrics   atomic.Pointer[SSEMetrics]
 }
 
 // NewSSE constructs an SSE handler backed by the given bus.
 func NewSSE(bus *events.Bus) *SSE {
-	return &SSE{bus: bus}
+	s := &SSE{bus: bus}
+	var m SSEMetrics = noopSSEMetrics{}
+	s.metrics.Store(&m)
+	return s
+}
+
+// SetMetrics installs the metric sink used to publish atlas_sse_connected_clients.
+func (h *SSE) SetMetrics(m SSEMetrics) {
+	h.metrics.Store(&m)
+}
+
+// Connected returns the current count of connected SSE clients.
+func (h *SSE) Connected() int64 {
+	return h.connected.Load()
 }
 
 // ServeHTTP implements http.Handler. Each connected client gets its own
@@ -82,6 +111,14 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ch := h.bus.Subscribe(1000)
 	defer h.bus.Unsubscribe(ch)
+
+	// Track this connection in the gauge so /metrics reflects live load.
+	cur := h.connected.Add(1)
+	(*h.metrics.Load()).SetSSEConnectedClients(cur)
+	defer func() {
+		cur := h.connected.Add(-1)
+		(*h.metrics.Load()).SetSSEConnectedClients(cur)
+	}()
 
 	ticker := time.NewTicker(HeartbeatInterval())
 	defer ticker.Stop()

@@ -29,9 +29,12 @@ func TestMetricsHandler_ContentType(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	ct := rr.Header().Get("Content-Type")
-	const want = "text/plain; version=0.0.4; charset=utf-8"
-	if ct != want {
-		t.Errorf("Content-Type: got %q, want %q", ct, want)
+	// The promhttp handler may append metadata params (e.g. ";escaping=underscores")
+	// to the base Prometheus content-type. Both forms are valid and parse the
+	// same way. Assert the prefix.
+	const wantPrefix = "text/plain; version=0.0.4"
+	if !strings.HasPrefix(ct, wantPrefix) {
+		t.Errorf("Content-Type: got %q, want prefix %q", ct, wantPrefix)
 	}
 }
 

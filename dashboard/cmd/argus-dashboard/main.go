@@ -36,6 +36,21 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Construct the server first so we can hand its metrics + readyz registry
+	// to the components below before they start. server.New constructs the
+	// HTTP listener but does not Run it until srv.Run.
+	srv := server.New(cfg, bus, cache)
+	metrics := srv.Metrics()
+	ready := srv.Ready()
+
+	// Define readiness budgets per component. 2× the poll interval gives one
+	// dropped cycle of headroom before a component is considered unready —
+	// avoids flapping while still surfacing genuine outages within a few
+	// seconds.
+	const natsPollInterval = 5 * time.Second
+	agamemnonReadyMaxAge := 2 * cfg.PollAgamemnonMs
+	natsReadyMaxAge := 2 * natsPollInterval
+
 	// Start Tailscale device refresher.
 	tsSrc := tailscale.NewSource(cfg)
 	tsRefresher := tailscale.NewRefresher(tsSrc, cache, 30*time.Second)
@@ -45,13 +60,18 @@ func main() {
 	prober := store.NewProber(cache, 10*time.Second)
 	go prober.Start(ctx)
 
-	// Start Agamemnon poller (agents + tasks at the configured interval).
+	// Start Agamemnon poller (agents + tasks at the configured interval) and
+	// register it with metrics + readiness.
 	agamemnonPoller := poller.NewAgamemnonPoller(cfg, cache)
+	agamemnonPoller.SetMetrics(metrics)
+	ready.Register(server.PollerCheck(agamemnonPoller, agamemnonReadyMaxAge))
 	go agamemnonPoller.Start(ctx, cfg.PollAgamemnonMs)
 
 	// Start NATS monitoring poller (varz + jsz every 5s).
 	natsPoller := poller.NewNATSPoller(cfg, cache)
-	go natsPoller.Start(ctx, 5*time.Second)
+	natsPoller.SetMetrics(metrics)
+	ready.Register(server.PollerCheck(natsPoller, natsReadyMaxAge))
+	go natsPoller.Start(ctx, natsPollInterval)
 
 	// Start the JetStream subscriber that bridges NATS events into events.Bus
 	// for the SSE fan-out. This is the central event spine of Atlas — without
@@ -59,18 +79,19 @@ func main() {
 	// returns nil only after ctx is cancelled; an early non-nil return
 	// indicates a fatal initialisation error (unreachable NATS, no streams
 	// attached) which we surface but do not exit on so the rest of the
-	// dashboard remains operable.
+	// dashboard remains operable. /readyz reflects the failure either way.
+	streams := atlnats.DefaultStreams()
 	natsSubscriber := atlnats.New(atlnats.Config{
 		NATSURL: cfg.NATSURL,
-		Streams: atlnats.DefaultStreams(),
+		Streams: streams,
 	}, bus)
+	natsSubscriber.SetMetrics(metrics)
+	ready.Register(server.NATSCheck("nats-subscriber", natsSubscriber, len(streams)))
 	go func() {
 		if err := natsSubscriber.Start(ctx); err != nil {
 			slog.Error("nats subscriber failed to start; SSE will deliver heartbeats only", "err", err)
 		}
 	}()
-
-	srv := server.New(cfg, bus, cache)
 
 	if err := srv.Run(ctx); err != nil {
 		slog.Error("server error", "err", err)

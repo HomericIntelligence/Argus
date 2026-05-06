@@ -21,19 +21,25 @@ type Server struct {
 	apiHandler   *handlers.Hosts
 	hostsHandler *handlers.HostsHandler
 	metrics      *AtlasMetrics
+	ready        *ReadyRegistry
 }
 
 func New(cfg *config.Config, bus *events.Bus, cache *store.Cache) *Server {
+	metrics := newAtlasMetrics()
+	sse := handlers.NewSSE(bus)
+	sse.SetMetrics(metrics)
+
 	s := &Server{
-		cfg:          cfg,
-		bus:          bus,
-		sse:          handlers.NewSSE(bus),
-		apiHandler:   handlers.NewHosts(cache),
+		cfg:        cfg,
+		bus:        bus,
+		sse:        sse,
+		apiHandler: handlers.NewHosts(cache),
 		hostsHandler: handlers.NewHostsHandler(cache).
-				WithGrafanaURL(cfg.GrafanaURL).
-				WithNATSURLs(cfg.NATSDashboardURL, cfg.NATSTopURL, cfg.NATSMonURL).
-				WithMnemoReader(mnemosyne.NewReader(cfg.MnemosyneSkillsDir)),
-		metrics: newAtlasMetrics(),
+			WithGrafanaURL(cfg.GrafanaURL).
+			WithNATSURLs(cfg.NATSDashboardURL, cfg.NATSTopURL, cfg.NATSMonURL).
+			WithMnemoReader(mnemosyne.NewReader(cfg.MnemosyneSkillsDir)),
+		metrics: metrics,
+		ready:   &ReadyRegistry{},
 	}
 	s.srv = &http.Server{
 		Addr:         cfg.ListenAddr,
@@ -43,6 +49,18 @@ func New(cfg *config.Config, bus *events.Bus, cache *store.Cache) *Server {
 		IdleTimeout:  60 * time.Second,
 	}
 	return s
+}
+
+// Metrics exposes the *AtlasMetrics instance so the composition root can wire
+// it into pollers and the NATS subscriber via their SetMetrics methods.
+func (s *Server) Metrics() *AtlasMetrics {
+	return s.metrics
+}
+
+// Ready exposes the readiness registry so the composition root can register
+// per-component checks (one per poller, one for the NATS subscriber, etc.).
+func (s *Server) Ready() *ReadyRegistry {
+	return s.ready
 }
 
 func (s *Server) Run(ctx context.Context) error {
