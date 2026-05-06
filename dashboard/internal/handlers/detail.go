@@ -39,7 +39,7 @@ func (h *HostsHandler) AgentDetail(w http.ResponseWriter, r *http.Request) {
 
 	history := h.cache.GetAgentEvents(id)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.AgentDetailPage(*found, task, history).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.AgentDetailPage(*found, task, history), "/agents/{id}")
 }
 
 // TaskDetail handles GET /tasks/{id}.
@@ -62,5 +62,5 @@ func (h *HostsHandler) TaskDetail(w http.ResponseWriter, r *http.Request) {
 
 	history := h.cache.GetAgentEvents(found.AssigneeID)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.TaskDetailPage(*found, history).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.TaskDetailPage(*found, history), "/tasks/{id}")
 }

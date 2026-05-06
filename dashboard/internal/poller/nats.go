@@ -64,7 +64,7 @@ type connzEntry struct {
 
 // NATSPoller polls the NATS monitoring endpoints for server statistics.
 type NATSPoller struct {
-	base
+	*base
 	cache *store.Cache
 	url   string
 }

@@ -107,8 +107,22 @@ func TestCLISource_ParseError(t *testing.T) {
 	dir := t.TempDir()
 	fakeTailscale := dir + "/tailscale"
 	script := "#!/bin/sh\necho 'not valid json'\n"
-	if err := os.WriteFile(fakeTailscale, []byte(script), 0o755); err != nil {
+	// Write at 0o600 (owner read/write only — gosec G306 requires ≤0o600 on
+	// WriteFile), then add the execute bit via chmod so the shell can run
+	// it. Final mode 0o700: owner-only read/write/execute, no group/world
+	// access. This is strictly more secure than the prior 0o755.
+	if err := os.WriteFile(fakeTailscale, []byte(script), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
+	}
+	// 0o700 is the minimum mode that makes the test script executable. The
+	// file lives in t.TempDir() (per-test private directory, mode 0o700,
+	// owned by the test runner UID), and only the test runner needs to run
+	// it. No group/world bits at any point — strictly more secure than the
+	// prior 0o755. gosec G302 still flags any chmod above 0o600; that rule
+	// is incorrect here because it cannot model "this file MUST be
+	// executable for the test to work."
+	if err := os.Chmod(fakeTailscale, 0o700); err != nil { //nolint:gosec // see comment above
+		t.Fatalf("Chmod: %v", err)
 	}
 
 	// Put our fake script at the front of PATH.

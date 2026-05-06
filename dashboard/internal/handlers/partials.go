@@ -1,7 +1,8 @@
 package handlers
 
 import (
-	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -16,11 +17,15 @@ func (h *HostsHandler) MnemosyneSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	var skills []mnemosyne.Skill
 	if h.mnemoReader != nil {
-		skills, _ = h.mnemoReader.Skills() //nolint:errcheck
+		var err error
+		skills, err = h.mnemoReader.Skills()
+		if err != nil {
+			slog.Warn("mnemosyne: failed to load skills", "err", err, "route", "/partials/mnemosyne/search")
+		}
 	}
 	filtered := mnemosyne.Filter(skills, q)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	templates.SkillList(filtered).Render(r.Context(), w) //nolint:errcheck
+	renderTempl(w, r, templates.SkillList(filtered), "/partials/mnemosyne/search")
 }
 
 // MnemosyneSkillBody renders the markdown body of a skill as HTML.
@@ -31,17 +36,28 @@ func (h *HostsHandler) MnemosyneSkillBody(w http.ResponseWriter, r *http.Request
 		http.NotFound(w, r)
 		return
 	}
-	skills, _ := h.mnemoReader.Skills() //nolint:errcheck
+	skills, err := h.mnemoReader.Skills()
+	if err != nil {
+		slog.Warn("mnemosyne: failed to load skills", "err", err, "route", "/partials/mnemosyne/skill/{name}")
+		http.Error(w, "skills unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	for _, s := range skills {
 		if s.Name == name {
 			html, err := mnemosyne.RenderMarkdown(s.Body)
 			if err != nil {
+				slog.Warn("mnemosyne: render failed", "err", err, "skill", name)
 				http.Error(w, "render error", http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			// Safe: goldmark renders with Unsafe=false (raw HTML stripped)
-			fmt.Fprint(w, html) //nolint:errcheck
+			// Safe: goldmark renders with Unsafe=false (raw HTML stripped).
+			// We use io.WriteString rather than fmt.Fprint so the bytes-written
+			// error is explicit; client-disconnect during a partial is normal
+			// and demoted to debug.
+			if _, werr := io.WriteString(w, html); werr != nil && !isClientDisconnect(werr) {
+				slog.Warn("mnemosyne: write skill body failed", "err", werr, "skill", name)
+			}
 			return
 		}
 	}

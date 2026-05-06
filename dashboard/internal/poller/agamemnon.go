@@ -37,7 +37,7 @@ type tasksAPIResponse struct {
 
 // AgamemnonPoller polls the Agamemnon service for agent and task data.
 type AgamemnonPoller struct {
-	base
+	*base
 	cache *store.Cache
 	url   string
 }

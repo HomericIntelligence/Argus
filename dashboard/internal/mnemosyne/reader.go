@@ -59,13 +59,37 @@ func loadFromDir(dir string) ([]Skill, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Resolve the configured skills directory once so we can verify every
+	// candidate file resolves underneath it. This defends against an
+	// operator pointing ATLAS_MNEMOSYNE_SKILLS_DIR at a path that contains
+	// symlinks escaping the intended root.
+	rootAbs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	rootAbs = filepath.Clean(rootAbs) + string(filepath.Separator)
+
 	var skills []Skill
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
-		data, err := os.ReadFile(path)
+		// Containment check: the resolved absolute path must live under
+		// rootAbs. EvalSymlinks follows symlinks; if any link points outside
+		// the configured skills dir we skip the file rather than reading it.
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			continue
+		}
+		resolvedAbs, err := filepath.Abs(resolved)
+		if err != nil {
+			continue
+		}
+		if !strings.HasPrefix(resolvedAbs+string(filepath.Separator), rootAbs) {
+			continue
+		}
+		data, err := os.ReadFile(resolved) //nolint:gosec // resolved path verified to live under rootAbs above
 		if err != nil {
 			continue
 		}

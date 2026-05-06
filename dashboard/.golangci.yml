@@ -1,8 +1,12 @@
+# golangci-lint v2 config schema. https://golangci-lint.run/usage/configuration/
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
 
 linters:
+  default: none
   enable:
     - govet
     - staticcheck
@@ -10,8 +14,12 @@ linters:
     - ineffassign
     - unused
     - gosec
+    - errorlint   # require errors.Is / errors.As / %w wrapping
+    - bodyclose   # ensure HTTP response bodies are closed
 
-issues:
-  exclude-rules:
-    - linters: [gosec]
-      text: "G401|G501"
+# G401 (weak crypto, e.g. md5/sha1) and G501 (md5 import) are intentionally
+# NOT excluded. Atlas does not use weak crypto in production code; if a future
+# change introduces them, we want to know.
+# G306 (file mode > 0o600 on WriteFile) is enforced — see
+# internal/tailscale/tailscale_test.go for the documented chmod-after-write
+# pattern when an executable test fixture is required.

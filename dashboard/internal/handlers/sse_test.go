@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +49,7 @@ func sseLines(t *testing.T, r io.ReadCloser, frames int) []string {
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil && err != io.EOF {
+	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("sseLines: scanner error: %v", err)
 	}
 	return lines
@@ -91,7 +92,7 @@ func TestSSEHeaders(t *testing.T) {
 		}
 	}
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -133,7 +134,7 @@ func TestSSEEventDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Give the handler a moment to register the subscription before publishing.
 	time.Sleep(20 * time.Millisecond)
@@ -163,7 +164,7 @@ func TestSSEEventDelivery(t *testing.T) {
 			break
 		}
 	}
-	if err := scanner.Err(); err != nil && err != io.EOF {
+	if err := scanner.Err(); err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("scanner: %v", err)
 	}
 
@@ -203,7 +204,7 @@ func TestSSETopicFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	time.Sleep(20 * time.Millisecond)
 
@@ -261,7 +262,7 @@ func TestSSEReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read 2 complete SSE frames. Each frame: "event: ...\ndata: ...\n\n".
 	lines := sseLines(t, resp.Body, 2)
@@ -314,7 +315,7 @@ type blockingResponseWriter struct {
 }
 
 func (b *blockingResponseWriter) Write(p []byte) (int, error) {
-	<-b.ctx.Done() //nolint:gosimple // S1000: select with single case is intentional for readability
+	<-b.ctx.Done()
 	return 0, b.ctx.Err()
 }
 
@@ -379,19 +380,18 @@ func TestSSEConnectionClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 
 	// Let the handler start streaming.
 	time.Sleep(30 * time.Millisecond)
 
-	// Track handler completion via a WaitGroup by sending a probe publish and
-	// watching the connection body drain. We close the connection by cancelling
-	// the request context.
+	// Track handler completion via a WaitGroup by draining the connection body
+	// in a goroutine. We close the connection by cancelling the request context.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		io.Copy(io.Discard, resp.Body) //nolint:errcheck
-		resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
 	}()
 
 	// Cancel the request context — this simulates the client closing the connection.
@@ -436,7 +436,7 @@ func TestSSEMultipleTopics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	time.Sleep(20 * time.Millisecond)
 
@@ -510,7 +510,7 @@ func TestSSEHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	scanner := bufio.NewScanner(resp.Body)
 	heartbeatSeen := make(chan struct{}, 1)
