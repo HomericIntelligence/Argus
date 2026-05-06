@@ -10,6 +10,7 @@ import (
 
 	"github.com/HomericIntelligence/atlas/internal/config"
 	"github.com/HomericIntelligence/atlas/internal/events"
+	atlnats "github.com/HomericIntelligence/atlas/internal/nats"
 	"github.com/HomericIntelligence/atlas/internal/poller"
 	"github.com/HomericIntelligence/atlas/internal/server"
 	"github.com/HomericIntelligence/atlas/internal/store"
@@ -51,6 +52,23 @@ func main() {
 	// Start NATS monitoring poller (varz + jsz every 5s).
 	natsPoller := poller.NewNATSPoller(cfg, cache)
 	go natsPoller.Start(ctx, 5*time.Second)
+
+	// Start the JetStream subscriber that bridges NATS events into events.Bus
+	// for the SSE fan-out. This is the central event spine of Atlas — without
+	// it SSE clients only receive heartbeats. Start runs in a goroutine and
+	// returns nil only after ctx is cancelled; an early non-nil return
+	// indicates a fatal initialisation error (unreachable NATS, no streams
+	// attached) which we surface but do not exit on so the rest of the
+	// dashboard remains operable.
+	natsSubscriber := atlnats.New(atlnats.Config{
+		NATSURL: cfg.NATSURL,
+		Streams: atlnats.DefaultStreams(),
+	}, bus)
+	go func() {
+		if err := natsSubscriber.Start(ctx); err != nil {
+			slog.Error("nats subscriber failed to start; SSE will deliver heartbeats only", "err", err)
+		}
+	}()
 
 	srv := server.New(cfg, bus, cache)
 

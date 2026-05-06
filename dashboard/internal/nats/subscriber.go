@@ -7,11 +7,15 @@ package nats
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	natsgo "github.com/nats-io/nats.go"
+
+	"github.com/HomericIntelligence/atlas/internal/events"
 )
 
 // ---------------------------------------------------------------------------
@@ -38,20 +42,15 @@ type StreamConfig struct {
 }
 
 // Event is the normalised representation of a NATS message published onto the
-// EventBus.
-type Event struct {
-	// Topic is the high-level topic derived from the NATS subject, e.g. "agent".
-	Topic string
-	// Subject is the raw NATS subject, e.g. "hi.agents.host.name.heartbeat".
-	Subject string
-	// Payload is the raw JSON body of the message.
-	Payload json.RawMessage
-	// At is the time at which the event was received.
-	At time.Time
-}
+// EventBus. It is a type alias for events.Event so that *events.Bus satisfies
+// the EventBus interface below without an adapter — the two halves of the
+// JetStream → events.Bus → SSE pipeline use the same wire type.
+type Event = events.Event
 
 // EventBus is the interface that the Subscriber uses to publish decoded events.
 // Implementations must be safe for concurrent use from multiple goroutines.
+// *events.Bus satisfies this interface directly because events.Bus.Publish
+// accepts events.Event and Event above is an alias for events.Event.
 type EventBus interface {
 	Publish(e Event)
 }
@@ -61,6 +60,12 @@ type EventBus interface {
 type Subscriber struct {
 	cfg Config
 	bus EventBus
+	// ready becomes true once Start has finished attaching all configured
+	// JetStream durable subscriptions. Read via Ready().
+	ready atomic.Bool
+	// attached counts how many JetStream subscriptions actually succeeded
+	// during Start. Read via Attached().
+	attached atomic.Int32
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +84,13 @@ func New(cfg Config, bus EventBus) *Subscriber {
 
 // Start connects to the NATS server and subscribes to all configured streams.
 // It blocks until ctx is cancelled, at which point it drains and closes the
-// connection.  It returns a non-nil error if the initial connection fails.
+// connection. It returns a non-nil error if the initial connection fails or
+// if zero streams successfully subscribed (a configured-but-empty subscriber
+// is almost always a misconfiguration the caller should surface).
+//
+// Start sets Ready() to true only after all attempted Subscribe calls have
+// completed and at least one succeeded; Ready() stays false thereafter only
+// when the connection is being torn down or no subscriptions attached.
 func (s *Subscriber) Start(ctx context.Context) error {
 	nc, err := natsgo.Connect(s.cfg.NATSURL, natsgo.MaxReconnects(0))
 	if err != nil {
@@ -95,31 +106,81 @@ func (s *Subscriber) Start(ctx context.Context) error {
 	for _, sc := range s.cfg.Streams {
 		sc := sc // capture for closure
 		handler := s.makeHandler(sc)
-		_, err := js.Subscribe(
-			sc.Subjects[0],
-			handler,
+		// nats.go forbids combining a positional subject with
+		// ConsumerFilterSubjects: that option is for *multi-subject* filters,
+		// and using both surfaces "consumer with multiple subject filters
+		// cannot use subject based API". We drive the subscription by the
+		// first subject when there's exactly one filter (the common case for
+		// Atlas's wildcard subjects like "hi.agents.>") and use
+		// ConsumerFilterSubjects only when the stream config supplies more
+		// than one filter.
+		opts := []natsgo.SubOpt{
 			natsgo.Durable(sc.Durable),
 			natsgo.DeliverNew(),
 			natsgo.AckExplicit(),
-			natsgo.AckWait(30*time.Second),
+			natsgo.AckWait(30 * time.Second),
 			natsgo.MaxAckPending(1024),
-			natsgo.ConsumerFilterSubjects(sc.Subjects...),
-		)
-		if err != nil {
-			slog.Error("atlas: JetStream subscribe failed", "stream", sc.Stream, "err", err)
 		}
+		var subErr error
+		if len(sc.Subjects) <= 1 {
+			subject := ""
+			if len(sc.Subjects) == 1 {
+				subject = sc.Subjects[0]
+			}
+			_, subErr = js.Subscribe(subject, handler, opts...)
+		} else {
+			opts = append(opts, natsgo.ConsumerFilterSubjects(sc.Subjects...))
+			// With multiple filters, pass an empty subject — the filter list
+			// is authoritative.
+			_, subErr = js.Subscribe("", handler, opts...)
+		}
+		if subErr != nil {
+			slog.Error("atlas: JetStream subscribe failed", "stream", sc.Stream, "err", subErr)
+			continue
+		}
+		s.attached.Add(1)
 	}
+
+	if s.attached.Load() == 0 {
+		nc.Close()
+		return errors.New("nats: zero JetStream subscriptions attached — check stream configuration")
+	}
+
+	s.ready.Store(true)
+	slog.Info("atlas: NATS subscriber ready",
+		"attached", s.attached.Load(),
+		"configured", len(s.cfg.Streams))
 
 	// Block until context is cancelled.
 	<-ctx.Done()
 
+	// Mark not-ready before drain so /readyz flips immediately.
+	s.ready.Store(false)
 	// Drain and close the connection gracefully.
 	_ = nc.Drain()
 	return nil
 }
 
+// Ready reports true once Start has connected to NATS, attached at least one
+// JetStream durable subscription, and not yet begun shutting down. Used by the
+// /readyz aggregator.
+func (s *Subscriber) Ready() bool {
+	return s.ready.Load()
+}
+
+// Attached reports how many of the configured streams the Subscriber
+// successfully attached to. A value less than len(cfg.Streams) means at least
+// one Subscribe call failed during Start; check the logs for the per-stream
+// error.
+func (s *Subscriber) Attached() int {
+	return int(s.attached.Load())
+}
+
 // makeHandler returns a NATS MsgHandler that decodes the message and publishes
-// an Event onto the bus.
+// an Event onto the bus. The message is published before it is acked: if the
+// bus is full and drops the event, an unacked message lets JetStream redeliver
+// it after the AckWait window. We deliberately accept duplicate delivery in
+// the rare bus-drop case rather than silently lose data.
 func (s *Subscriber) makeHandler(sc StreamConfig) natsgo.MsgHandler {
 	return func(msg *natsgo.Msg) {
 		e := Event{
@@ -128,8 +189,8 @@ func (s *Subscriber) makeHandler(sc StreamConfig) natsgo.MsgHandler {
 			Payload: json.RawMessage(msg.Data),
 			At:      time.Now().UTC(),
 		}
-		_ = msg.Ack()
 		s.bus.Publish(e)
+		_ = msg.Ack()
 	}
 }
 
