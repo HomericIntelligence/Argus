@@ -55,6 +55,20 @@ type EventBus interface {
 	Publish(e Event)
 }
 
+// MetricsSink is the metric-recording surface the Subscriber uses. Set with
+// SetMetrics; default is a no-op so callers that never wire metrics still work.
+type MetricsSink interface {
+	SetNATSConnected(connected bool)
+	IncNATSMessage(stream string)
+	IncEventParseError(stream string)
+}
+
+type noopMetrics struct{}
+
+func (noopMetrics) SetNATSConnected(bool)        {}
+func (noopMetrics) IncNATSMessage(string)        {}
+func (noopMetrics) IncEventParseError(string)    {}
+
 // Subscriber connects to NATS and maintains durable push consumers for each
 // configured stream.
 type Subscriber struct {
@@ -66,6 +80,8 @@ type Subscriber struct {
 	// attached counts how many JetStream subscriptions actually succeeded
 	// during Start. Read via Attached().
 	attached atomic.Int32
+	// metrics is set by SetMetrics; default is no-op.
+	metrics atomic.Pointer[MetricsSink]
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +91,15 @@ type Subscriber struct {
 // New creates a Subscriber that will use cfg and bus.  It does not connect to
 // NATS — connection is deferred to Start.
 func New(cfg Config, bus EventBus) *Subscriber {
-	return &Subscriber{cfg: cfg, bus: bus}
+	s := &Subscriber{cfg: cfg, bus: bus}
+	var m MetricsSink = noopMetrics{}
+	s.metrics.Store(&m)
+	return s
+}
+
+// SetMetrics installs the metric sink. Safe to call before or after Start.
+func (s *Subscriber) SetMetrics(m MetricsSink) {
+	s.metrics.Store(&m)
 }
 
 // ---------------------------------------------------------------------------
@@ -143,10 +167,12 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 	if s.attached.Load() == 0 {
 		nc.Close()
+		(*s.metrics.Load()).SetNATSConnected(false)
 		return errors.New("nats: zero JetStream subscriptions attached — check stream configuration")
 	}
 
 	s.ready.Store(true)
+	(*s.metrics.Load()).SetNATSConnected(true)
 	slog.Info("atlas: NATS subscriber ready",
 		"attached", s.attached.Load(),
 		"configured", len(s.cfg.Streams))
@@ -156,6 +182,7 @@ func (s *Subscriber) Start(ctx context.Context) error {
 
 	// Mark not-ready before drain so /readyz flips immediately.
 	s.ready.Store(false)
+	(*s.metrics.Load()).SetNATSConnected(false)
 	// Drain and close the connection gracefully.
 	_ = nc.Drain()
 	return nil
@@ -190,6 +217,7 @@ func (s *Subscriber) makeHandler(sc StreamConfig) natsgo.MsgHandler {
 			At:      time.Now().UTC(),
 		}
 		s.bus.Publish(e)
+		(*s.metrics.Load()).IncNATSMessage(sc.Stream)
 		_ = msg.Ack()
 	}
 }

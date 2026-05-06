@@ -72,10 +72,7 @@ type NATSPoller struct {
 // NewNATSPoller constructs a NATSPoller with a 3-second HTTP timeout.
 func NewNATSPoller(cfg *config.Config, cache *store.Cache) *NATSPoller {
 	return &NATSPoller{
-		base: base{
-			name:   "nats",
-			client: &http.Client{Timeout: 3 * time.Second},
-		},
+		base:  newBase("nats", &http.Client{Timeout: 3 * time.Second}),
 		cache: cache,
 		url:   cfg.NATSMonURL,
 	}
@@ -100,18 +97,30 @@ func (p *NATSPoller) Start(ctx context.Context, interval time.Duration) {
 }
 
 // fetch retrieves stats from /varz and /jsz and updates the cache.
-// On any error it logs a warning and leaves the cache unchanged.
+// /varz and /jsz failures gate poll-success (readiness); detail-endpoint
+// failures (/jsz?detail=1, /connz) are logged but do not gate.
 func (p *NATSPoller) fetch(ctx context.Context) {
+	start := time.Now()
+	err := p.fetchInner(ctx)
+	if err != nil {
+		slog.Warn("nats poller: fetch failed", "err", err)
+	}
+	p.recordResult(err, time.Since(start))
+
+	// Detail endpoints are best-effort: their failures must not mark the
+	// poller unready, since the primary varz/jsz cache is already populated.
+	p.fetchDetail(ctx)
+}
+
+func (p *NATSPoller) fetchInner(ctx context.Context) error {
 	var varz varzResponse
 	if err := p.getJSON(ctx, p.url+"/varz", &varz); err != nil {
-		slog.Warn("nats poller: failed to fetch /varz", "err", err)
-		return
+		return err
 	}
 
 	var jsz jszResponse
 	if err := p.getJSON(ctx, p.url+"/jsz", &jsz); err != nil {
-		slog.Warn("nats poller: failed to fetch /jsz", "err", err)
-		return
+		return err
 	}
 
 	p.cache.SetNATSStats(store.NATSStats{
@@ -120,9 +129,7 @@ func (p *NATSPoller) fetch(ctx context.Context) {
 		InMsgs:      varz.InMsgs,
 		OutMsgs:     varz.OutMsgs,
 	})
-
-	// Fetch detailed stream list; errors are non-fatal — leave prior cache value.
-	p.fetchDetail(ctx)
+	return nil
 }
 
 // fetchDetail polls /jsz?detail=1 for stream list and /connz for connections.

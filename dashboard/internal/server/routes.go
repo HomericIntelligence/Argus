@@ -25,7 +25,7 @@ func (s *Server) routes() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(Middleware(AuthMode(s.cfg.AuthMode), s.cfg.AuthUser, s.cfg.AuthPass, s.cfg.AuthBearerToken))
 
-		r.Get("/readyz", s.handleReadyz)
+		r.Get("/readyz", MakeReadyzHandler(s.ready))
 		r.Get("/metrics", s.MetricsHandler())
 
 		r.Get("/", s.handleOverview)
@@ -57,12 +57,6 @@ func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
-}
-
-// handleReadyz is wired in PR 3; until then it falls back to liveness so the
-// route is reserved and authenticated.
-func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
-	s.handleLivez(w, r)
 }
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {

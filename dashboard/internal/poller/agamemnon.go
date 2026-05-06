@@ -45,10 +45,7 @@ type AgamemnonPoller struct {
 // NewAgamemnonPoller constructs an AgamemnonPoller with a 3-second HTTP timeout.
 func NewAgamemnonPoller(cfg *config.Config, cache *store.Cache) *AgamemnonPoller {
 	return &AgamemnonPoller{
-		base: base{
-			name:   "agamemnon",
-			client: &http.Client{Timeout: 3 * time.Second},
-		},
+		base:  newBase("agamemnon", &http.Client{Timeout: 3 * time.Second}),
 		cache: cache,
 		url:   cfg.AgamemnonURL,
 	}
@@ -73,13 +70,24 @@ func (p *AgamemnonPoller) Start(ctx context.Context, interval time.Duration) {
 }
 
 // fetch retrieves agents and tasks from Agamemnon and updates the cache.
-// On any error it logs a warning and leaves the cache unchanged.
+// On any error it logs a warning and leaves the cache unchanged. Both
+// /v1/agents and /v1/tasks must succeed for the poll cycle to count as
+// successful — a partial fetch leaves the cache in a mixed state and the
+// /readyz aggregator should consider it not-ready.
 func (p *AgamemnonPoller) fetch(ctx context.Context) {
+	start := time.Now()
+	err := p.fetchInner(ctx)
+	if err != nil {
+		slog.Warn("agamemnon poller: fetch failed", "err", err)
+	}
+	p.recordResult(err, time.Since(start))
+}
+
+func (p *AgamemnonPoller) fetchInner(ctx context.Context) error {
 	// Fetch agents.
 	var rawAgents []agentAPIRecord
 	if err := p.getJSON(ctx, p.url+"/v1/agents", &rawAgents); err != nil {
-		slog.Warn("agamemnon poller: failed to fetch agents", "err", err)
-		return
+		return err
 	}
 
 	agents := make([]store.AgentRecord, len(rawAgents))
@@ -97,8 +105,7 @@ func (p *AgamemnonPoller) fetch(ctx context.Context) {
 	// Fetch tasks.
 	var envelope tasksAPIResponse
 	if err := p.getJSON(ctx, p.url+"/v1/tasks", &envelope); err != nil {
-		slog.Warn("agamemnon poller: failed to fetch tasks", "err", err)
-		return
+		return err
 	}
 
 	tasks := make([]store.TaskRecord, len(envelope.Tasks))
@@ -114,4 +121,5 @@ func (p *AgamemnonPoller) fetch(ctx context.Context) {
 		}
 	}
 	p.cache.SetTasks(tasks)
+	return nil
 }
