@@ -215,6 +215,42 @@ jobs:
           scan-ref: .
           exit-code: 0
 
+  security-gosec:
+    name: security/gosec
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: Skip if no Go module
+        id: detect
+        run: |
+          if [ ! -f dashboard/go.mod ]; then
+            echo "::notice::No dashboard/go.mod, skipping gosec"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Set up Go
+        if: steps.detect.outputs.skip == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dashboard/go.mod
+          cache-dependency-path: dashboard/go.sum
+      # Run gosec as a standalone, branch-protectable check separate from
+      # the in-process golangci-lint integration. golangci-lint already
+      # enables the `gosec` linter (see dashboard/.golangci.yml) and that
+      # remains the fast developer-loop check; this job exposes the same
+      # findings as their own required status so branch-protection rulesets
+      # can gate explicitly on `security/gosec` rather than burying it
+      # inside an aggregated lint check.
+      - name: Run gosec
+        if: steps.detect.outputs.skip == 'false'
+        uses: securego/gosec@4a3bd8af174872c778439083ded7adbf3747e770  # v2.26.1
+        with:
+          args: ./dashboard/...
+
   security-secrets-scan:
     name: security/secrets-scan
     runs-on: ubuntu-24.04
