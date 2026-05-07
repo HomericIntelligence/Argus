@@ -10,6 +10,30 @@ The default `ATLAS_AUTH_MODE=bearer` requires `ATLAS_AUTH_BEARER_TOKEN`. The sim
 get going locally is to set both, or to switch off auth explicitly with `ATLAS_AUTH_MODE=none`
 (strictly local — Atlas will log a warning).
 
+### Hot-reload dev loop
+
+Once you've run `./scripts/setup.sh && pixi shell` and have
+[`templ`](https://templ.guide/) and [`air`](https://github.com/air-verse/air) on your
+`$PATH`, a single command runs the whole edit/build/reload cycle:
+
+```bash
+just dev
+```
+
+This starts `templ generate --watch` and `air` in parallel (output is prefixed `[templ]`
+and `[air]`). Edit a `.templ` or `.go` file and the dashboard rebuilds and restarts
+automatically; Ctrl-C tears both watchers down.
+
+If the install hints flag a missing tool:
+
+```bash
+go install github.com/a-h/templ/cmd/templ@v0.3.1001
+go install github.com/air-verse/air@latest
+```
+
+`air` is intentionally not pinned in `pixi.toml` or `scripts/setup.sh` — it's an opt-in
+dev tool. The non-watch flow below still works unchanged.
+
 ```bash
 # Local dev, auth off (logs a warning)
 ATLAS_AUTH_MODE=none go run ./cmd/argus-dashboard
@@ -210,7 +234,8 @@ go build -ldflags "-X github.com/HomericIntelligence/atlas/internal/version.Vers
 
 ## Template Generation
 
-Templates use [templ](https://templ.guide/). Generated `*_templ.go` files are committed. To regenerate:
+Templates use [templ](https://templ.guide/). Generated `*_templ.go` files are committed.
+To regenerate (or use `just dev` for hot-reload):
 
 ```bash
 templ generate ./...

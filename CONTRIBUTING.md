@@ -64,6 +64,12 @@ just status
 just test-scrape
 ```
 
+### Dashboard hot-reload
+
+For iterating on the Go/templ dashboard, `just dev` runs `templ generate --watch` and
+[`air`](https://github.com/air-verse/air) in parallel so saves auto-rebuild and reload
+the binary. See `dashboard/README.md` ("Hot-reload dev loop") for prerequisites.
+
 ### Pre-commit hooks
 
 We use [pre-commit](https://pre-commit.com/) to catch formatting, linting, and templ-generate
