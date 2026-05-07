@@ -106,7 +106,15 @@ func Load() *Config {
 func (c *Config) Validate(logger *slog.Logger) error {
 	var errs []error
 
-	switch AuthMode := strings.ToLower(c.AuthMode); AuthMode {
+	// Normalize the auth mode in place so the runtime middleware (which compares
+	// against the typed constants in server.AuthMode exactly) always sees a
+	// canonical lowercase value. Without this, ATLAS_AUTH_MODE=Bearer would
+	// pass Validate (because the local switch lowercased a copy) but the
+	// middleware would fall through its switch and previously fail-open. See
+	// also server.Middleware which now rejects unknown modes outright.
+	c.AuthMode = strings.ToLower(strings.TrimSpace(c.AuthMode))
+
+	switch c.AuthMode {
 	case "bearer":
 		if c.AuthBearerToken == "" {
 			errs = append(errs, errors.New("ATLAS_AUTH_MODE=bearer requires ATLAS_AUTH_BEARER_TOKEN to be set"))

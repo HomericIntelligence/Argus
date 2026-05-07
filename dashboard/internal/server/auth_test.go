@@ -200,3 +200,28 @@ func TestAuthBearer_SSE_QueryToken_Returns200(t *testing.T) {
 		t.Errorf("expected 200 for SSE with ?token=, got %d", rr.Code)
 	}
 }
+
+// TestMiddleware_UnknownModeFailsClosed locks in the defense-in-depth half
+// of the v0.2.0 auth-bypass fix. Originally the middleware's switch had a
+// default branch that fell through to next.ServeHTTP — so any value other
+// than the three typed constants ("none", "basic", "bearer") silently
+// allowed every request. config.Validate now normalizes the value at startup
+// AND rejects unknown modes, but if anything ever bypasses Validate (for
+// example a future code path that constructs Server with a hand-built
+// Config), the middleware itself must refuse to fail open.
+func TestMiddleware_UnknownModeFailsClosed(t *testing.T) {
+	for _, mode := range []AuthMode{
+		AuthMode("Bearer"), // mixed case — the exact bypass shape from v0.2.0
+		AuthMode("BEARER"),
+		AuthMode("magic"),
+		AuthMode(""),
+	} {
+		handler := applyMiddleware(mode, "u", "p", "secret", okHandler)
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("mode %q: expected 401, got %d (middleware must fail closed on unknown mode)", string(mode), rr.Code)
+		}
+	}
+}

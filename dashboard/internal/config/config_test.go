@@ -106,3 +106,45 @@ func TestValidate_EmptyOptionalURL(t *testing.T) {
 		t.Fatalf("empty optional URL must validate: %v", err)
 	}
 }
+
+// TestValidate_NormalizesAuthMode is a regression test for a fail-open auth
+// bypass that shipped in v0.2.0: Validate's switch lowercased a *local* copy
+// of c.AuthMode, leaving c.AuthMode itself untouched. The middleware then
+// compared the un-normalized field against typed constants ("bearer",
+// "basic", "none") exactly, hit its default branch on anything mixed-case,
+// and previously fell through allowing all requests. The fix in Validate is
+// to assign the normalized value back to c.AuthMode so every downstream
+// consumer (including the middleware) sees a canonical value.
+//
+// Defense-in-depth: server.Middleware now also fails closed on unknown modes
+// (see TestMiddleware_UnknownModeFailsClosed). Either fix alone closes the
+// bypass; both together make the bug structurally hard to reintroduce.
+func TestValidate_NormalizesAuthMode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"mixed case bearer", "Bearer", "bearer"},
+		{"upper case bearer", "BEARER", "bearer"},
+		{"silly case bearer", "BeArEr", "bearer"},
+		{"surrounding whitespace", "  bearer\t", "bearer"},
+		{"upper case none", "NONE", "none"},
+		{"upper case basic", "BASIC", "basic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Config{
+				AuthMode:        tc.in,
+				AuthBearerToken: "secret",
+				AuthUser:        "u",
+				AuthPass:        "p",
+			}
+			if err := c.Validate(discardLogger()); err != nil {
+				t.Fatalf("Validate must accept normalized auth mode %q, got error: %v", tc.in, err)
+			}
+			if c.AuthMode != tc.want {
+				t.Fatalf("Validate must normalize c.AuthMode to %q, got %q", tc.want, c.AuthMode)
+			}
+		})
+	}
+}

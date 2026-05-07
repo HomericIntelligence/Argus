@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,7 +11,11 @@ import (
 func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	// accessLog replaces chi's default middleware.Logger to avoid leaking the
+	// SSE bearer token (passed as ?token=<secret>) into stdout/Loki. The
+	// default Logger formats the full RequestURI; accessLog logs r.URL.Path
+	// only and drops the query string entirely.
+	r.Use(accessLog(slog.Default()))
 	r.Use(middleware.Recoverer)
 	r.Use(s.securityHeaders)
 

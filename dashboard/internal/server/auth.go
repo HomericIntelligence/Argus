@@ -25,10 +25,19 @@ const (
 //     The query-param fallback exists for EventSource / SSE clients that cannot
 //     set custom request headers (Accept: text/event-stream).
 //     On failure returns 401.
+//
+// Unknown modes (anything other than the three above) fail closed: every
+// request is rejected with 401. config.Validate is the canonical guard
+// against this — it normalizes ATLAS_AUTH_MODE to lowercase and rejects
+// unknown values at startup — but the middleware also refuses to fail open
+// as a defense-in-depth measure.
 func Middleware(mode AuthMode, user, pass, bearerToken string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch mode {
+			case AuthNone:
+				// Explicit pass-through. Operators must opt in via
+				// ATLAS_AUTH_MODE=none and config.Validate logs a warning.
 			case AuthBasic:
 				if !checkBasic(r, user, pass) {
 					w.Header().Set("WWW-Authenticate", `Basic realm="Atlas"`)
@@ -41,7 +50,13 @@ func Middleware(mode AuthMode, user, pass, bearerToken string) func(http.Handler
 					return
 				}
 			default:
-				// AuthNone or unknown: allow through.
+				// Fail closed on any unknown mode. config.Validate should
+				// have rejected this at startup; reaching this branch means
+				// something bypassed Validate (e.g. a future code path that
+				// constructs Server with a hand-built Config), and we'd
+				// rather 401 every request than open the dashboard.
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
 			}
 			next.ServeHTTP(w, r)
 		})
