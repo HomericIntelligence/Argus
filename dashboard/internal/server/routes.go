@@ -10,7 +10,16 @@ import (
 
 func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RealIP)
+	// We deliberately do NOT use middleware.RealIP. RealIP rewrites
+	// r.RemoteAddr from any client-supplied X-Forwarded-For / X-Real-IP
+	// header — which is correct only when an upstream proxy strips and
+	// re-issues those headers from a trusted source. Atlas exposes :3002
+	// directly in compose with no upstream proxy, so trusting client-
+	// supplied XFF lets anyone spoof the source IP that ends up in
+	// access logs and (post #460) in auth-failure security events. If a
+	// future deployment runs Atlas behind nginx/Caddy/etc., the right
+	// fix is to gate this on an explicit ATLAS_TRUST_PROXY env var, not
+	// to re-enable RealIP unconditionally.
 	// accessLog replaces chi's default middleware.Logger to avoid leaking the
 	// SSE bearer token (passed as ?token=<secret>) into stdout/Loki. The
 	// default Logger formats the full RequestURI; accessLog logs r.URL.Path
