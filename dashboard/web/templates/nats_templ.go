@@ -53,7 +53,7 @@ func NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDa
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h2 class=\"section-title\">JetStream Streams</h2><div id=\"nats-streams\" hx-get=\"/partials/nats/streams\" hx-trigger=\"every 5s\" hx-swap=\"innerHTML\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1 class=\"sr-only\">NATS</h1><h2 class=\"section-title\">JetStream Streams</h2><div id=\"nats-streams\" hx-get=\"/partials/nats/streams\" hx-trigger=\"every 5s\" hx-swap=\"innerHTML\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -81,7 +81,7 @@ func NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDa
 				var templ_7745c5c3_Var3 templ.SafeURL
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(natsDashURL))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 38, Col: 40}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 39, Col: 40}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -104,7 +104,7 @@ func NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDa
 			var templ_7745c5c3_Var4 templ.SafeURL
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(natsMon + "/varz"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 42, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 43, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -117,7 +117,7 @@ func NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDa
 			var templ_7745c5c3_Var5 templ.SafeURL
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(natsMon + "/jsz"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 43, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 44, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -130,7 +130,7 @@ func NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDa
 			var templ_7745c5c3_Var6 templ.SafeURL
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(natsMon + "/connz"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 44, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 45, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -148,7 +148,7 @@ func NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDa
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(templ.SafeURL(natsTopURL))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 49, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 50, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -190,7 +190,7 @@ func NATSStreamRows(streams []store.NATSStreamInfo) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<table class=\"data-table\"><thead><tr><th>Stream</th><th>Subjects</th><th>Messages</th><th>Consumers</th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<table class=\"data-table\" aria-label=\"JetStream streams\"><thead><tr><th scope=\"col\">Stream</th><th scope=\"col\">Subjects</th><th scope=\"col\">Messages</th><th scope=\"col\">Consumers</th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -201,27 +201,27 @@ func NATSStreamRows(streams []store.NATSStreamInfo) templ.Component {
 			}
 		} else {
 			for _, s := range streams {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<tr><td class=\"mono\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<tr><th scope=\"row\" class=\"mono\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(s.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 74, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 75, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</td><td class=\"mono\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</th><td class=\"mono\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(joinSubjects(s.Subjects))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 75, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 76, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -234,7 +234,7 @@ func NATSStreamRows(streams []store.NATSStreamInfo) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(formatUint(s.Messages))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 76, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 77, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -247,7 +247,7 @@ func NATSStreamRows(streams []store.NATSStreamInfo) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(s.Consumers))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 77, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 78, Col: 42}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -288,7 +288,7 @@ func NATSConnRows(conns []store.NATSConnInfo) templ.Component {
 			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<table class=\"data-table\"><thead><tr><th>Name</th><th>IP</th><th>Subs</th><th>In</th><th>Out</th><th>Uptime</th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<table class=\"data-table\" aria-label=\"NATS connections\"><thead><tr><th scope=\"col\">Name</th><th scope=\"col\">IP</th><th scope=\"col\">Subs</th><th scope=\"col\">In</th><th scope=\"col\">Out</th><th scope=\"col\">Uptime</th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -299,27 +299,27 @@ func NATSConnRows(conns []store.NATSConnInfo) templ.Component {
 			}
 		} else {
 			for _, c := range conns {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<tr><td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<tr><th scope=\"row\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 103, Col: 18}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 104, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</td><td class=\"mono\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</th><td class=\"mono\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(c.IP)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 104, Col: 29}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 105, Col: 29}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
@@ -332,7 +332,7 @@ func NATSConnRows(conns []store.NATSConnInfo) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(c.Subscriptions))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 105, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 106, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -345,7 +345,7 @@ func NATSConnRows(conns []store.NATSConnInfo) templ.Component {
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(formatInt(c.InMsgs))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 106, Col: 44}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 107, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
@@ -358,7 +358,7 @@ func NATSConnRows(conns []store.NATSConnInfo) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(formatInt(c.OutMsgs))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 107, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 108, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -371,7 +371,7 @@ func NATSConnRows(conns []store.NATSConnInfo) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(c.Uptime)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 108, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/nats.templ`, Line: 109, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {

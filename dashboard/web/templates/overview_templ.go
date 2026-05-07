@@ -43,7 +43,7 @@ func Overview(agents, tasks, streams, hosts int) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"stat-grid\"><div class=\"stat-card\"><div class=\"label\">Agents</div><div class=\"value\" id=\"stat-agents\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section class=\"stat-grid\" aria-label=\"Cluster summary\"><article class=\"stat-card\" aria-labelledby=\"stat-agents-label\"><div class=\"label\" id=\"stat-agents-label\">Agents</div><div class=\"value\" id=\"stat-agents\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -56,7 +56,7 @@ func Overview(agents, tasks, streams, hosts int) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div></div><div class=\"stat-card\"><div class=\"label\">Tasks</div><div class=\"value\" id=\"stat-tasks\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div></article><article class=\"stat-card\" aria-labelledby=\"stat-tasks-label\"><div class=\"label\" id=\"stat-tasks-label\">Tasks</div><div class=\"value\" id=\"stat-tasks\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -69,7 +69,7 @@ func Overview(agents, tasks, streams, hosts int) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div></div><div class=\"stat-card\"><div class=\"label\">Streams</div><div class=\"value\" id=\"stat-streams\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div></article><article class=\"stat-card\" aria-labelledby=\"stat-streams-label\"><div class=\"label\" id=\"stat-streams-label\">Streams</div><div class=\"value\" id=\"stat-streams\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -82,7 +82,7 @@ func Overview(agents, tasks, streams, hosts int) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div></div><div class=\"stat-card\"><div class=\"label\">Hosts</div><div class=\"value\" id=\"stat-hosts\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div></article><article class=\"stat-card\" aria-labelledby=\"stat-hosts-label\"><div class=\"label\" id=\"stat-hosts-label\">Hosts</div><div class=\"value\" id=\"stat-hosts\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -95,7 +95,7 @@ func Overview(agents, tasks, streams, hosts int) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div></div></div><p style=\"color:#8b949e\">Live feed active after M2 (NATS JetStream subscribers).</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div></article></section><p class=\"muted-note\">Live feed active after M2 (NATS JetStream subscribers).</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

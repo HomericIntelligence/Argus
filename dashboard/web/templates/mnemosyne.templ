@@ -4,11 +4,14 @@ import "github.com/HomericIntelligence/atlas/internal/mnemosyne"
 
 templ MnemosynePage(skills []mnemosyne.Skill, query string) {
 	@Layout("Mnemosyne") {
-		<div class="filter-bar">
+		<div class="filter-bar" role="search" aria-label="Filter skills">
+			<label class="sr-only" for="mnemosyne-search">Search skills</label>
 			<input
+				id="mnemosyne-search"
 				type="search"
 				name="q"
 				value={ query }
+				aria-label="Search skills by name, description, or tags"
 				hx-get="/partials/mnemosyne/search"
 				hx-trigger="keyup changed delay:200ms"
 				hx-target="#skill-list"
@@ -16,9 +19,9 @@ templ MnemosynePage(skills []mnemosyne.Skill, query string) {
 				placeholder="Search skills (name, description, tags)..."
 			/>
 		</div>
-		<div id="skill-list">
+		<section id="skill-list" aria-label="Skills" aria-live="polite">
 			@SkillList(skills)
-		</div>
+		</section>
 	}
 }
 
@@ -28,13 +31,13 @@ templ SkillList(skills []mnemosyne.Skill) {
 	}
 	for _, s := range skills {
 		<details class="skill-card">
-			<summary class="skill-summary">
+			<summary class="skill-summary" aria-label={ "Skill: " + s.Name }>
 				<span class="skill-name">{ s.Name }</span>
 				if s.Version != "" {
-					<span class={ "badge gray" }>{ s.Version }</span>
+					<span class="badge gray" aria-label={ "Version " + s.Version }>{ s.Version }</span>
 				}
 				if s.Verification != "" {
-					<span class={ "badge " + verifyClass(s.Verification) }>{ s.Verification }</span>
+					<span class={ "badge " + verifyClass(s.Verification) } role="status" aria-label={ "Verification: " + s.Verification }>{ s.Verification }</span>
 				}
 				<span class="skill-desc">{ s.Description }</span>
 			</summary>
