@@ -24,12 +24,20 @@ type cliPeer struct {
 
 // CLISource invokes `tailscale status --json` to enumerate devices.
 // If the binary is not found or the socket is not present, Devices returns
-// an error immediately.
-type CLISource struct{}
+// an error immediately. Timeout is the subprocess wall-clock cap (default 5s
+// when zero), sourced from ATLAS_TAILSCALE_CLI_TIMEOUT.
+type CLISource struct {
+	Timeout time.Duration
+}
 
-// Devices runs `tailscale status --json` with a 5-second timeout.
+// Devices runs `tailscale status --json` with the configured subprocess
+// timeout (default 5s when c.Timeout is zero or negative).
 func (c CLISource) Devices(ctx context.Context) ([]Device, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")

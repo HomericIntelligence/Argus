@@ -13,10 +13,20 @@ import (
 
 // heartbeatNanos stores the heartbeat interval in nanoseconds.
 // Access via HeartbeatInterval / SetHeartbeatInterval for race safety.
+//
+// The composition root populates this from cfg.SSEHeartbeatInterval
+// (ATLAS_SSE_HEARTBEAT_INTERVAL, default 15s) at startup. Tests use the
+// SetHeartbeatInterval helper to override the value temporarily.
 var heartbeatNanos atomic.Int64
+
+// subscriberBufferAtomic stores the per-SSE-client channel buffer size.
+// The composition root populates this from cfg.SSESubscriberBuffer
+// (ATLAS_SSE_SUBSCRIBER_BUFFER, default 1000) at startup.
+var subscriberBufferAtomic atomic.Int64
 
 func init() {
 	heartbeatNanos.Store(int64(15 * time.Second))
+	subscriberBufferAtomic.Store(1000)
 }
 
 // HeartbeatInterval returns the current heartbeat interval.
@@ -24,9 +34,27 @@ func HeartbeatInterval() time.Duration {
 	return time.Duration(heartbeatNanos.Load())
 }
 
-// SetHeartbeatInterval sets the heartbeat interval. Safe for concurrent use; intended for tests.
+// SetHeartbeatInterval sets the heartbeat interval. Safe for concurrent use;
+// called once at startup from the composition root with cfg.SSEHeartbeatInterval
+// and otherwise used by tests that need a faster cadence.
 func SetHeartbeatInterval(d time.Duration) {
 	heartbeatNanos.Store(int64(d))
+}
+
+// SubscriberBuffer returns the current per-client channel buffer size.
+func SubscriberBuffer() int {
+	return int(subscriberBufferAtomic.Load())
+}
+
+// SetSubscriberBuffer sets the per-client channel buffer. Safe for concurrent
+// use; called once at startup from the composition root with
+// cfg.SSESubscriberBuffer. Values <= 0 are ignored so a typo does not produce
+// an unbuffered channel.
+func SetSubscriberBuffer(n int) {
+	if n <= 0 {
+		return
+	}
+	subscriberBufferAtomic.Store(int64(n))
 }
 
 // SSEMetrics is the metric-recording surface the SSE handler uses. The server
@@ -106,7 +134,7 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// while draining the replay window. Doing it the other way round
 	// (Snapshot then Subscribe) loses any event published between the two
 	// calls — see audit finding "SSE replay race vs new publishes".
-	ch := h.bus.Subscribe(1000)
+	ch := h.bus.Subscribe(SubscriberBuffer())
 	defer h.bus.Unsubscribe(ch)
 
 	// Track this connection in the gauge so /metrics reflects live load.

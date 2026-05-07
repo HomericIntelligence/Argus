@@ -54,6 +54,90 @@ type Config struct {
 	// retries comfortably fits. Setting this to 0 disables the limit on
 	// the liveness routes specifically.
 	LivezRateLimitPerMin int
+
+	// --- HTTP server timeouts ---
+
+	// HTTPReadTimeout caps how long the HTTP server will wait to read a
+	// request (headers + body). Sourced from ATLAS_HTTP_READ_TIMEOUT
+	// (default 10s). Increase behind aggressive proxies that may pause
+	// mid-request; decrease to reject slow-loris clients more aggressively.
+	// NOTE: Server.WriteTimeout is intentionally NOT exposed — it is held
+	// at 0 so the SSE long-poll endpoint is not killed mid-stream.
+	HTTPReadTimeout time.Duration
+
+	// HTTPIdleTimeout caps how long an idle keep-alive HTTP connection is
+	// held open. Sourced from ATLAS_HTTP_IDLE_TIMEOUT (default 60s).
+	HTTPIdleTimeout time.Duration
+
+	// --- Upstream poller timeouts ---
+
+	// UpstreamTimeout is the per-request HTTP client timeout used by the
+	// JSON-poll pollers (Agamemnon, NATS monitoring). Sourced from
+	// ATLAS_UPSTREAM_TIMEOUT (default 3s). Bump this on slow upstreams or
+	// large /jsz?detail=1 responses; lower it to fail-fast more eagerly.
+	UpstreamTimeout time.Duration
+
+	// TailscaleAPITimeout is the HTTP client timeout used when querying the
+	// Tailscale REST API. Sourced from ATLAS_TAILSCALE_API_TIMEOUT
+	// (default 10s).
+	TailscaleAPITimeout time.Duration
+
+	// TailscaleCLITimeout caps the duration of the
+	// `tailscale status --json` subprocess invocation. Sourced from
+	// ATLAS_TAILSCALE_CLI_TIMEOUT (default 5s).
+	TailscaleCLITimeout time.Duration
+
+	// --- Loop / refresh intervals ---
+
+	// ProbeInterval is the cadence at which the service prober re-checks
+	// each Tailscale device. Sourced from ATLAS_PROBE_INTERVAL
+	// (default 10s).
+	ProbeInterval time.Duration
+
+	// NATSPollInterval is the cadence of the NATS monitoring poller
+	// (/varz, /jsz, /connz). Sourced from ATLAS_NATS_POLL_INTERVAL
+	// (default 5s).
+	NATSPollInterval time.Duration
+
+	// TailscaleRefreshInterval is the cadence of the Tailscale device
+	// refresher loop. Sourced from ATLAS_TAILSCALE_REFRESH_INTERVAL
+	// (default 30s).
+	TailscaleRefreshInterval time.Duration
+
+	// --- SSE tuning ---
+
+	// SSEHeartbeatInterval is the cadence of the keep-alive comment frame
+	// sent by the SSE handler when no real events are flowing. Sourced
+	// from ATLAS_SSE_HEARTBEAT_INTERVAL (default 15s). Lower this if a
+	// proxy is killing idle connections; raise it to reduce client wakeups.
+	SSEHeartbeatInterval time.Duration
+
+	// SSESubscriberBuffer is the size of each SSE client's per-subscriber
+	// channel buffer. Sourced from ATLAS_SSE_SUBSCRIBER_BUFFER
+	// (default 1000). Slow clients that exceed this buffer drop events
+	// rather than back-pressuring the bus; raise this for ultra-bursty
+	// workloads, lower it to reclaim memory on small deployments.
+	SSESubscriberBuffer int
+
+	// --- Event bus ---
+
+	// BusRingCapacity is the size of the events.Bus snapshot ring buffer
+	// (used to replay recent events to newly-connected SSE clients).
+	// Sourced from ATLAS_BUS_RING_CAPACITY (default 256).
+	BusRingCapacity int
+
+	// --- NATS JetStream tuning ---
+
+	// NATSAckWait is the JetStream consumer AckWait — how long the server
+	// waits for an Ack before re-delivering a message. Sourced from
+	// ATLAS_NATS_ACK_WAIT (default 30s).
+	NATSAckWait time.Duration
+
+	// NATSMaxAckPending is the JetStream consumer MaxAckPending — the cap
+	// on un-acked in-flight messages per consumer. Sourced from
+	// ATLAS_NATS_MAX_ACK_PENDING (default 1024). Raise on high-throughput
+	// streams; lower to reduce memory pressure on a slow subscriber.
+	NATSMaxAckPending int
 }
 
 func getenv(key, def string) string {
@@ -61,6 +145,34 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// loadDuration reads key from the environment and parses it as a time.Duration.
+// Empty / unparsable / non-positive values fall back to def with a Warn log
+// line so a typo does not refuse to start; operators will mistype.
+func loadDuration(key, defaultStr string, def time.Duration) time.Duration {
+	raw := getenv(key, defaultStr)
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		slog.Warn("config: invalid duration; falling back to default",
+			"key", key, "value", raw, "default", def)
+		return def
+	}
+	return d
+}
+
+// loadPositiveInt reads key from the environment and parses it as a positive
+// int. Empty / unparsable / non-positive values fall back to def with a Warn
+// log line.
+func loadPositiveInt(key, defaultStr string, def int) int {
+	raw := getenv(key, defaultStr)
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		slog.Warn("config: invalid int; falling back to default",
+			"key", key, "value", raw, "default", def)
+		return def
+	}
+	return n
 }
 
 // Load reads ATLAS_* environment variables into a Config. It does not validate
@@ -119,6 +231,31 @@ func Load() *Config {
 		PollAgamemnon:        time.Duration(pollMs) * time.Millisecond,
 		RateLimitPerMin:      rate,
 		LivezRateLimitPerMin: livezRate,
+
+		// HTTP server timeouts.
+		HTTPReadTimeout: loadDuration("ATLAS_HTTP_READ_TIMEOUT", "10s", 10*time.Second),
+		HTTPIdleTimeout: loadDuration("ATLAS_HTTP_IDLE_TIMEOUT", "60s", 60*time.Second),
+
+		// Upstream poller timeouts.
+		UpstreamTimeout:     loadDuration("ATLAS_UPSTREAM_TIMEOUT", "3s", 3*time.Second),
+		TailscaleAPITimeout: loadDuration("ATLAS_TAILSCALE_API_TIMEOUT", "10s", 10*time.Second),
+		TailscaleCLITimeout: loadDuration("ATLAS_TAILSCALE_CLI_TIMEOUT", "5s", 5*time.Second),
+
+		// Loop / refresh intervals.
+		ProbeInterval:            loadDuration("ATLAS_PROBE_INTERVAL", "10s", 10*time.Second),
+		NATSPollInterval:         loadDuration("ATLAS_NATS_POLL_INTERVAL", "5s", 5*time.Second),
+		TailscaleRefreshInterval: loadDuration("ATLAS_TAILSCALE_REFRESH_INTERVAL", "30s", 30*time.Second),
+
+		// SSE tuning.
+		SSEHeartbeatInterval: loadDuration("ATLAS_SSE_HEARTBEAT_INTERVAL", "15s", 15*time.Second),
+		SSESubscriberBuffer:  loadPositiveInt("ATLAS_SSE_SUBSCRIBER_BUFFER", "1000", 1000),
+
+		// Event bus.
+		BusRingCapacity: loadPositiveInt("ATLAS_BUS_RING_CAPACITY", "256", 256),
+
+		// NATS JetStream tuning.
+		NATSAckWait:       loadDuration("ATLAS_NATS_ACK_WAIT", "30s", 30*time.Second),
+		NATSMaxAckPending: loadPositiveInt("ATLAS_NATS_MAX_ACK_PENDING", "1024", 1024),
 	}
 }
 

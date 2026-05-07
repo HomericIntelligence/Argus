@@ -26,6 +26,13 @@ type Server struct {
 
 func New(cfg *config.Config, bus *events.Bus, cache *store.Cache) *Server {
 	metrics := newAtlasMetrics()
+	// Apply SSE tunables from cfg before constructing the handler so the
+	// first ServeHTTP call sees the operator-configured values. These are
+	// process-wide atomics; the SSE handler reads them on every connect.
+	if cfg.SSEHeartbeatInterval > 0 {
+		handlers.SetHeartbeatInterval(cfg.SSEHeartbeatInterval)
+	}
+	handlers.SetSubscriberBuffer(cfg.SSESubscriberBuffer)
 	sse := handlers.NewSSE(bus)
 	sse.SetMetrics(metrics)
 
@@ -44,9 +51,9 @@ func New(cfg *config.Config, bus *events.Bus, cache *store.Cache) *Server {
 	s.srv = &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      s.routes(),
-		ReadTimeout:  10 * time.Second,
+		ReadTimeout:  cfg.HTTPReadTimeout,
 		WriteTimeout: 0, // SSE connections are long-lived; disable write timeout.
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 	return s
 }

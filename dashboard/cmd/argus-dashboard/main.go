@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/HomericIntelligence/atlas/internal/config"
 	"github.com/HomericIntelligence/atlas/internal/events"
@@ -31,7 +30,7 @@ func main() {
 	slog.Info("starting atlas", "version", version.Version, "addr", cfg.ListenAddr, "auth_mode", cfg.AuthMode)
 
 	cache := store.NewCache()
-	bus := events.NewBus(256)
+	bus := events.NewBus(cfg.BusRingCapacity)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -47,17 +46,16 @@ func main() {
 	// dropped cycle of headroom before a component is considered unready —
 	// avoids flapping while still surfacing genuine outages within a few
 	// seconds.
-	const natsPollInterval = 5 * time.Second
 	agamemnonReadyMaxAge := 2 * cfg.PollAgamemnon
-	natsReadyMaxAge := 2 * natsPollInterval
+	natsReadyMaxAge := 2 * cfg.NATSPollInterval
 
 	// Start Tailscale device refresher.
 	tsSrc := tailscale.NewSource(cfg)
-	tsRefresher := tailscale.NewRefresher(tsSrc, cache, 30*time.Second)
+	tsRefresher := tailscale.NewRefresher(tsSrc, cache, cfg.TailscaleRefreshInterval)
 	go tsRefresher.Start(ctx)
 
 	// Start probe runner.
-	prober := store.NewProber(cache, 10*time.Second)
+	prober := store.NewProber(cache, cfg.ProbeInterval)
 	go prober.Start(ctx)
 
 	// Start Agamemnon poller (agents + tasks at the configured interval) and
@@ -67,11 +65,11 @@ func main() {
 	ready.Register(server.PollerCheck(agamemnonPoller, agamemnonReadyMaxAge))
 	go agamemnonPoller.Start(ctx, cfg.PollAgamemnon)
 
-	// Start NATS monitoring poller (varz + jsz every 5s).
+	// Start NATS monitoring poller (varz + jsz at cfg.NATSPollInterval).
 	natsPoller := poller.NewNATSPoller(cfg, cache)
 	natsPoller.SetMetrics(metrics)
 	ready.Register(server.PollerCheck(natsPoller, natsReadyMaxAge))
-	go natsPoller.Start(ctx, natsPollInterval)
+	go natsPoller.Start(ctx, cfg.NATSPollInterval)
 
 	// Start the JetStream subscriber that bridges NATS events into events.Bus
 	// for the SSE fan-out. This is the central event spine of Atlas — without
@@ -82,8 +80,10 @@ func main() {
 	// dashboard remains operable. /readyz reflects the failure either way.
 	streams := atlnats.DefaultStreams()
 	natsSubscriber := atlnats.New(atlnats.Config{
-		NATSURL: cfg.NATSURL,
-		Streams: streams,
+		NATSURL:       cfg.NATSURL,
+		Streams:       streams,
+		AckWait:       cfg.NATSAckWait,
+		MaxAckPending: cfg.NATSMaxAckPending,
 	}, bus)
 	natsSubscriber.SetMetrics(metrics)
 	ready.Register(server.NATSCheck("nats-subscriber", natsSubscriber, len(streams)))

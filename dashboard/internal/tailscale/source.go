@@ -17,11 +17,12 @@ import (
 func NewSource(cfg *config.Config) Source {
 	switch cfg.TailscaleSource {
 	case "cli":
-		return CLISource{}
+		return CLISource{Timeout: cfg.TailscaleCLITimeout}
 	case "api":
 		return APISource{
 			APIKey:  cfg.TailscaleAPIKey,
 			Tailnet: cfg.TailnetName,
+			Timeout: cfg.TailscaleAPITimeout,
 		}
 	case "static":
 		return StaticSource{}

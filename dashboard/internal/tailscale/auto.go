@@ -20,6 +20,9 @@ type AutoSource struct {
 func (a AutoSource) Devices(ctx context.Context) ([]Device, error) {
 	// 1. Try CLI source.
 	cli := CLISource{}
+	if a.Cfg != nil {
+		cli.Timeout = a.Cfg.TailscaleCLITimeout
+	}
 	if devices, err := cli.Devices(ctx); err == nil {
 		return devices, nil
 	} else {
@@ -31,6 +34,7 @@ func (a AutoSource) Devices(ctx context.Context) ([]Device, error) {
 		api := APISource{
 			APIKey:  a.Cfg.TailscaleAPIKey,
 			Tailnet: a.Cfg.TailnetName,
+			Timeout: a.Cfg.TailscaleAPITimeout,
 		}
 		if devices, err := api.Devices(ctx); err == nil {
 			return devices, nil

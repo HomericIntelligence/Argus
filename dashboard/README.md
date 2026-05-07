@@ -118,6 +118,19 @@ All configuration is via environment variables with the `ATLAS_` prefix:
 | `ATLAS_MNEMOSYNE_SKILLS_DIR` | `/mnt/mnemosyne/skills` | Path to Mnemosyne skills directory (read by /mnemosyne page) |
 | `ATLAS_LOKI_URL` | `http://loki:3100` | Loki URL (included in CSP frame-src) |
 | `ATLAS_EXPORTER_URL` | `http://argus-exporter:9100` | Homeric exporter URL |
+| `ATLAS_HTTP_READ_TIMEOUT` | `10s` | HTTP server read timeout (`time.Duration` syntax: `750ms`, `2s`, `1h30m`). Bad/zero/negative values fall back to default. |
+| `ATLAS_HTTP_IDLE_TIMEOUT` | `60s` | HTTP server idle keep-alive timeout. |
+| `ATLAS_UPSTREAM_TIMEOUT` | `3s` | Per-request HTTP client timeout for the JSON-poll pollers (Agamemnon + NATS monitoring). |
+| `ATLAS_TAILSCALE_API_TIMEOUT` | `10s` | HTTP client timeout for the Tailscale REST API. |
+| `ATLAS_TAILSCALE_CLI_TIMEOUT` | `5s` | Wall-clock cap for the `tailscale status --json` subprocess. |
+| `ATLAS_PROBE_INTERVAL` | `10s` | Cadence at which the service prober re-checks each Tailscale device. |
+| `ATLAS_NATS_POLL_INTERVAL` | `5s` | Cadence of the NATS monitoring poller (/varz, /jsz, /connz). |
+| `ATLAS_TAILSCALE_REFRESH_INTERVAL` | `30s` | Cadence of the Tailscale device refresher loop. |
+| `ATLAS_SSE_HEARTBEAT_INTERVAL` | `15s` | Cadence of the keep-alive comment frame on the SSE event stream. |
+| `ATLAS_SSE_SUBSCRIBER_BUFFER` | `1000` | Per-SSE-client channel buffer size; slow clients drop events when this fills rather than back-pressuring the bus. |
+| `ATLAS_BUS_RING_CAPACITY` | `256` | events.Bus ring-buffer capacity used for the `replay=` SSE replay window. |
+| `ATLAS_NATS_ACK_WAIT` | `30s` | JetStream consumer AckWait — re-delivery window for un-acked messages. |
+| `ATLAS_NATS_MAX_ACK_PENDING` | `1024` | JetStream consumer MaxAckPending — cap on un-acked in-flight messages per consumer. |
 
 ## SSE Event Stream
 
