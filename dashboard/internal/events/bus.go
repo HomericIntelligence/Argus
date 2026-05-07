@@ -95,6 +95,10 @@ type Bus struct {
 
 	// drops counts events not delivered due to a full subscriber channel.
 	drops int64
+	// seq is a monotonically-increasing counter used to stamp Event.ID inside
+	// Publish so that consumers (e.g. the SSE handler) can de-duplicate events
+	// that appear in BOTH a ring-buffer snapshot and a live subscriber channel.
+	seq uint64
 }
 
 // NewBus returns a new Bus whose ring buffer holds at most ringCap events.
@@ -155,14 +159,21 @@ func (b *Bus) Unsubscribe(ch <-chan Event) {
 }
 
 // Publish records e in the ring buffer and attempts a non-blocking send to
-// every registered subscriber. Events dropped due to a full channel
-// increment the drop counter atomically.
+// every registered subscriber. Events dropped due to a full channel increment
+// the drop counter atomically.
 //
-// Publish takes a narrow lock for the ring-buffer push only; the fan-out
-// loop reads the subscriber slice via a single atomic Load and runs
-// lock-free, so concurrent Publishes do not serialize on the subscriber
-// set.
+// Publish stamps e.ID with a monotonically-increasing per-Bus sequence number
+// BEFORE pushing into the ring or fanning out to subscribers, overwriting any
+// value the caller provided. The ID stamped on the event in the ring buffer
+// matches the ID delivered to subscribers, allowing consumers (e.g. the SSE
+// handler) to de-duplicate events that appear in both a snapshot and the live
+// channel.
+//
+// Publish takes a narrow lock for the ring-buffer push only; the fan-out loop
+// reads the subscriber slice via a single atomic Load and runs lock-free, so
+// concurrent Publishes do not serialize on the subscriber set.
 func (b *Bus) Publish(e Event) {
+	e.ID = atomic.AddUint64(&b.seq, 1)
 	// Ring buffer push is a separate concern with its own narrow lock.
 	b.ringMu.Lock()
 	b.ring.Push(e)
