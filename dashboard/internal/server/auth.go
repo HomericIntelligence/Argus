@@ -78,7 +78,7 @@ func Middleware(mode AuthMode, user, pass, bearerToken string) func(http.Handler
 // Fields:
 //   - mode    : the configured auth scheme (basic / bearer / unknown-mode-string)
 //   - reason  : a stable discriminator (missing-header / wrong-creds /
-//               wrong-token / empty-configured-token / unknown-mode)
+//     wrong-token / empty-configured-token / unknown-mode)
 //   - method  : HTTP method, useful for distinguishing browsers from CLIs
 //   - path    : URL path only (no query string — see access_log for why)
 //   - remote  : r.RemoteAddr; reflects middleware.RealIP rewrites if any
@@ -87,7 +87,8 @@ func Middleware(mode AuthMode, user, pass, bearerToken string) func(http.Handler
 // operator wants throttling, the right place to add it is here, not by
 // reverting to silent 401s.
 func logAuthFailure(r *http.Request, mode, reason string) {
-	slog.Default().Warn("auth failure",
+	slog.Default().Warn(
+		"auth failure",
 		"mode", mode,
 		"reason", reason,
 		"method", r.Method,

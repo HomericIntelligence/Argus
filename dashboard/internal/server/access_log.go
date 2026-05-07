@@ -29,7 +29,8 @@ func accessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			start := time.Now()
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r)
-			logger.Info("http",
+			logger.Info(
+				"http",
 				"method", r.Method,
 				"path", r.URL.Path, // path only — never RequestURI / RawQuery
 				"status", ww.Status(),

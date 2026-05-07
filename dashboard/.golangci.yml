@@ -52,6 +52,27 @@ linters:
           - funlen
           - dupl
 
+# Formatters run separately from linters in golangci-lint v2. gofumpt is a
+# stricter superset of gofmt: tighter import groups, no empty line before a
+# closing brace of a single-statement block, etc. The §4 audit called out the
+# lack of formatter enforcement; this closes that gap.
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      # -extra enables additional stricter rules (e.g. normalizing for-range
+      # statements, flattening single-statement blocks). The diff at default
+      # vs. -extra is identical for this codebase, so we take -extra for the
+      # strongest guarantees going forward.
+      extra-rules: true
+  exclusions:
+    paths:
+      # Generated templ files (_templ.go) are produced by the templ codegen;
+      # their formatting is owned by the generator, not by hand. Skip gofumpt
+      # for them so re-running templ doesn't fight the formatter.
+      - ".*_templ\\.go$"
+
 # G401 (weak crypto, e.g. md5/sha1) and G501 (md5 import) are intentionally
 # NOT excluded. Atlas does not use weak crypto in production code; if a future
 # change introduces them, we want to know.

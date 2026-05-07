@@ -101,8 +101,8 @@ func TestSSEHeaders(t *testing.T) {
 	}
 
 	wantHeaders := map[string]string{
-		"Content-Type":    "text/event-stream",
-		"Cache-Control":   "no-cache",
+		"Content-Type":      "text/event-stream",
+		"Cache-Control":     "no-cache",
 		"X-Accel-Buffering": "no",
 	}
 	for header, want := range wantHeaders {

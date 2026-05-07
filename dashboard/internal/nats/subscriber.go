@@ -73,9 +73,9 @@ type MetricsSink interface {
 
 type noopMetrics struct{}
 
-func (noopMetrics) SetNATSConnected(bool)        {}
-func (noopMetrics) IncNATSMessage(string)        {}
-func (noopMetrics) IncEventParseError(string)    {}
+func (noopMetrics) SetNATSConnected(bool)     {}
+func (noopMetrics) IncNATSMessage(string)     {}
+func (noopMetrics) IncEventParseError(string) {}
 
 // Subscriber connects to NATS and maintains durable push consumers for each
 // configured stream.

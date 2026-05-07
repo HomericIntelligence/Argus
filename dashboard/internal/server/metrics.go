@@ -183,7 +183,7 @@ func (m *AtlasMetrics) ObservePollDuration(source string, seconds float64) {
 // exposition for this metric set.
 func (m *AtlasMetrics) Handler() http.HandlerFunc {
 	h := promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{
-		Registry:      m.registry,
+		Registry:          m.registry,
 		EnableOpenMetrics: false, // keep legacy text/plain; version=0.0.4 content-type
 	})
 	return h.ServeHTTP

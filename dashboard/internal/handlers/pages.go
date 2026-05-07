@@ -20,12 +20,12 @@ var validTimeRange = regexp.MustCompile(`^(now(-[0-9]+(s|m|h|d|w|y))?|[0-9]{13})
 
 // HostsHandler serves the /hosts page and the /partials/host/{name} fragment.
 type HostsHandler struct {
-	cache        *store.Cache
-	grafanaURL   string
-	natsDashURL  string
-	natsTopURL   string
-	natsMon      string
-	mnemoReader  *mnemosyne.Reader
+	cache       *store.Cache
+	grafanaURL  string
+	natsDashURL string
+	natsTopURL  string
+	natsMon     string
+	mnemoReader *mnemosyne.Reader
 }
 
 // NewHostsHandler creates a HostsHandler backed by the given cache.

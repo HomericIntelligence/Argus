@@ -14,10 +14,10 @@ import (
 
 // canonical successful payloads reused across the per-endpoint failure cases.
 const (
-	canonicalVarzJSON       = `{"connections":5,"in_msgs":1000,"out_msgs":800}`
-	canonicalJszJSON        = `{"num_streams":3}`
-	canonicalJszDetailJSON  = `{"streams":[{"config":{"name":"S1","subjects":["s.>"]},"state":{"messages":1,"bytes":2,"consumer_count":3},"created":"2024-01-01T00:00:00Z"}]}`
-	canonicalConnzJSON      = `{"connections":[{"name":"c1","ip":"127.0.0.1","subscriptions":1,"in_msgs":1,"out_msgs":2,"uptime":"1s"}]}`
+	canonicalVarzJSON      = `{"connections":5,"in_msgs":1000,"out_msgs":800}`
+	canonicalJszJSON       = `{"num_streams":3}`
+	canonicalJszDetailJSON = `{"streams":[{"config":{"name":"S1","subjects":["s.>"]},"state":{"messages":1,"bytes":2,"consumer_count":3},"created":"2024-01-01T00:00:00Z"}]}`
+	canonicalConnzJSON     = `{"connections":[{"name":"c1","ip":"127.0.0.1","subscriptions":1,"in_msgs":1,"out_msgs":2,"uptime":"1s"}]}`
 )
 
 // natsHandler is a configurable httptest handler that returns 500 for any
@@ -64,8 +64,8 @@ func natsHandler(failing map[string]bool) http.HandlerFunc {
 // endpointCountingMetrics counts both cycle-level and per-endpoint failures
 // so the regression tests can assert the dedicated-method wiring works.
 type endpointCountingMetrics struct {
-	pollErrors      atomic.Int64
-	endpointErrors  sync.Map // endpoint string -> *atomic.Int64
+	pollErrors     atomic.Int64
+	endpointErrors sync.Map // endpoint string -> *atomic.Int64
 }
 
 func (c *endpointCountingMetrics) IncPollError(string) {
