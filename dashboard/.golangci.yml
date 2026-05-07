@@ -17,6 +17,21 @@ linters:
     - errorlint   # require errors.Is / errors.As / %w wrapping
     - bodyclose   # ensure HTTP response bodies are closed
     - revive      # modern golint replacement: naming, comments, control flow
+    - gocyclo     # cyclomatic complexity ceiling — keeps functions testable
+  settings:
+    gocyclo:
+      # Industry-conventional ceiling for "well-tested" code. Anything above 15
+      # is hard to reason about and harder to test. PR #473 already split the
+      # known worst offender (Subscriber.Start), so this should be quiet.
+      min-complexity: 15
+  exclusions:
+    rules:
+      # gocyclo measures branch-density of production functions — table-driven
+      # tests legitimately have many cases and high branch counts and that is
+      # the desired pattern, not a smell. Skip _test.go for this linter.
+      - path: _test\.go
+        linters:
+          - gocyclo
 
 # G401 (weak crypto, e.g. md5/sha1) and G501 (md5 import) are intentionally
 # NOT excluded. Atlas does not use weak crypto in production code; if a future

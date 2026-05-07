@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -101,30 +102,12 @@ func (h *SSE) Connected() int64 {
 // subscriber channel on the bus and receives all matching events until the
 // client disconnects or the request context is cancelled.
 func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := prepareSSEResponse(w)
 	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
-	ctx := r.Context()
-
-	topicFilter := make(map[string]struct{})
-	if raw := r.URL.Query().Get("topics"); raw != "" {
-		for _, t := range strings.Split(raw, ",") {
-			t = strings.TrimSpace(t)
-			if allowedTopic(t) {
-				topicFilter[t] = struct{}{}
-			}
-		}
-	}
+	topicFilter := parseTopicFilter(r.URL.Query().Get("topics"))
 
 	// Subscribe FIRST so that any event published from this point onward is
 	// captured on the live channel. We then take a snapshot AFTER the
@@ -150,31 +133,90 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// window and skip any live-channel event whose ID is <= maxReplayedID
 	// (it was already delivered as part of the snapshot). Once we receive a
 	// live event with ID > maxReplayedID the de-dup logic disengages.
-	var maxReplayedID uint64
-	dedupActive := false
+	maxReplayedID, ok := h.replaySnapshot(w, flusher, r.URL.Query().Get("replay"), topicFilter)
+	if !ok {
+		return
+	}
 
-	if replayStr := r.URL.Query().Get("replay"); replayStr != "" {
-		if n, err := strconv.Atoi(replayStr); err == nil && n > 0 {
-			snapshot := h.bus.Snapshot(n)
-			for _, e := range snapshot {
-				if len(topicFilter) > 0 {
-					if _, pass := topicFilter[e.Topic]; !pass {
-						continue
-					}
-				}
-				if err := writeEvent(w, e); err != nil {
-					return
-				}
-				flusher.Flush()
-				if e.ID > maxReplayedID {
-					maxReplayedID = e.ID
-				}
-			}
-			if maxReplayedID > 0 {
-				dedupActive = true
-			}
+	h.streamLoop(r.Context(), w, flusher, ch, topicFilter, maxReplayedID)
+}
+
+// prepareSSEResponse writes the SSE response headers and returns the flusher,
+// or false if the writer does not support flushing (in which case an error
+// response has already been written).
+func prepareSSEResponse(w http.ResponseWriter) (http.Flusher, bool) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return nil, false
+	}
+
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	return flusher, true
+}
+
+// parseTopicFilter parses the comma-separated topic list from the "topics"
+// query parameter and returns a set of allowed topics. An empty result means
+// "no filter — accept all topics."
+func parseTopicFilter(raw string) map[string]struct{} {
+	topicFilter := make(map[string]struct{})
+	if raw == "" {
+		return topicFilter
+	}
+	for _, t := range strings.Split(raw, ",") {
+		t = strings.TrimSpace(t)
+		if allowedTopic(t) {
+			topicFilter[t] = struct{}{}
 		}
 	}
+	return topicFilter
+}
+
+// replaySnapshot drains a bus snapshot of size derived from replayStr,
+// applying the topic filter. It returns the highest Event.ID written to the
+// wire (0 if no replay happened) and false if the client connection broke
+// during replay (caller should return).
+func (h *SSE) replaySnapshot(w http.ResponseWriter, flusher http.Flusher, replayStr string, topicFilter map[string]struct{}) (uint64, bool) {
+	if replayStr == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(replayStr)
+	if err != nil || n <= 0 {
+		return 0, true
+	}
+	var maxReplayedID uint64
+	for _, e := range h.bus.Snapshot(n) {
+		if !topicAllowed(topicFilter, e.Topic) {
+			continue
+		}
+		if err := writeEvent(w, e); err != nil {
+			return 0, false
+		}
+		flusher.Flush()
+		if e.ID > maxReplayedID {
+			maxReplayedID = e.ID
+		}
+	}
+	return maxReplayedID, true
+}
+
+// streamLoop is the main per-client event loop: it forwards live bus events
+// to the SSE wire, emits periodic heartbeats, and de-duplicates events whose
+// IDs were already delivered during replay.
+func (h *SSE) streamLoop(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	ch <-chan events.Event,
+	topicFilter map[string]struct{},
+	maxReplayedID uint64,
+) {
+	dedupActive := maxReplayedID > 0
 
 	ticker := time.NewTicker(HeartbeatInterval())
 	defer ticker.Stop()
@@ -205,11 +247,8 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				dedupActive = false
 			}
-			// Apply topic filter.
-			if len(topicFilter) > 0 {
-				if _, pass := topicFilter[e.Topic]; !pass {
-					continue
-				}
+			if !topicAllowed(topicFilter, e.Topic) {
+				continue
 			}
 			if err := writeEvent(w, e); err != nil {
 				return
@@ -217,6 +256,16 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// topicAllowed reports whether topic passes the (possibly empty) filter set.
+// An empty filter means "accept all topics."
+func topicAllowed(filter map[string]struct{}, topic string) bool {
+	if len(filter) == 0 {
+		return true
+	}
+	_, pass := filter[topic]
+	return pass
 }
 
 // allowedTopics is the server-side whitelist for SSE topic subscriptions.
