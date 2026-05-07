@@ -31,8 +31,16 @@ var maxResponseBytes int64 = 16 << 20 // 16 MiB
 // satisfies this interface; tests can pass a no-op or a counting fake. Pollers
 // take this through SetMetrics rather than at construction so the Server can
 // finalise the metric set after composing other dependencies.
+//
+// IncEndpointError is emitted on a separate metric series (atlas_poll_endpoint_errors_total)
+// for pollers that fan out to multiple HTTP endpoints in a single cycle (e.g.
+// NATSPoller hitting /varz, /jsz?detail=1, /connz). It is keyed by both the
+// poller source name and the per-endpoint label so operators can answer "is
+// /connz consistently failing or just /jsz?" without affecting the existing
+// atlas_poll_errors_total{source} series or its alert rules.
 type MetricsSink interface {
 	IncPollError(source string)
+	IncEndpointError(source, endpoint string)
 	ObservePollDuration(source string, seconds float64)
 }
 
@@ -40,7 +48,8 @@ type MetricsSink interface {
 // value so callers that never call SetMetrics still work.
 type noopMetrics struct{}
 
-func (noopMetrics) IncPollError(string)              {}
+func (noopMetrics) IncPollError(string)               {}
+func (noopMetrics) IncEndpointError(string, string)   {}
 func (noopMetrics) ObservePollDuration(string, float64) {}
 
 // base is a shared helper for HTTP-based pollers. It tracks per-instance
@@ -118,6 +127,16 @@ func (b *base) recordResult(err error, elapsed time.Duration) {
 	if elapsed > 0 {
 		sink.ObservePollDuration(b.name, elapsed.Seconds())
 	}
+}
+
+// incEndpointError emits a per-endpoint failure metric without disturbing the
+// poll-cycle accounting. Used by pollers that fan out to multiple HTTP
+// endpoints in a single cycle so operators can attribute failures to the
+// specific endpoint that broke. recordResult still tallies the cycle-level
+// outcome via IncPollError.
+func (b *base) incEndpointError(endpoint string) {
+	sink := *b.metrics.Load()
+	sink.IncEndpointError(b.name, endpoint)
 }
 
 // getJSON performs a GET request to url and JSON-decodes the response body into dst.
