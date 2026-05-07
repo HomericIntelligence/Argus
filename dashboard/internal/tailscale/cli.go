@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"time"
 )
@@ -32,14 +33,31 @@ func (c CLISource) Devices(ctx context.Context) ([]Device, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")
-	out, err := cmd.Output()
+	// We deliberately do NOT use cmd.Output() — it reads the subprocess
+	// stdout into an unbounded buffer, which would let a hostile or
+	// runaway tailscale binary stream gigabytes into Atlas (compose memory
+	// limit is 128 MiB). StdoutPipe + io.LimitReader caps the read at
+	// maxResponseBytes. See the constant in api.go for rationale.
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("tailscale cli: exec failed: %w", err)
+		return nil, fmt.Errorf("tailscale cli: stdout pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("tailscale cli: start: %w", err)
+	}
+	out, readErr := io.ReadAll(io.LimitReader(stdout, maxResponseBytes))
+	// Always Wait so we reap the subprocess regardless of read outcome.
+	waitErr := cmd.Wait()
+	if readErr != nil {
+		return nil, fmt.Errorf("tailscale cli: read stdout (cap %d bytes): %w", maxResponseBytes, readErr)
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("tailscale cli: exec failed: %w", waitErr)
 	}
 
 	var status cliStatus
 	if err := json.Unmarshal(out, &status); err != nil {
-		return nil, fmt.Errorf("tailscale cli: parse JSON: %w", err)
+		return nil, fmt.Errorf("tailscale cli: parse JSON (cap %d bytes): %w", maxResponseBytes, err)
 	}
 
 	devices := make([]Device, 0, 1+len(status.Peers))
