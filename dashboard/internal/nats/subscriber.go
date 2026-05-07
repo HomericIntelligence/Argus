@@ -114,9 +114,54 @@ func (s *Subscriber) SetMetrics(m MetricsSink) {
 //
 // Start sets Ready() to true only after all attempted Subscribe calls have
 // completed and at least one succeeded; Ready() stays false thereafter only
-// when the connection is being torn down or no subscriptions attached.
+// when the connection is being torn down, the underlying NATS connection has
+// been disconnected (and not yet recovered), or no subscriptions attached.
+//
+// The connection uses infinite reconnect (`MaxReconnects(-1)`) with a 2s base
+// reconnect delay plus 0–500ms jitter (0–2s for TLS) to avoid thundering-herd
+// on a single NATS restart. Connection-state transitions (disconnect,
+// reconnect, closed) are logged via slog with an `event=...` field and
+// flip Ready() so the /readyz aggregator reports the truth.
+//
+// JetStream push subscriptions created via `js.Subscribe` are bound to the
+// nats.go connection: nats.go transparently re-establishes them after a
+// reconnect, so we do NOT call attachStreams in ReconnectHandler — the durable
+// consumer state lives on the server and is restored automatically. The
+// reconnect integration test confirms this end-to-end.
 func (s *Subscriber) Start(ctx context.Context) error {
-	nc, err := natsgo.Connect(s.cfg.NATSURL, natsgo.MaxReconnects(0))
+	nc, err := natsgo.Connect(
+		s.cfg.NATSURL,
+		// -1 is the documented "infinite" sentinel in nats.go.
+		// (0 means "do not reconnect" — see pkg.go.dev/github.com/nats-io/nats.go#MaxReconnects.)
+		natsgo.MaxReconnects(-1),
+		natsgo.ReconnectWait(2*time.Second),
+		// Jitter: 500ms for non-TLS, 2s for TLS. Avoids thundering-herd
+		// when many subscribers reconnect to the same NATS restart.
+		natsgo.ReconnectJitter(500*time.Millisecond, 2*time.Second),
+		natsgo.DisconnectErrHandler(func(_ *natsgo.Conn, err error) {
+			s.ready.Store(false)
+			(*s.metrics.Load()).SetNATSConnected(false)
+			slog.Warn("atlas: NATS disconnected — will reconnect",
+				"event", "nats-disconnect",
+				"err", err)
+		}),
+		natsgo.ReconnectHandler(func(c *natsgo.Conn) {
+			// JetStream push consumers are restored automatically by
+			// nats.go after a reconnect, so we just flip Ready back on.
+			s.ready.Store(true)
+			(*s.metrics.Load()).SetNATSConnected(true)
+			slog.Info("atlas: NATS reconnected",
+				"event", "nats-reconnect",
+				"url", c.ConnectedUrl())
+		}),
+		natsgo.ClosedHandler(func(_ *natsgo.Conn) {
+			s.ready.Store(false)
+			(*s.metrics.Load()).SetNATSConnected(false)
+			// With MaxReconnects(-1) this only fires on Drain/Close.
+			slog.Warn("atlas: NATS connection closed",
+				"event", "nats-closed")
+		}),
+	)
 	if err != nil {
 		return err
 	}
