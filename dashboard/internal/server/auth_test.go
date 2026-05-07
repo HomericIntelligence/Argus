@@ -253,7 +253,12 @@ func captureSlog(t *testing.T) *bytes.Buffer {
 //   - the expected mode + reason discriminator are present
 //   - the offered credential/token does NOT appear anywhere in the line
 func TestAuth_LogsFailures(t *testing.T) {
-	const offeredSecret = "REDACTED-MUST-NEVER-APPEAR-IN-LOGS"
+	// Test fixture, not a real credential — the whole point of the test is
+	// that this value MUST NOT appear in any log line. gosec's G101 pattern
+	// matches the variable name; suppressing it here is correct: the test
+	// uses this string as a sentinel the assertion searches for to prove
+	// the auth-failure logger never echoes the offered credential.
+	const offeredSecret = "REDACTED-MUST-NEVER-APPEAR-IN-LOGS" //#nosec G101 -- intentional sentinel for redaction-behaviour assertion
 
 	cases := []struct {
 		name       string
