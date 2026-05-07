@@ -129,7 +129,44 @@ func (s *Subscriber) SetMetrics(m MetricsSink) {
 // consumer state lives on the server and is restored automatically. The
 // reconnect integration test confirms this end-to-end.
 func (s *Subscriber) Start(ctx context.Context) error {
-	nc, err := natsgo.Connect(
+	nc, err := s.connect()
+	if err != nil {
+		return err
+	}
+
+	js, err := nc.JetStream()
+	if err != nil {
+		nc.Close()
+		return err
+	}
+
+	if err := s.attach(js); err != nil {
+		nc.Close()
+		(*s.metrics.Load()).SetNATSConnected(false)
+		return err
+	}
+
+	s.ready.Store(true)
+	(*s.metrics.Load()).SetNATSConnected(true)
+	slog.Info("atlas: NATS subscriber ready",
+		"attached", s.attached.Load(),
+		"configured", len(s.cfg.Streams))
+
+	s.awaitShutdown(ctx, nc)
+	return nil
+}
+
+// connect dials NATS with the canonical reconnect policy and lifecycle
+// handlers. The handlers close over s so they can flip the Ready flag and
+// update the connected metric on disconnect / reconnect / close events.
+//
+// The reconnect policy is infinite retry (MaxReconnects(-1)) at a 2s base
+// delay plus 0–500ms jitter (0–2s for TLS), which avoids thundering-herd on
+// a single NATS restart. JetStream push consumers created later via
+// js.Subscribe are bound to this connection and are transparently
+// re-established by nats.go after a reconnect — see Start's doc comment.
+func (s *Subscriber) connect() (*natsgo.Conn, error) {
+	return natsgo.Connect(
 		s.cfg.NATSURL,
 		// -1 is the documented "infinite" sentinel in nats.go.
 		// (0 means "do not reconnect" — see pkg.go.dev/github.com/nats-io/nats.go#MaxReconnects.)
@@ -162,75 +199,69 @@ func (s *Subscriber) Start(ctx context.Context) error {
 				"event", "nats-closed")
 		}),
 	)
-	if err != nil {
-		return err
-	}
+}
 
-	js, err := nc.JetStream()
-	if err != nil {
-		nc.Close()
-		return err
-	}
-
+// attach creates a durable JetStream push subscription for every stream in
+// s.cfg.Streams and increments s.attached for each success. Per-stream
+// failures are logged and skipped so that a single misconfigured stream does
+// not take down the whole subscriber. attach returns an error only when zero
+// streams attached — the fail-fast contract documented on Start.
+func (s *Subscriber) attach(js natsgo.JetStreamContext) error {
 	for _, sc := range s.cfg.Streams {
 		sc := sc // capture for closure
-		handler := s.makeHandler(sc)
-		// nats.go forbids combining a positional subject with
-		// ConsumerFilterSubjects: that option is for *multi-subject* filters,
-		// and using both surfaces "consumer with multiple subject filters
-		// cannot use subject based API". We drive the subscription by the
-		// first subject when there's exactly one filter (the common case for
-		// Atlas's wildcard subjects like "hi.agents.>") and use
-		// ConsumerFilterSubjects only when the stream config supplies more
-		// than one filter.
-		opts := []natsgo.SubOpt{
-			natsgo.Durable(sc.Durable),
-			natsgo.DeliverNew(),
-			natsgo.AckExplicit(),
-			natsgo.AckWait(30 * time.Second),
-			natsgo.MaxAckPending(1024),
-		}
-		var subErr error
-		if len(sc.Subjects) <= 1 {
-			subject := ""
-			if len(sc.Subjects) == 1 {
-				subject = sc.Subjects[0]
-			}
-			_, subErr = js.Subscribe(subject, handler, opts...)
-		} else {
-			opts = append(opts, natsgo.ConsumerFilterSubjects(sc.Subjects...))
-			// With multiple filters, pass an empty subject — the filter list
-			// is authoritative.
-			_, subErr = js.Subscribe("", handler, opts...)
-		}
-		if subErr != nil {
-			slog.Error("atlas: JetStream subscribe failed", "stream", sc.Stream, "err", subErr)
+		if _, err := s.subscribeStream(js, sc); err != nil {
+			slog.Error("atlas: JetStream subscribe failed", "stream", sc.Stream, "err", err)
 			continue
 		}
 		s.attached.Add(1)
 	}
 
 	if s.attached.Load() == 0 {
-		nc.Close()
-		(*s.metrics.Load()).SetNATSConnected(false)
 		return errors.New("nats: zero JetStream subscriptions attached — check stream configuration")
 	}
+	return nil
+}
 
-	s.ready.Store(true)
-	(*s.metrics.Load()).SetNATSConnected(true)
-	slog.Info("atlas: NATS subscriber ready",
-		"attached", s.attached.Load(),
-		"configured", len(s.cfg.Streams))
+// subscribeStream creates one durable JetStream push subscription for sc.
+//
+// nats.go forbids combining a positional subject with ConsumerFilterSubjects:
+// that option is for *multi-subject* filters, and using both surfaces
+// "consumer with multiple subject filters cannot use subject based API". We
+// drive the subscription by the first subject when there's exactly one filter
+// (the common case for Atlas's wildcard subjects like "hi.agents.>") and use
+// ConsumerFilterSubjects only when the stream config supplies more than one
+// filter.
+func (s *Subscriber) subscribeStream(js natsgo.JetStreamContext, sc StreamConfig) (*natsgo.Subscription, error) {
+	handler := s.makeHandler(sc)
+	opts := []natsgo.SubOpt{
+		natsgo.Durable(sc.Durable),
+		natsgo.DeliverNew(),
+		natsgo.AckExplicit(),
+		natsgo.AckWait(30 * time.Second),
+		natsgo.MaxAckPending(1024),
+	}
+	if len(sc.Subjects) <= 1 {
+		subject := ""
+		if len(sc.Subjects) == 1 {
+			subject = sc.Subjects[0]
+		}
+		return js.Subscribe(subject, handler, opts...)
+	}
+	opts = append(opts, natsgo.ConsumerFilterSubjects(sc.Subjects...))
+	// With multiple filters, pass an empty subject — the filter list is
+	// authoritative.
+	return js.Subscribe("", handler, opts...)
+}
 
-	// Block until context is cancelled.
+// awaitShutdown blocks until ctx is cancelled, then flips Ready off and
+// drains the connection so in-flight messages get acked before close. Ready
+// is flipped before Drain so /readyz reflects the truth immediately, ahead
+// of the (potentially slow) drain.
+func (s *Subscriber) awaitShutdown(ctx context.Context, nc *natsgo.Conn) {
 	<-ctx.Done()
-
-	// Mark not-ready before drain so /readyz flips immediately.
 	s.ready.Store(false)
 	(*s.metrics.Load()).SetNATSConnected(false)
-	// Drain and close the connection gracefully.
 	_ = nc.Drain()
-	return nil
 }
 
 // Ready reports true once Start has connected to NATS, attached at least one
