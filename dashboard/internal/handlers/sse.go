@@ -98,17 +98,14 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if replayStr := r.URL.Query().Get("replay"); replayStr != "" {
-		if n, err := strconv.Atoi(replayStr); err == nil && n > 0 {
-			for _, e := range h.bus.Snapshot(n) {
-				if err := writeEvent(w, e); err != nil {
-					return
-				}
-				flusher.Flush()
-			}
-		}
-	}
-
+	// Subscribe FIRST so that any event published from this point onward is
+	// captured on the live channel. We then take a snapshot AFTER the
+	// subscription is registered: events published in the small window
+	// between Subscribe and Snapshot will appear in BOTH the snapshot and
+	// the live channel, which is fine because we de-duplicate by Event.ID
+	// while draining the replay window. Doing it the other way round
+	// (Snapshot then Subscribe) loses any event published between the two
+	// calls — see audit finding "SSE replay race vs new publishes".
 	ch := h.bus.Subscribe(1000)
 	defer h.bus.Unsubscribe(ch)
 
@@ -119,6 +116,37 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cur := h.connected.Add(-1)
 		(*h.metrics.Load()).SetSSEConnectedClients(cur)
 	}()
+
+	// maxReplayedID is the highest Event.ID written to the wire during the
+	// replay phase. While maxReplayedID > 0 we are still inside the replay
+	// window and skip any live-channel event whose ID is <= maxReplayedID
+	// (it was already delivered as part of the snapshot). Once we receive a
+	// live event with ID > maxReplayedID the de-dup logic disengages.
+	var maxReplayedID uint64
+	dedupActive := false
+
+	if replayStr := r.URL.Query().Get("replay"); replayStr != "" {
+		if n, err := strconv.Atoi(replayStr); err == nil && n > 0 {
+			snapshot := h.bus.Snapshot(n)
+			for _, e := range snapshot {
+				if len(topicFilter) > 0 {
+					if _, pass := topicFilter[e.Topic]; !pass {
+						continue
+					}
+				}
+				if err := writeEvent(w, e); err != nil {
+					return
+				}
+				flusher.Flush()
+				if e.ID > maxReplayedID {
+					maxReplayedID = e.ID
+				}
+			}
+			if maxReplayedID > 0 {
+				dedupActive = true
+			}
+		}
+	}
 
 	ticker := time.NewTicker(HeartbeatInterval())
 	defer ticker.Stop()
@@ -139,6 +167,15 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				// Channel was closed (unsubscribed).
 				return
+			}
+			// Skip events that were already delivered during the replay
+			// phase. Once we see an ID strictly greater than the highest
+			// replayed ID we are past the dedup window for good.
+			if dedupActive {
+				if e.ID <= maxReplayedID {
+					continue
+				}
+				dedupActive = false
 			}
 			// Apply topic filter.
 			if len(topicFilter) > 0 {

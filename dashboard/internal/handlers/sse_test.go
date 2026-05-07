@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -481,6 +482,178 @@ func TestSSEMultipleTopics(t *testing.T) {
 	}
 	if received["nats"] {
 		t.Error("received topic \"nats\"; want it filtered out (topics=agent,task)")
+	}
+}
+
+// TestSSE_NoReplayGap is the regression test for the §3 audit MAJOR
+// "SSE replay race vs new publishes." It proves that no event is silently
+// lost in the gap between the bus snapshot and the live subscriber channel
+// that the handler opens for an SSE connection.
+//
+// Strategy:
+//  1. Pre-publish a handful of events so the ring buffer is non-empty when
+//     the client connects (exercises the replay branch).
+//  2. Open an SSE connection with `?replay=N`.
+//  3. While the connection is live, hammer Publish from a goroutine with
+//     monotonically-increasing payload seq values.
+//  4. After the publisher finishes and the connection has had a moment to
+//     drain, collect every payload `seq` written to the wire.
+//  5. Assert that the delivered seq values form a contiguous range
+//     [min..max] with no holes (no gap) and no duplicates (de-dup works).
+//
+// With the buggy ordering (Snapshot then Subscribe) this test will fail
+// because any seq published in the race window between the two calls is
+// missing from BOTH the snapshot and the live channel, producing a hole
+// in the delivered range.
+func TestSSE_NoReplayGap(t *testing.T) {
+	t.Parallel()
+
+	// Ring capacity larger than the burst of publishes done before connect,
+	// so the snapshot is well-defined and not truncated.
+	const (
+		preBurst   = 5
+		liveBurst  = 1000
+		ringCap    = 1024
+		replayN    = 256
+		drainGrace = 200 * time.Millisecond
+	)
+
+	bus := events.NewBus(ringCap)
+	h := handlers.NewSSE(bus)
+
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+
+	// 1. Pre-publish a handful of events so the snapshot is non-empty.
+	for i := 1; i <= preBurst; i++ {
+		bus.Publish(makeEvt(t, "agent", map[string]int{"seq": i}))
+	}
+
+	// 2. Open the SSE connection. We give the handler a generous request
+	// timeout — we will close the body explicitly once we have collected
+	// enough events.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		srv.URL+"/events?replay="+strconv.Itoa(replayN), nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// 3. Hammer Publish from a separate goroutine. We start the publisher
+	// immediately to maximise the chance that some publishes land in the
+	// race window between Subscribe and Snapshot inside the handler. The
+	// publisher numbers events with payload seq starting from preBurst+1
+	// so the full sequence on the bus is 1..preBurst+liveBurst.
+	pubDone := make(chan struct{})
+	go func() {
+		defer close(pubDone)
+		for i := preBurst + 1; i <= preBurst+liveBurst; i++ {
+			bus.Publish(makeEvt(t, "agent", map[string]int{"seq": i}))
+		}
+	}()
+
+	// 4. Drain the SSE response. We track distinct seq values seen in
+	// payloads. Once we have observed the final published seq we close
+	// the connection. A safety timeout protects against a stuck stream.
+	final := preBurst + liveBurst
+	seen := make(map[int]int) // seq -> count (count > 1 means duplicate)
+	scanner := bufio.NewScanner(resp.Body)
+	// Larger buffer; default 64KB is fine but be defensive about long lines.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	scanCtx, scanCancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer scanCancel()
+
+	scanDone := make(chan struct{})
+	go func() {
+		defer close(scanDone)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			raw := strings.TrimPrefix(line, "data: ")
+			var m map[string]int
+			if err := json.Unmarshal([]byte(raw), &m); err != nil {
+				continue
+			}
+			seq, ok := m["seq"]
+			if !ok {
+				continue
+			}
+			seen[seq]++
+			// Once the publisher is done AND we have seen the last seq,
+			// we can stop scanning. We also stop early once we have the
+			// final seq even if pubDone hasn't been read yet (it implies
+			// the publisher is done).
+			if seq == final {
+				return
+			}
+		}
+	}()
+
+	// Wait for the publisher to finish, then give the SSE goroutine a
+	// brief grace period to flush the final events through.
+	select {
+	case <-pubDone:
+	case <-scanCtx.Done():
+		t.Fatalf("publisher did not finish within timeout")
+	}
+
+	select {
+	case <-scanDone:
+	case <-time.After(drainGrace):
+		// Force the scanner to exit by closing the body.
+		_ = resp.Body.Close()
+		<-scanDone
+	}
+
+	// 5. Validate: the seq values seen must form a contiguous range and
+	// must have no duplicates.
+	if len(seen) == 0 {
+		t.Fatalf("no events delivered to SSE client")
+	}
+
+	// Find the range observed.
+	minSeq, maxSeq := -1, -1
+	for s := range seen {
+		if minSeq == -1 || s < minSeq {
+			minSeq = s
+		}
+		if s > maxSeq {
+			maxSeq = s
+		}
+	}
+
+	// No duplicates — the de-dup logic must collapse events that appeared
+	// in BOTH the snapshot and the live channel during the replay window.
+	for s, c := range seen {
+		if c != 1 {
+			t.Errorf("seq %d delivered %d times; want exactly 1 (de-dup failure)", s, c)
+		}
+	}
+
+	// No gap — every integer in [minSeq, maxSeq] must be present. The
+	// race-window bug manifests as missing entries in this contiguous
+	// span.
+	for s := minSeq; s <= maxSeq; s++ {
+		if _, ok := seen[s]; !ok {
+			t.Errorf("seq %d missing from delivered range [%d..%d] (replay-vs-live gap)",
+				s, minSeq, maxSeq)
+		}
+	}
+
+	// Sanity: the final published seq must be among the delivered ones.
+	// If not, the test did not actually exercise the live-stream phase.
+	if _, ok := seen[final]; !ok {
+		t.Errorf("final seq %d not delivered; live-stream phase not exercised", final)
 	}
 }
 
