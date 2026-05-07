@@ -14,6 +14,10 @@ default:
 
 # === Services ===
 
+# One-command bootstrap: prereqs, pixi install, .env generation
+setup:
+    @./scripts/setup.sh
+
 # Generate secrets/htpasswd from LOKI_AUTH_USER and LOKI_AUTH_PASSWORD in .env
 gen-htpasswd:
     @scripts/gen-htpasswd.sh
