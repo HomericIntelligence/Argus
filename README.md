@@ -24,8 +24,12 @@ components of the HomericIntelligence ecosystem.
 ## Quick Start
 
 ```bash
-just start
+./scripts/setup.sh && just start
 ```
+
+`scripts/setup.sh` checks prerequisites, installs the pixi environment, and
+generates a `.env` (with a fresh bearer token and Grafana admin password)
+on first run. It is idempotent — safe to re-run.
 
 Then access Grafana at <http://localhost:3000> (credentials: admin / the password set in `.env`).
 

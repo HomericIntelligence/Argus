@@ -29,23 +29,30 @@ For an overview of the full ecosystem, see the
 
 ### Environment Setup
 
+One command bootstraps everything (prerequisites check, pixi install,
+`.env` generation with a fresh bearer token):
+
 ```bash
 # Clone the repository
 git clone https://github.com/HomericIntelligence/ProjectArgus.git
 cd ProjectArgus
 
-# Activate the Pixi environment
+# One-command bootstrap
+./scripts/setup.sh
+
+# (or, equivalently)
+just setup
+
+# Activate the dev environment and start the stack
 pixi shell
-
-# Copy and customize environment variables
-cp .env.example .env
-
-# Start the observability stack
 just start
 
 # List available recipes
 just --list
 ```
+
+The setup script is idempotent — re-running leaves an existing `.env` alone
+and only re-installs the pixi env if `pixi.lock` has changed.
 
 ### Verify Your Setup
 
