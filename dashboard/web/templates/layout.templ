@@ -13,7 +13,8 @@ templ Layout(title string) {
 			<script src="/static/js/atlas.js" defer></script>
 		</head>
 		<body>
-			<nav>
+			<a class="sr-only" href="#main-content">Skip to main content</a>
+			<nav aria-label="Primary">
 				<span class="brand">Atlas</span>
 				<a href="/">Overview</a>
 				<a href="/hosts">Hosts</a>
@@ -22,9 +23,9 @@ templ Layout(title string) {
 				<a href="/nats">NATS</a>
 				<a href="/grafana">Grafana</a>
 				<a href="/mnemosyne">Mnemosyne</a>
-				<span class="conn-dot" title="SSE disconnected"></span>
+				<span class="conn-dot" role="status" aria-live="polite" aria-label="SSE disconnected" title="SSE disconnected"></span>
 			</nav>
-			<main>
+			<main id="main-content" tabindex="-1">
 				{ children... }
 			</main>
 		</body>

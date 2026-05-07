@@ -16,6 +16,12 @@ import (
 // reliably from the moment Atlas starts.
 var pollSources = []string{"agamemnon", "nestor", "hermes", "nats"}
 
+// natsEndpoints are the per-endpoint label values emitted by NATSPoller into
+// atlas_poll_endpoint_errors_total. Pre-registered with value 0 at boot so
+// dashboards and alerts can match labels from start-up rather than waiting
+// for the first failure to materialise the time series.
+var natsEndpoints = []string{"varz", "jsz", "jsz_detail", "connz"}
+
 // histogramBuckets are the upper bounds (in seconds) for
 // atlas_poll_duration_seconds. The set covers sub-second polls (typical
 // Agamemnon/Nestor) up to 5s near the 3s HTTP client timeout the pollers use.
@@ -33,6 +39,7 @@ type AtlasMetrics struct {
 	natsConnected       prometheus.Gauge
 	sseConnectedClients prometheus.Gauge
 	pollErrors          *prometheus.CounterVec
+	pollEndpointErrors  *prometheus.CounterVec
 	sseDropped          *prometheus.CounterVec
 	eventParseErrors    *prometheus.CounterVec
 	natsMessages        *prometheus.CounterVec
@@ -67,6 +74,13 @@ func newAtlasMetrics() *AtlasMetrics {
 			Name: "atlas_poll_errors_total",
 			Help: "Total number of poller errors by source.",
 		}, []string{"source"}),
+		pollEndpointErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "atlas_poll_endpoint_errors_total",
+			Help: "Total number of poller endpoint failures by source and endpoint. " +
+				"Emitted by pollers that fan out to multiple HTTP endpoints in a single cycle " +
+				"(e.g. NATSPoller hitting /varz, /jsz, /jsz?detail=1, /connz). Independent of " +
+				"atlas_poll_errors_total which counts cycle-level failures.",
+		}, []string{"source", "endpoint"}),
 		sseDropped: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "atlas_sse_dropped_total",
 			Help: "Total number of SSE events dropped for slow subscribers.",
@@ -91,6 +105,7 @@ func newAtlasMetrics() *AtlasMetrics {
 		m.natsConnected,
 		m.sseConnectedClients,
 		m.pollErrors,
+		m.pollEndpointErrors,
 		m.sseDropped,
 		m.eventParseErrors,
 		m.natsMessages,
@@ -105,6 +120,11 @@ func newAtlasMetrics() *AtlasMetrics {
 	for _, src := range pollSources {
 		m.pollErrors.WithLabelValues(src)
 		m.pollDuration.WithLabelValues(src)
+	}
+	// Pre-instantiate the NATS per-endpoint failure counter so the time
+	// series exist (with value 0) before the first failure occurs.
+	for _, ep := range natsEndpoints {
+		m.pollEndpointErrors.WithLabelValues("nats", ep)
 	}
 
 	return m
@@ -127,6 +147,16 @@ func (m *AtlasMetrics) SetSSEConnectedClients(n int64) {
 // IncPollError increments atlas_poll_errors_total for the given source label.
 func (m *AtlasMetrics) IncPollError(source string) {
 	m.pollErrors.WithLabelValues(source).Inc()
+}
+
+// IncEndpointError increments atlas_poll_endpoint_errors_total for the given
+// (source, endpoint) label pair. Emitted by pollers that fan out to multiple
+// HTTP endpoints in a single cycle so operators can attribute failures to the
+// specific endpoint that broke (e.g. {source="nats", endpoint="connz"}). This
+// is independent of atlas_poll_errors_total: cycle-level failures still
+// increment IncPollError exactly once per cycle.
+func (m *AtlasMetrics) IncEndpointError(source, endpoint string) {
+	m.pollEndpointErrors.WithLabelValues(source, endpoint).Inc()
 }
 
 // IncSSEDropped increments atlas_sse_dropped_total for the given subscriber label.
@@ -153,7 +183,7 @@ func (m *AtlasMetrics) ObservePollDuration(source string, seconds float64) {
 // exposition for this metric set.
 func (m *AtlasMetrics) Handler() http.HandlerFunc {
 	h := promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{
-		Registry:      m.registry,
+		Registry:          m.registry,
 		EnableOpenMetrics: false, // keep legacy text/plain; version=0.0.4 content-type
 	})
 	return h.ServeHTTP

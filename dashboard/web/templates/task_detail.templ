@@ -4,12 +4,12 @@ import "github.com/HomericIntelligence/atlas/internal/store"
 
 templ TaskDetailPage(t store.TaskRecord, history []store.RawEvent) {
 	@Layout("Task: " + t.Subject) {
-		<div class="detail-card">
-			<div class="detail-header">
-				<span class="hostname">{ t.Subject }</span>
+		<article class="detail-card" aria-labelledby="task-detail-subject">
+			<header class="detail-header">
+				<h1 class="hostname" id="task-detail-subject">{ t.Subject }</h1>
 				<span class="mono">{ t.ID }</span>
-				<span class={ "badge " + taskStatusClass(t.Status) }>{ t.Status }</span>
-			</div>
+				<span class={ "badge " + taskStatusClass(t.Status) } role="status" aria-label={ "Status: " + t.Status }>{ t.Status }</span>
+			</header>
 			<dl class="detail-meta">
 				<dt>Team</dt><dd class="mono">{ t.TeamID }</dd>
 				<dt>Created</dt><dd class="mono">{ t.CreatedAt.Format("2006-01-02 15:04:05") }</dd>
@@ -19,9 +19,11 @@ templ TaskDetailPage(t store.TaskRecord, history []store.RawEvent) {
 					<dd><a href={ templ.SafeURL("/agents/" + t.AssigneeID) } class="accent-link">{ t.AssigneeID }</a></dd>
 				}
 			</dl>
-		</div>
+		</article>
 		<h2 class="section-title">Live event tail</h2>
-		<div id="task-event-tail"
+		<section id="task-event-tail"
+			aria-label="Live event tail"
+			aria-live="polite"
 			hx-ext="sse"
 			sse-connect="/events?topics=task"
 			sse-swap="task"
@@ -29,7 +31,7 @@ templ TaskDetailPage(t store.TaskRecord, history []store.RawEvent) {
 			for _, e := range history {
 				@EventRow(e)
 			}
-		</div>
+		</section>
 	}
 }
 

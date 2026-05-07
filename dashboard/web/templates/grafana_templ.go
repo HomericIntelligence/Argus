@@ -45,56 +45,69 @@ func GrafanaPage(panels []grafana.Panel, grafanaBase, from, to string) templ.Com
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"time-range-bar\"><span class=\"label\">Time range:</span> <button onclick=\"setTimeRange('now-1h','now')\">1h</button> <button onclick=\"setTimeRange('now-6h','now')\">6h</button> <button onclick=\"setTimeRange('now-24h','now')\">24h</button> <button onclick=\"setTimeRange('now-7d','now')\">7d</button></div><div class=\"grafana-grid\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"time-range-bar\" role=\"toolbar\" aria-label=\"Time range\"><span class=\"label\" id=\"time-range-label\">Time range:</span> <button type=\"button\" aria-label=\"Last 1 hour\" onclick=\"setTimeRange('now-1h','now')\">1h</button> <button type=\"button\" aria-label=\"Last 6 hours\" onclick=\"setTimeRange('now-6h','now')\">6h</button> <button type=\"button\" aria-label=\"Last 24 hours\" onclick=\"setTimeRange('now-24h','now')\">24h</button> <button type=\"button\" aria-label=\"Last 7 days\" onclick=\"setTimeRange('now-7d','now')\">7d</button></div><section class=\"grafana-grid\" aria-label=\"Grafana panels\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, p := range panels {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"panel-container\"><div class=\"panel-title\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<article class=\"panel-container\" aria-label=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 19, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 18, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><iframe src=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><h2 class=\"panel-title\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(templ.SafeURL(grafana.PanelURL(grafanaBase, p, from, to)))
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 21, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 19, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" sandbox=\"allow-scripts allow-popups\" loading=\"lazy\" title=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</h2><iframe src=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var5 string
-				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(templ.SafeURL(grafana.PanelURL(grafanaBase, p, from, to)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 24, Col: 21}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 21, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"></iframe></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" sandbox=\"allow-scripts allow-popups\" loading=\"lazy\" title=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var6 string
+				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/templates/grafana.templ`, Line: 24, Col: 21}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\"></iframe></article>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div><script>\n\t\tfunction setTimeRange(from, to) {\n\t\t\tdocument.querySelectorAll('.grafana-grid iframe').forEach(function(el) {\n\t\t\t\tel.src = el.src\n\t\t\t\t\t.replace(/from=[^&]+/, 'from=' + from)\n\t\t\t\t\t.replace(/to=[^&]+/, 'to=' + to);\n\t\t\t});\n\t\t}\n\t\t</script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</section><script>\n\t\tfunction setTimeRange(from, to) {\n\t\t\tdocument.querySelectorAll('.grafana-grid iframe').forEach(function(el) {\n\t\t\t\tel.src = el.src\n\t\t\t\t\t.replace(/from=[^&]+/, 'from=' + from)\n\t\t\t\t\t.replace(/to=[^&]+/, 'to=' + to);\n\t\t\t});\n\t\t}\n\t\t</script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

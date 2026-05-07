@@ -183,7 +183,7 @@ func TestSetAndGet_NATSConns(t *testing.T) {
 // many concurrent writers against the cache while concurrent readers
 // snapshot every accessor. The race detector (go test -race) is the
 // primary assertion; this test passes if no race is reported.
-func TestConcurrentSetGet_NoRaces(t *testing.T) {
+func TestConcurrentSetGet_NoRaces(_ *testing.T) {
 	c := NewCache()
 	var wg sync.WaitGroup
 

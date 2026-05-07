@@ -1,3 +1,5 @@
+// Package mnemosyne reads Mnemosyne skill markdown files (YAML frontmatter +
+// body) from disk and exposes them to the Atlas dashboard.
 package mnemosyne
 
 import (
@@ -10,6 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Reader loads Mnemosyne skill markdown files from a directory and caches the
+// parsed result for ttl. It is safe for concurrent use.
 type Reader struct {
 	dir      string
 	mu       sync.RWMutex
@@ -18,10 +22,15 @@ type Reader struct {
 	ttl      time.Duration
 }
 
+// NewReader returns a Reader that scans dir for *.md skill files. The default
+// cache TTL is 5 minutes.
 func NewReader(dir string) *Reader {
 	return &Reader{dir: dir, ttl: 5 * time.Minute}
 }
 
+// Skills returns the cached skill set, reloading from disk if the cached copy
+// is older than the Reader's TTL. The returned slice is a copy and may be
+// mutated by the caller without affecting subsequent calls.
 func (r *Reader) Skills() ([]Skill, error) {
 	r.mu.RLock()
 	if !r.loadedAt.IsZero() && time.Since(r.loadedAt) < r.ttl {

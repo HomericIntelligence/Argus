@@ -3,6 +3,7 @@ package events_test
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -216,6 +217,171 @@ func TestBusDropCounter(t *testing.T) {
 
 	if got := b.Drops(); got != 5 {
 		t.Errorf("Drops() = %d, want 5", got)
+	}
+}
+
+// TestBus_ConcurrentPublishSubscribeUnsubscribe is a race-stress test for the
+// copy-on-write subscriber set. It runs many publishers concurrently with
+// many subscribers that subscribe, drain a bounded number of events, and
+// unsubscribe, repeatedly. Run with:
+//
+//	go test -race -count=10 -run TestBus_ConcurrentPublishSubscribeUnsubscribe ./internal/events/...
+//
+// The test is genuinely race-free: Publish reads the subscriber slice via
+// an atomic Load and iterates without any lock, Subscribe/Unsubscribe
+// build new slices under a small mutex, and Unsubscribe never closes the
+// channel (so a stale Publish that already loaded the prior slice may
+// deliver one last event without panicking).
+//
+// The test asserts:
+//   - completion within a reasonable time bound (no deadlock under
+//     contention),
+//   - that some lower bound of events was delivered to subscribers (proving
+//     Publish is not dropping everything to lock contention or losing all
+//     deliveries to the COW slice swap).
+func TestBus_ConcurrentPublishSubscribeUnsubscribe(t *testing.T) {
+	t.Parallel()
+
+	const (
+		numPublishers     = 100
+		eventsPerPub      = 100
+		numSubscribers    = 100
+		subsLifetimeReads = 25 // events drained per subscription cycle
+		ringCap           = 256
+	)
+
+	b := events.NewBus(ringCap)
+
+	var (
+		wgPublishers  sync.WaitGroup
+		wgSubscribers sync.WaitGroup
+		stopSubs      atomic.Bool
+		delivered     atomic.Int64
+	)
+
+	// Publishers: each emits a bounded number of events.
+	wgPublishers.Add(numPublishers)
+	for i := range numPublishers {
+		go func(id int) {
+			defer wgPublishers.Done()
+			ev := makeEvent("agent", "hi.agents.stress.heartbeat")
+			for j := range eventsPerPub {
+				b.Publish(ev)
+				_ = j
+			}
+			_ = id
+		}(i)
+	}
+
+	// Subscribers: subscribe, drain up to subsLifetimeReads events (or
+	// short timeout), unsubscribe, repeat. They keep churning until
+	// publishers finish.
+	wgSubscribers.Add(numSubscribers)
+	for i := range numSubscribers {
+		go func(id int) {
+			defer wgSubscribers.Done()
+			for !stopSubs.Load() {
+				ch := b.Subscribe(8)
+				deadline := time.NewTimer(50 * time.Millisecond)
+				received := 0
+			drain:
+				for received < subsLifetimeReads {
+					select {
+					case _, ok := <-ch:
+						if !ok {
+							// Channel was closed by some other path —
+							// not expected with COW Unsubscribe but
+							// handle defensively.
+							break drain
+						}
+						delivered.Add(1)
+						received++
+					case <-deadline.C:
+						break drain
+					}
+				}
+				if !deadline.Stop() {
+					select {
+					case <-deadline.C:
+					default:
+					}
+				}
+				b.Unsubscribe(ch)
+			}
+			_ = id
+		}(i)
+	}
+
+	// Bound the test runtime: if publishers don't finish in 30s under
+	// -race, something is deadlocked or pathologically slow.
+	publishersDone := make(chan struct{})
+	go func() {
+		wgPublishers.Wait()
+		close(publishersDone)
+	}()
+
+	select {
+	case <-publishersDone:
+		// fast path
+	case <-time.After(30 * time.Second):
+		t.Fatal("publishers did not finish within 30s — possible deadlock or contention regression")
+	}
+
+	// Signal subscribers to wind down and wait for them.
+	stopSubs.Store(true)
+	subscribersDone := make(chan struct{})
+	go func() {
+		wgSubscribers.Wait()
+		close(subscribersDone)
+	}()
+	select {
+	case <-subscribersDone:
+	case <-time.After(30 * time.Second):
+		t.Fatal("subscribers did not wind down within 30s")
+	}
+
+	// Sanity: at least SOME events were delivered while subscribers were
+	// connected. We don't assert a tight lower bound because the test is
+	// inherently racy by design (subscribers come and go), but zero
+	// deliveries would indicate a serious regression where Publish drops
+	// everything.
+	if delivered.Load() == 0 {
+		t.Errorf("delivered 0 events across %d publishers and %d churning subscribers; "+
+			"Publish appears to be dropping everything", numPublishers, numSubscribers)
+	}
+
+	// Drops counter must remain coherent (atomic) — just read it; if there
+	// were a torn read under -race the detector would have fired.
+	_ = b.Drops()
+
+	// Ring buffer must still be coherent.
+	snap := b.Snapshot(ringCap + 1)
+	if len(snap) > ringCap {
+		t.Errorf("Snapshot returned %d events, want <= %d (ringCap)", len(snap), ringCap)
+	}
+}
+
+// TestBus_SubscribeBeforePublishDelivers asserts that an event published
+// after Subscribe returns is observed by the new subscriber. This is the
+// "subscribe-then-publish must deliver" invariant for the COW pattern.
+func TestBus_SubscribeBeforePublishDelivers(t *testing.T) {
+	t.Parallel()
+
+	b := events.NewBus(16)
+
+	// Run many iterations to shake out any ordering bug between Store and
+	// Load of the subscriber slice.
+	const iters = 1000
+	for range iters {
+		ch := b.Subscribe(1)
+		b.Publish(makeEvent("agent", "hi.agents.subscribe.before.publish"))
+		select {
+		case <-ch:
+			// OK
+		case <-time.After(time.Second):
+			t.Fatal("subscriber did not receive event published after Subscribe returned")
+		}
+		b.Unsubscribe(ch)
 	}
 }
 

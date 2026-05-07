@@ -13,6 +13,8 @@ import (
 	"github.com/HomericIntelligence/atlas/internal/store"
 )
 
+// Server wires together the HTTP server, event bus, SSE handler, API
+// handlers, metrics, and readiness registry that make up the Atlas dashboard.
 type Server struct {
 	cfg          *config.Config
 	srv          *http.Server
@@ -24,8 +26,18 @@ type Server struct {
 	ready        *ReadyRegistry
 }
 
+// New constructs a Server, applying the SSE tunables from cfg, wiring the
+// HTTP routes, and assembling the API handlers backed by cache. The returned
+// Server is not yet listening; call Run to start serving.
 func New(cfg *config.Config, bus *events.Bus, cache *store.Cache) *Server {
 	metrics := newAtlasMetrics()
+	// Apply SSE tunables from cfg before constructing the handler so the
+	// first ServeHTTP call sees the operator-configured values. These are
+	// process-wide atomics; the SSE handler reads them on every connect.
+	if cfg.SSEHeartbeatInterval > 0 {
+		handlers.SetHeartbeatInterval(cfg.SSEHeartbeatInterval)
+	}
+	handlers.SetSubscriberBuffer(cfg.SSESubscriberBuffer)
 	sse := handlers.NewSSE(bus)
 	sse.SetMetrics(metrics)
 
@@ -44,9 +56,9 @@ func New(cfg *config.Config, bus *events.Bus, cache *store.Cache) *Server {
 	s.srv = &http.Server{
 		Addr:         cfg.ListenAddr,
 		Handler:      s.routes(),
-		ReadTimeout:  10 * time.Second,
+		ReadTimeout:  cfg.HTTPReadTimeout,
 		WriteTimeout: 0, // SSE connections are long-lived; disable write timeout.
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout:  cfg.HTTPIdleTimeout,
 	}
 	return s
 }
@@ -63,6 +75,9 @@ func (s *Server) Ready() *ReadyRegistry {
 	return s.ready
 }
 
+// Run starts the HTTP listener and blocks until ctx is cancelled or the
+// listener returns a non-ErrServerClosed error. On context cancellation the
+// server is gracefully shut down with a 10-second deadline.
 func (s *Server) Run(ctx context.Context) error {
 	errCh := make(chan error, 1)
 	go func() {

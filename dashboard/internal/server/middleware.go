@@ -26,7 +26,8 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		if s.cfg.NATSDashboardURL != "" {
 			frameSrc += " " + s.cfg.NATSDashboardURL
 		}
-		w.Header().Set("Content-Security-Policy",
+		w.Header().Set(
+			"Content-Security-Policy",
 			fmt.Sprintf(
 				"default-src 'self'; script-src 'self' https://unpkg.com; connect-src 'self'; style-src 'self'; img-src 'self' data:; frame-src %s",
 				frameSrc,

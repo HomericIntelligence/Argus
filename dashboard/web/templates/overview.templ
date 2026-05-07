@@ -4,24 +4,24 @@ import "strconv"
 
 templ Overview(agents, tasks, streams, hosts int) {
 	@Layout("Atlas") {
-		<div class="stat-grid">
-			<div class="stat-card">
-				<div class="label">Agents</div>
+		<section class="stat-grid" aria-label="Cluster summary">
+			<article class="stat-card" aria-labelledby="stat-agents-label">
+				<div class="label" id="stat-agents-label">Agents</div>
 				<div class="value" id="stat-agents">{ strconv.Itoa(agents) }</div>
-			</div>
-			<div class="stat-card">
-				<div class="label">Tasks</div>
+			</article>
+			<article class="stat-card" aria-labelledby="stat-tasks-label">
+				<div class="label" id="stat-tasks-label">Tasks</div>
 				<div class="value" id="stat-tasks">{ strconv.Itoa(tasks) }</div>
-			</div>
-			<div class="stat-card">
-				<div class="label">Streams</div>
+			</article>
+			<article class="stat-card" aria-labelledby="stat-streams-label">
+				<div class="label" id="stat-streams-label">Streams</div>
 				<div class="value" id="stat-streams">{ strconv.Itoa(streams) }</div>
-			</div>
-			<div class="stat-card">
-				<div class="label">Hosts</div>
+			</article>
+			<article class="stat-card" aria-labelledby="stat-hosts-label">
+				<div class="label" id="stat-hosts-label">Hosts</div>
 				<div class="value" id="stat-hosts">{ strconv.Itoa(hosts) }</div>
-			</div>
-		</div>
-		<p style="color:#8b949e">Live feed active after M2 (NATS JetStream subscribers).</p>
+			</article>
+		</section>
+		<p class="muted-note">Live feed active after M2 (NATS JetStream subscribers).</p>
 	}
 }

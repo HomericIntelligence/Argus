@@ -29,23 +29,30 @@ For an overview of the full ecosystem, see the
 
 ### Environment Setup
 
+One command bootstraps everything (prerequisites check, pixi install,
+`.env` generation with a fresh bearer token):
+
 ```bash
 # Clone the repository
 git clone https://github.com/HomericIntelligence/ProjectArgus.git
 cd ProjectArgus
 
-# Activate the Pixi environment
+# One-command bootstrap
+./scripts/setup.sh
+
+# (or, equivalently)
+just setup
+
+# Activate the dev environment and start the stack
 pixi shell
-
-# Copy and customize environment variables
-cp .env.example .env
-
-# Start the observability stack
 just start
 
 # List available recipes
 just --list
 ```
+
+The setup script is idempotent — re-running leaves an existing `.env` alone
+and only re-installs the pixi env if `pixi.lock` has changed.
 
 ### Verify Your Setup
 
@@ -56,6 +63,30 @@ just status
 # Test Prometheus scraping
 just test-scrape
 ```
+
+### Dashboard hot-reload
+
+For iterating on the Go/templ dashboard, `just dev` runs `templ generate --watch` and
+[`air`](https://github.com/air-verse/air) in parallel so saves auto-rebuild and reload
+the binary. See `dashboard/README.md` ("Hot-reload dev loop") for prerequisites.
+
+### Pre-commit hooks
+
+We use [pre-commit](https://pre-commit.com/) to catch formatting, linting, and templ-generate
+drift before a commit lands. Install once per clone:
+
+```bash
+pixi run pre-commit install
+```
+
+The hooks defined in `.pre-commit-config.yaml` cover:
+
+- **YAML/JSON/whitespace** — trailing whitespace, end-of-file, merge conflicts, `yamllint`.
+- **Go (`dashboard/`)** — `gofmt -s -w`, `golangci-lint run` (v2.12.2 — matches CI), and a
+  `templ generate` diff check (requires `templ` v0.3.1001 — `go install
+  github.com/a-h/templ/cmd/templ@v0.3.1001`).
+- **CI parity** — the Go hooks shell out to the same binaries CI runs, so a clean local
+  pre-commit means a green Go-side CI; CI remains the authoritative gate.
 
 ## What You Can Contribute
 

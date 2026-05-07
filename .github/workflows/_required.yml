@@ -41,6 +41,35 @@ jobs:
             echo "No JSON files found — nothing to validate"
           fi
 
+      - name: Skip Go gosec if no Go module
+        id: gosec-detect
+        run: |
+          if [ ! -f dashboard/go.mod ]; then
+            echo "::notice::No dashboard/go.mod, skipping gosec"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go (for gosec)
+        if: steps.gosec-detect.outputs.skip == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dashboard/go.mod
+          cache-dependency-path: dashboard/go.sum
+
+      # gosec runs as a step inside the `lint` job per the org's policy of
+      # uniform required-check names. Failure of this step fails the `lint`
+      # required check; no separate `security/gosec` check name is exposed.
+      # golangci-lint also enables the `gosec` linter (see
+      # dashboard/.golangci.yml) for fast developer-loop feedback inside
+      # `Atlas dashboard (Go)`; this step is the authoritative gate.
+      - name: Run gosec
+        if: steps.gosec-detect.outputs.skip == 'false'
+        uses: securego/gosec@4a3bd8af174872c778439083ded7adbf3747e770  # v2.26.1
+        with:
+          args: ./dashboard/...
+
   markdownlint:
     name: markdownlint
     runs-on: ubuntu-24.04

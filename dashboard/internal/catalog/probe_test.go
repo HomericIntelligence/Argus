@@ -26,7 +26,7 @@ func TestProbeAll_Healthy(t *testing.T) {
 	svcs := make([]ServiceDef, numServices)
 
 	for i := 0; i < numServices; i++ {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		t.Cleanup(srv.Close)
@@ -72,7 +72,7 @@ func TestProbeAll_Healthy(t *testing.T) {
 // TestProbeAll_Unhealthy: server returns 503, assert OK:false.
 // Sequential (not t.Parallel) to avoid race on KnownServices.
 func TestProbeAll_Unhealthy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	t.Cleanup(srv.Close)
@@ -110,7 +110,7 @@ func TestProbeAll_ConcurrentWallTime(t *testing.T) {
 
 	svcs := make([]ServiceDef, numSvcs)
 	for i := 0; i < numSvcs; i++ {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			time.Sleep(probeDelay)
 			w.WriteHeader(http.StatusOK)
 		}))

@@ -4,18 +4,43 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
+// maxResponseBytes caps how much we will read from any upstream JSON
+// endpoint before giving up. Defends against a compromised or hostile
+// upstream (Agamemnon, Nestor, NATS monitoring) streaming a multi-GB
+// response and OOM'ing Atlas (the compose memory limit is 128 MiB).
+//
+// 16 MiB is an order of magnitude above any realistic /v1/agents,
+// /varz, /jsz?detail=1, or /connz payload — even a 1k-stream JetStream
+// cluster's /jsz?detail=1 fits comfortably inside it — while staying
+// well below the OOM threshold.
+//
+// Declared as a var (not a const) so tests can lower it without staging
+// a 16 MiB fake response. Production paths must NEVER mutate this; if a
+// future deployment legitimately needs a higher ceiling, prefer adding a
+// config knob over runtime mutation.
+var maxResponseBytes int64 = 16 << 20 // 16 MiB
+
 // MetricsSink is the metric-recording surface a poller needs. *server.AtlasMetrics
 // satisfies this interface; tests can pass a no-op or a counting fake. Pollers
 // take this through SetMetrics rather than at construction so the Server can
 // finalise the metric set after composing other dependencies.
+//
+// IncEndpointError is emitted on a separate metric series (atlas_poll_endpoint_errors_total)
+// for pollers that fan out to multiple HTTP endpoints in a single cycle (e.g.
+// NATSPoller hitting /varz, /jsz?detail=1, /connz). It is keyed by both the
+// poller source name and the per-endpoint label so operators can answer "is
+// /connz consistently failing or just /jsz?" without affecting the existing
+// atlas_poll_errors_total{source} series or its alert rules.
 type MetricsSink interface {
 	IncPollError(source string)
+	IncEndpointError(source, endpoint string)
 	ObservePollDuration(source string, seconds float64)
 }
 
@@ -23,7 +48,8 @@ type MetricsSink interface {
 // value so callers that never call SetMetrics still work.
 type noopMetrics struct{}
 
-func (noopMetrics) IncPollError(string)              {}
+func (noopMetrics) IncPollError(string)                 {}
+func (noopMetrics) IncEndpointError(string, string)     {}
 func (noopMetrics) ObservePollDuration(string, float64) {}
 
 // base is a shared helper for HTTP-based pollers. It tracks per-instance
@@ -103,6 +129,16 @@ func (b *base) recordResult(err error, elapsed time.Duration) {
 	}
 }
 
+// incEndpointError emits a per-endpoint failure metric without disturbing the
+// poll-cycle accounting. Used by pollers that fan out to multiple HTTP
+// endpoints in a single cycle so operators can attribute failures to the
+// specific endpoint that broke. recordResult still tallies the cycle-level
+// outcome via IncPollError.
+func (b *base) incEndpointError(endpoint string) {
+	sink := *b.metrics.Load()
+	sink.IncEndpointError(b.name, endpoint)
+}
+
 // getJSON performs a GET request to url and JSON-decodes the response body into dst.
 // It returns an error if the request fails or the status code is not 200.
 // The error includes the URL so callers can distinguish failures across
@@ -120,8 +156,12 @@ func (b *base) getJSON(ctx context.Context, url string, dst any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-		return fmt.Errorf("decode %s: %w", url, err)
+	// Cap how much we will pull from the upstream before failing. See
+	// maxResponseBytes above for the rationale; io.LimitReader returns EOF
+	// at the cap, which the JSON decoder surfaces as a syntax error if the
+	// payload was actually truncated mid-document.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(dst); err != nil {
+		return fmt.Errorf("decode %s (cap %d bytes): %w", url, maxResponseBytes, err)
 	}
 	return nil
 }

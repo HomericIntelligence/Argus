@@ -8,35 +8,39 @@ import (
 )
 
 templ HostCard(h store.HostView) {
-	<div class="host-card" id={ "host-" + h.Hostname }
+	<article class="host-card" id={ "host-" + h.Hostname }
+		aria-label={ "Host " + h.Hostname }
 		hx-get={ "/partials/host/" + h.Hostname }
 		hx-trigger="every 5s"
 		hx-swap="outerHTML">
-		<div class="host-header">
+		<header class="host-header">
 			<span class="hostname">{ h.Hostname }</span>
 			<span class="ts-ip mono">{ h.TailscaleIP }</span>
 			if h.Online {
-				<span class="badge green">online</span>
+				<span class="badge green" role="status" aria-label="online">online</span>
 			} else {
-				<span class="badge red">offline</span>
+				<span class="badge red" role="status" aria-label="offline">offline</span>
 			}
-		</div>
-		<div class="services-grid">
+		</header>
+		<div class="services-grid" role="list" aria-label="Services">
 			for _, svc := range h.Services {
 				@ServiceLink(svc)
 			}
 		</div>
-	</div>
+	</article>
 }
 
 templ ServiceLink(s catalog.ProbeResult) {
-	<a href={ templ.SafeURL(s.URL) } target="_blank" rel="noopener noreferrer" class={ "svc-link " + okClass(s.OK) }>
+	<a href={ templ.SafeURL(s.URL) } target="_blank" rel="noopener noreferrer"
+		class={ "svc-link " + okClass(s.OK) }
+		role="listitem"
+		aria-label={ serviceAriaLabel(s) }>
 		<span class="svc-name">{ s.Name }</span>
 		<span class="svc-port mono">:{ strconv.Itoa(s.Port) }</span>
 		if s.OK {
-			<span class="badge green">↑ { fmt.Sprintf("%dms", s.LatencyMs) }</span>
+			<span class="badge green" aria-hidden="true">↑ { fmt.Sprintf("%dms", s.LatencyMs) }</span>
 		} else {
-			<span class="badge red">↓</span>
+			<span class="badge red" aria-hidden="true">↓</span>
 		}
 	</a>
 }
@@ -46,4 +50,11 @@ func okClass(ok bool) string {
 		return "ok"
 	}
 	return "err"
+}
+
+func serviceAriaLabel(s catalog.ProbeResult) string {
+	if s.OK {
+		return fmt.Sprintf("%s on port %d, online, %dms", s.Name, s.Port, s.LatencyMs)
+	}
+	return fmt.Sprintf("%s on port %d, offline", s.Name, s.Port)
 }

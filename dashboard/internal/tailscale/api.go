@@ -1,12 +1,31 @@
+// Package tailscale discovers Tailscale device inventory via the CLI, the
+// REST API, or a static configuration source, with an auto-source that tries
+// each in priority order.
 package tailscale
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
+
+// maxResponseBytes caps how much we will read from any external Tailscale
+// source (HTTP API or `tailscale status --json` subprocess) before giving
+// up. Defends Atlas against an attacker-controlled or compromised
+// Tailscale plane streaming a multi-GB response and exhausting memory
+// (compose limit is 128 MiB).
+//
+// 16 MiB is roughly two orders of magnitude above any realistic tailnet
+// device list (a 100-device tailnet API response is ~50 KiB) while
+// staying well below the OOM threshold. Matches the equivalent cap in
+// internal/poller for upstream JSON consistency.
+//
+// Declared as a var (not a const) so tests can lower it without staging
+// a 16 MiB fake response. Production paths must NEVER mutate this.
+var maxResponseBytes int64 = 16 << 20 // 16 MiB
 
 // apiResponse mirrors the Tailscale v2 API response for device listing.
 type apiResponse struct {
@@ -22,11 +41,13 @@ type apiDevice struct {
 
 // APISource fetches devices from the Tailscale HTTP API.
 // The HTTPClient field allows injection of a test server client; if nil, a
-// default client with a 10-second timeout is used.
+// default client is built using Timeout (or 10s if Timeout is zero / negative).
+// Timeout is sourced from ATLAS_TAILSCALE_API_TIMEOUT.
 type APISource struct {
 	APIKey     string
 	Tailnet    string
 	HTTPClient *http.Client
+	Timeout    time.Duration
 }
 
 // Devices calls GET https://api.tailscale.com/api/v2/tailnet/{tailnet}/devices
@@ -34,7 +55,11 @@ type APISource struct {
 func (a APISource) Devices(ctx context.Context) ([]Device, error) {
 	client := a.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		timeout := a.Timeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		client = &http.Client{Timeout: timeout}
 	}
 
 	url := fmt.Sprintf("https://api.tailscale.com/api/v2/tailnet/%s/devices", a.Tailnet)
@@ -56,8 +81,8 @@ func (a APISource) Devices(ctx context.Context) ([]Device, error) {
 	}
 
 	var result apiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("tailscale api: parse JSON: %w", err)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&result); err != nil {
+		return nil, fmt.Errorf("tailscale api: parse JSON (cap %d bytes): %w", maxResponseBytes, err)
 	}
 
 	devices := make([]Device, 0, len(result.Devices))

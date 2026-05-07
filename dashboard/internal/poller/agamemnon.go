@@ -1,3 +1,5 @@
+// Package poller implements the periodic JSON-poll loops that fetch state
+// from Atlas's upstream services (Agamemnon, NATS monitoring) into the cache.
 package poller
 
 import (
@@ -42,10 +44,15 @@ type AgamemnonPoller struct {
 	url   string
 }
 
-// NewAgamemnonPoller constructs an AgamemnonPoller with a 3-second HTTP timeout.
+// NewAgamemnonPoller constructs an AgamemnonPoller using the upstream HTTP
+// timeout from cfg.UpstreamTimeout (ATLAS_UPSTREAM_TIMEOUT, default 3s).
 func NewAgamemnonPoller(cfg *config.Config, cache *store.Cache) *AgamemnonPoller {
+	timeout := cfg.UpstreamTimeout
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
 	return &AgamemnonPoller{
-		base:  newBase("agamemnon", &http.Client{Timeout: 3 * time.Second}),
+		base:  newBase("agamemnon", &http.Client{Timeout: timeout}),
 		cache: cache,
 		url:   cfg.AgamemnonURL,
 	}

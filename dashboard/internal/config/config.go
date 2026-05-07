@@ -1,3 +1,5 @@
+// Package config loads and validates the ATLAS_* environment variables that
+// drive the Atlas dashboard runtime configuration.
 package config
 
 import (
@@ -11,6 +13,9 @@ import (
 	"time"
 )
 
+// Config holds the runtime-tunable knobs for the Atlas dashboard. Every
+// field is sourced from an ATLAS_* environment variable in Load and may be
+// validated by Validate before use.
 type Config struct {
 	ListenAddr         string
 	LogLevel           slog.Level
@@ -38,7 +43,106 @@ type Config struct {
 	// from ATLAS_POLL_AGAMEMNON_MS (named with the "Ms" suffix in the env
 	// var to communicate the unit; the field is a time.Duration so the
 	// suffix is dropped on the Go side per staticcheck ST1011).
-	PollAgamemnon      time.Duration
+	PollAgamemnon time.Duration
+
+	// RateLimitPerMin is the per-IP request budget for every route except
+	// the dedicated liveness probes. Sourced from ATLAS_RATE_LIMIT_PER_MIN
+	// (default 30). Setting this to 0 disables rate limiting for non-livez
+	// routes — provided as an escape hatch for operators who hit a false
+	// positive; not recommended for production.
+	RateLimitPerMin int
+
+	// LivezRateLimitPerMin is the per-IP request budget for /livez and its
+	// /healthz alias. Sourced from ATLAS_LIVEZ_RATE_LIMIT_PER_MIN (default
+	// 240) — high enough that a 5-second k8s liveness probe (12 req/min)
+	// with a sidecar that also probes (24 req/min) plus restart-policy
+	// retries comfortably fits. Setting this to 0 disables the limit on
+	// the liveness routes specifically.
+	LivezRateLimitPerMin int
+
+	// --- HTTP server timeouts ---
+
+	// HTTPReadTimeout caps how long the HTTP server will wait to read a
+	// request (headers + body). Sourced from ATLAS_HTTP_READ_TIMEOUT
+	// (default 10s). Increase behind aggressive proxies that may pause
+	// mid-request; decrease to reject slow-loris clients more aggressively.
+	// NOTE: Server.WriteTimeout is intentionally NOT exposed — it is held
+	// at 0 so the SSE long-poll endpoint is not killed mid-stream.
+	HTTPReadTimeout time.Duration
+
+	// HTTPIdleTimeout caps how long an idle keep-alive HTTP connection is
+	// held open. Sourced from ATLAS_HTTP_IDLE_TIMEOUT (default 60s).
+	HTTPIdleTimeout time.Duration
+
+	// --- Upstream poller timeouts ---
+
+	// UpstreamTimeout is the per-request HTTP client timeout used by the
+	// JSON-poll pollers (Agamemnon, NATS monitoring). Sourced from
+	// ATLAS_UPSTREAM_TIMEOUT (default 3s). Bump this on slow upstreams or
+	// large /jsz?detail=1 responses; lower it to fail-fast more eagerly.
+	UpstreamTimeout time.Duration
+
+	// TailscaleAPITimeout is the HTTP client timeout used when querying the
+	// Tailscale REST API. Sourced from ATLAS_TAILSCALE_API_TIMEOUT
+	// (default 10s).
+	TailscaleAPITimeout time.Duration
+
+	// TailscaleCLITimeout caps the duration of the
+	// `tailscale status --json` subprocess invocation. Sourced from
+	// ATLAS_TAILSCALE_CLI_TIMEOUT (default 5s).
+	TailscaleCLITimeout time.Duration
+
+	// --- Loop / refresh intervals ---
+
+	// ProbeInterval is the cadence at which the service prober re-checks
+	// each Tailscale device. Sourced from ATLAS_PROBE_INTERVAL
+	// (default 10s).
+	ProbeInterval time.Duration
+
+	// NATSPollInterval is the cadence of the NATS monitoring poller
+	// (/varz, /jsz, /connz). Sourced from ATLAS_NATS_POLL_INTERVAL
+	// (default 5s).
+	NATSPollInterval time.Duration
+
+	// TailscaleRefreshInterval is the cadence of the Tailscale device
+	// refresher loop. Sourced from ATLAS_TAILSCALE_REFRESH_INTERVAL
+	// (default 30s).
+	TailscaleRefreshInterval time.Duration
+
+	// --- SSE tuning ---
+
+	// SSEHeartbeatInterval is the cadence of the keep-alive comment frame
+	// sent by the SSE handler when no real events are flowing. Sourced
+	// from ATLAS_SSE_HEARTBEAT_INTERVAL (default 15s). Lower this if a
+	// proxy is killing idle connections; raise it to reduce client wakeups.
+	SSEHeartbeatInterval time.Duration
+
+	// SSESubscriberBuffer is the size of each SSE client's per-subscriber
+	// channel buffer. Sourced from ATLAS_SSE_SUBSCRIBER_BUFFER
+	// (default 1000). Slow clients that exceed this buffer drop events
+	// rather than back-pressuring the bus; raise this for ultra-bursty
+	// workloads, lower it to reclaim memory on small deployments.
+	SSESubscriberBuffer int
+
+	// --- Event bus ---
+
+	// BusRingCapacity is the size of the events.Bus snapshot ring buffer
+	// (used to replay recent events to newly-connected SSE clients).
+	// Sourced from ATLAS_BUS_RING_CAPACITY (default 256).
+	BusRingCapacity int
+
+	// --- NATS JetStream tuning ---
+
+	// NATSAckWait is the JetStream consumer AckWait — how long the server
+	// waits for an Ack before re-delivering a message. Sourced from
+	// ATLAS_NATS_ACK_WAIT (default 30s).
+	NATSAckWait time.Duration
+
+	// NATSMaxAckPending is the JetStream consumer MaxAckPending — the cap
+	// on un-acked in-flight messages per consumer. Sourced from
+	// ATLAS_NATS_MAX_ACK_PENDING (default 1024). Raise on high-throughput
+	// streams; lower to reduce memory pressure on a slow subscriber.
+	NATSMaxAckPending int
 }
 
 func getenv(key, def string) string {
@@ -46,6 +150,34 @@ func getenv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// loadDuration reads key from the environment and parses it as a time.Duration.
+// Empty / unparsable / non-positive values fall back to def with a Warn log
+// line so a typo does not refuse to start; operators will mistype.
+func loadDuration(key, defaultStr string, def time.Duration) time.Duration {
+	raw := getenv(key, defaultStr)
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		slog.Warn("config: invalid duration; falling back to default",
+			"key", key, "value", raw, "default", def)
+		return def
+	}
+	return d
+}
+
+// loadPositiveInt reads key from the environment and parses it as a positive
+// int. Empty / unparsable / non-positive values fall back to def with a Warn
+// log line.
+func loadPositiveInt(key, defaultStr string, def int) int {
+	raw := getenv(key, defaultStr)
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		slog.Warn("config: invalid int; falling back to default",
+			"key", key, "value", raw, "default", def)
+		return def
+	}
+	return n
 }
 
 // Load reads ATLAS_* environment variables into a Config. It does not validate
@@ -67,30 +199,68 @@ func Load() *Config {
 		pollMs = 2000
 	}
 
+	// Rate-limit budgets. Negative or non-numeric values fall back to the
+	// default; an explicit 0 means "disabled" and is preserved (escape hatch).
+	rate, err := strconv.Atoi(getenv("ATLAS_RATE_LIMIT_PER_MIN", "30"))
+	if err != nil || rate < 0 {
+		rate = 30
+	}
+	livezRate, err := strconv.Atoi(getenv("ATLAS_LIVEZ_RATE_LIMIT_PER_MIN", "240"))
+	if err != nil || livezRate < 0 {
+		livezRate = 240
+	}
+
 	return &Config{
-		ListenAddr:         getenv("ATLAS_LISTEN_ADDR", ":3002"),
-		LogLevel:           logLevel,
-		NATSURL:            getenv("ATLAS_NATS_URL", "nats://nats:4222"),
-		NATSMonURL:         getenv("ATLAS_NATS_MON_URL", "http://nats:8222"),
-		NATSDashboardURL:   getenv("ATLAS_NATS_DASHBOARD_URL", ""),
-		NATSTopURL:         getenv("ATLAS_NATS_TOP_URL", ""),
-		AgamemnonURL:       getenv("ATLAS_AGAMEMNON_URL", "http://agamemnon:8080"),
-		NestorURL:          getenv("ATLAS_NESTOR_URL", "http://nestor:8081"),
-		HermesURL:          getenv("ATLAS_HERMES_URL", "http://hermes:8080"),
-		PrometheusURL:      getenv("ATLAS_PROMETHEUS_URL", "http://prometheus:9090"),
-		GrafanaURL:         getenv("ATLAS_GRAFANA_URL", "http://grafana:3000"),
-		LokiURL:            getenv("ATLAS_LOKI_URL", "http://loki:3100"),
-		ExporterURL:        getenv("ATLAS_EXPORTER_URL", "http://argus-exporter:9100"),
-		MnemosyneSkillsDir: getenv("ATLAS_MNEMOSYNE_SKILLS_DIR", "/mnt/mnemosyne/skills"),
-		TailscaleSource:    getenv("ATLAS_TAILSCALE_SOURCE", "static"),
-		TailscaleAPIKey:    getenv("ATLAS_TAILSCALE_API_KEY", ""),
-		TailnetName:        getenv("ATLAS_TAILNET_NAME", ""),
-		TailscaleSocket:    getenv("ATLAS_TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock"),
-		AuthMode:           getenv("ATLAS_AUTH_MODE", "bearer"),
-		AuthUser:           getenv("ATLAS_AUTH_USER", ""),
-		AuthPass:           getenv("ATLAS_AUTH_PASS", ""),
-		AuthBearerToken:    getenv("ATLAS_AUTH_BEARER_TOKEN", ""),
-		PollAgamemnon:      time.Duration(pollMs) * time.Millisecond,
+		ListenAddr:           getenv("ATLAS_LISTEN_ADDR", ":3002"),
+		LogLevel:             logLevel,
+		NATSURL:              getenv("ATLAS_NATS_URL", "nats://nats:4222"),
+		NATSMonURL:           getenv("ATLAS_NATS_MON_URL", "http://nats:8222"),
+		NATSDashboardURL:     getenv("ATLAS_NATS_DASHBOARD_URL", ""),
+		NATSTopURL:           getenv("ATLAS_NATS_TOP_URL", ""),
+		AgamemnonURL:         getenv("ATLAS_AGAMEMNON_URL", "http://agamemnon:8080"),
+		NestorURL:            getenv("ATLAS_NESTOR_URL", "http://nestor:8081"),
+		HermesURL:            getenv("ATLAS_HERMES_URL", "http://hermes:8080"),
+		PrometheusURL:        getenv("ATLAS_PROMETHEUS_URL", "http://prometheus:9090"),
+		GrafanaURL:           getenv("ATLAS_GRAFANA_URL", "http://grafana:3000"),
+		LokiURL:              getenv("ATLAS_LOKI_URL", "http://loki:3100"),
+		ExporterURL:          getenv("ATLAS_EXPORTER_URL", "http://argus-exporter:9100"),
+		MnemosyneSkillsDir:   getenv("ATLAS_MNEMOSYNE_SKILLS_DIR", "/mnt/mnemosyne/skills"),
+		TailscaleSource:      getenv("ATLAS_TAILSCALE_SOURCE", "static"),
+		TailscaleAPIKey:      getenv("ATLAS_TAILSCALE_API_KEY", ""),
+		TailnetName:          getenv("ATLAS_TAILNET_NAME", ""),
+		TailscaleSocket:      getenv("ATLAS_TAILSCALE_SOCKET", "/var/run/tailscale/tailscaled.sock"),
+		AuthMode:             getenv("ATLAS_AUTH_MODE", "bearer"),
+		AuthUser:             getenv("ATLAS_AUTH_USER", ""),
+		AuthPass:             getenv("ATLAS_AUTH_PASS", ""),
+		AuthBearerToken:      getenv("ATLAS_AUTH_BEARER_TOKEN", ""),
+		PollAgamemnon:        time.Duration(pollMs) * time.Millisecond,
+		RateLimitPerMin:      rate,
+		LivezRateLimitPerMin: livezRate,
+
+		// HTTP server timeouts.
+		HTTPReadTimeout: loadDuration("ATLAS_HTTP_READ_TIMEOUT", "10s", 10*time.Second),
+		HTTPIdleTimeout: loadDuration("ATLAS_HTTP_IDLE_TIMEOUT", "60s", 60*time.Second),
+
+		// Upstream poller timeouts.
+		UpstreamTimeout:     loadDuration("ATLAS_UPSTREAM_TIMEOUT", "3s", 3*time.Second),
+		TailscaleAPITimeout: loadDuration("ATLAS_TAILSCALE_API_TIMEOUT", "10s", 10*time.Second),
+		TailscaleCLITimeout: loadDuration("ATLAS_TAILSCALE_CLI_TIMEOUT", "5s", 5*time.Second),
+
+		// Loop / refresh intervals.
+		ProbeInterval:            loadDuration("ATLAS_PROBE_INTERVAL", "10s", 10*time.Second),
+		NATSPollInterval:         loadDuration("ATLAS_NATS_POLL_INTERVAL", "5s", 5*time.Second),
+		TailscaleRefreshInterval: loadDuration("ATLAS_TAILSCALE_REFRESH_INTERVAL", "30s", 30*time.Second),
+
+		// SSE tuning.
+		SSEHeartbeatInterval: loadDuration("ATLAS_SSE_HEARTBEAT_INTERVAL", "15s", 15*time.Second),
+		SSESubscriberBuffer:  loadPositiveInt("ATLAS_SSE_SUBSCRIBER_BUFFER", "1000", 1000),
+
+		// Event bus.
+		BusRingCapacity: loadPositiveInt("ATLAS_BUS_RING_CAPACITY", "256", 256),
+
+		// NATS JetStream tuning.
+		NATSAckWait:       loadDuration("ATLAS_NATS_ACK_WAIT", "30s", 30*time.Second),
+		NATSMaxAckPending: loadPositiveInt("ATLAS_NATS_MAX_ACK_PENDING", "1024", 1024),
 	}
 }
 
@@ -106,7 +276,15 @@ func Load() *Config {
 func (c *Config) Validate(logger *slog.Logger) error {
 	var errs []error
 
-	switch AuthMode := strings.ToLower(c.AuthMode); AuthMode {
+	// Normalize the auth mode in place so the runtime middleware (which compares
+	// against the typed constants in server.AuthMode exactly) always sees a
+	// canonical lowercase value. Without this, ATLAS_AUTH_MODE=Bearer would
+	// pass Validate (because the local switch lowercased a copy) but the
+	// middleware would fall through its switch and previously fail-open. See
+	// also server.Middleware which now rejects unknown modes outright.
+	c.AuthMode = strings.ToLower(strings.TrimSpace(c.AuthMode))
+
+	switch c.AuthMode {
 	case "bearer":
 		if c.AuthBearerToken == "" {
 			errs = append(errs, errors.New("ATLAS_AUTH_MODE=bearer requires ATLAS_AUTH_BEARER_TOKEN to be set"))

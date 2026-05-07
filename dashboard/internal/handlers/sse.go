@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,10 +14,20 @@ import (
 
 // heartbeatNanos stores the heartbeat interval in nanoseconds.
 // Access via HeartbeatInterval / SetHeartbeatInterval for race safety.
+//
+// The composition root populates this from cfg.SSEHeartbeatInterval
+// (ATLAS_SSE_HEARTBEAT_INTERVAL, default 15s) at startup. Tests use the
+// SetHeartbeatInterval helper to override the value temporarily.
 var heartbeatNanos atomic.Int64
+
+// subscriberBufferAtomic stores the per-SSE-client channel buffer size.
+// The composition root populates this from cfg.SSESubscriberBuffer
+// (ATLAS_SSE_SUBSCRIBER_BUFFER, default 1000) at startup.
+var subscriberBufferAtomic atomic.Int64
 
 func init() {
 	heartbeatNanos.Store(int64(15 * time.Second))
+	subscriberBufferAtomic.Store(1000)
 }
 
 // HeartbeatInterval returns the current heartbeat interval.
@@ -24,9 +35,27 @@ func HeartbeatInterval() time.Duration {
 	return time.Duration(heartbeatNanos.Load())
 }
 
-// SetHeartbeatInterval sets the heartbeat interval. Safe for concurrent use; intended for tests.
+// SetHeartbeatInterval sets the heartbeat interval. Safe for concurrent use;
+// called once at startup from the composition root with cfg.SSEHeartbeatInterval
+// and otherwise used by tests that need a faster cadence.
 func SetHeartbeatInterval(d time.Duration) {
 	heartbeatNanos.Store(int64(d))
+}
+
+// SubscriberBuffer returns the current per-client channel buffer size.
+func SubscriberBuffer() int {
+	return int(subscriberBufferAtomic.Load())
+}
+
+// SetSubscriberBuffer sets the per-client channel buffer. Safe for concurrent
+// use; called once at startup from the composition root with
+// cfg.SSESubscriberBuffer. Values <= 0 are ignored so a typo does not produce
+// an unbuffered channel.
+func SetSubscriberBuffer(n int) {
+	if n <= 0 {
+		return
+	}
+	subscriberBufferAtomic.Store(int64(n))
 }
 
 // SSEMetrics is the metric-recording surface the SSE handler uses. The server
@@ -73,43 +102,22 @@ func (h *SSE) Connected() int64 {
 // subscriber channel on the bus and receives all matching events until the
 // client disconnects or the request context is cancelled.
 func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
+	flusher, ok := prepareSSEResponse(w)
 	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	topicFilter := parseTopicFilter(r.URL.Query().Get("topics"))
 
-	ctx := r.Context()
-
-	topicFilter := make(map[string]struct{})
-	if raw := r.URL.Query().Get("topics"); raw != "" {
-		for _, t := range strings.Split(raw, ",") {
-			t = strings.TrimSpace(t)
-			if allowedTopic(t) {
-				topicFilter[t] = struct{}{}
-			}
-		}
-	}
-
-	if replayStr := r.URL.Query().Get("replay"); replayStr != "" {
-		if n, err := strconv.Atoi(replayStr); err == nil && n > 0 {
-			for _, e := range h.bus.Snapshot(n) {
-				if err := writeEvent(w, e); err != nil {
-					return
-				}
-				flusher.Flush()
-			}
-		}
-	}
-
-	ch := h.bus.Subscribe(1000)
+	// Subscribe FIRST so that any event published from this point onward is
+	// captured on the live channel. We then take a snapshot AFTER the
+	// subscription is registered: events published in the small window
+	// between Subscribe and Snapshot will appear in BOTH the snapshot and
+	// the live channel, which is fine because we de-duplicate by Event.ID
+	// while draining the replay window. Doing it the other way round
+	// (Snapshot then Subscribe) loses any event published between the two
+	// calls — see audit finding "SSE replay race vs new publishes".
+	ch := h.bus.Subscribe(SubscriberBuffer())
 	defer h.bus.Unsubscribe(ch)
 
 	// Track this connection in the gauge so /metrics reflects live load.
@@ -119,6 +127,96 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cur := h.connected.Add(-1)
 		(*h.metrics.Load()).SetSSEConnectedClients(cur)
 	}()
+
+	// maxReplayedID is the highest Event.ID written to the wire during the
+	// replay phase. While maxReplayedID > 0 we are still inside the replay
+	// window and skip any live-channel event whose ID is <= maxReplayedID
+	// (it was already delivered as part of the snapshot). Once we receive a
+	// live event with ID > maxReplayedID the de-dup logic disengages.
+	maxReplayedID, ok := h.replaySnapshot(w, flusher, r.URL.Query().Get("replay"), topicFilter)
+	if !ok {
+		return
+	}
+
+	h.streamLoop(r.Context(), w, flusher, ch, topicFilter, maxReplayedID)
+}
+
+// prepareSSEResponse writes the SSE response headers and returns the flusher,
+// or false if the writer does not support flushing (in which case an error
+// response has already been written).
+func prepareSSEResponse(w http.ResponseWriter) (http.Flusher, bool) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return nil, false
+	}
+
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	return flusher, true
+}
+
+// parseTopicFilter parses the comma-separated topic list from the "topics"
+// query parameter and returns a set of allowed topics. An empty result means
+// "no filter — accept all topics."
+func parseTopicFilter(raw string) map[string]struct{} {
+	topicFilter := make(map[string]struct{})
+	if raw == "" {
+		return topicFilter
+	}
+	for _, t := range strings.Split(raw, ",") {
+		t = strings.TrimSpace(t)
+		if allowedTopic(t) {
+			topicFilter[t] = struct{}{}
+		}
+	}
+	return topicFilter
+}
+
+// replaySnapshot drains a bus snapshot of size derived from replayStr,
+// applying the topic filter. It returns the highest Event.ID written to the
+// wire (0 if no replay happened) and false if the client connection broke
+// during replay (caller should return).
+func (h *SSE) replaySnapshot(w http.ResponseWriter, flusher http.Flusher, replayStr string, topicFilter map[string]struct{}) (uint64, bool) {
+	if replayStr == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(replayStr)
+	if err != nil || n <= 0 {
+		return 0, true
+	}
+	var maxReplayedID uint64
+	for _, e := range h.bus.Snapshot(n) {
+		if !topicAllowed(topicFilter, e.Topic) {
+			continue
+		}
+		if err := writeEvent(w, e); err != nil {
+			return 0, false
+		}
+		flusher.Flush()
+		if e.ID > maxReplayedID {
+			maxReplayedID = e.ID
+		}
+	}
+	return maxReplayedID, true
+}
+
+// streamLoop is the main per-client event loop: it forwards live bus events
+// to the SSE wire, emits periodic heartbeats, and de-duplicates events whose
+// IDs were already delivered during replay.
+func (h *SSE) streamLoop(
+	ctx context.Context,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	ch <-chan events.Event,
+	topicFilter map[string]struct{},
+	maxReplayedID uint64,
+) {
+	dedupActive := maxReplayedID > 0
 
 	ticker := time.NewTicker(HeartbeatInterval())
 	defer ticker.Stop()
@@ -140,11 +238,17 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// Channel was closed (unsubscribed).
 				return
 			}
-			// Apply topic filter.
-			if len(topicFilter) > 0 {
-				if _, pass := topicFilter[e.Topic]; !pass {
+			// Skip events that were already delivered during the replay
+			// phase. Once we see an ID strictly greater than the highest
+			// replayed ID we are past the dedup window for good.
+			if dedupActive {
+				if e.ID <= maxReplayedID {
 					continue
 				}
+				dedupActive = false
+			}
+			if !topicAllowed(topicFilter, e.Topic) {
+				continue
 			}
 			if err := writeEvent(w, e); err != nil {
 				return
@@ -152,6 +256,16 @@ func (h *SSE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// topicAllowed reports whether topic passes the (possibly empty) filter set.
+// An empty filter means "accept all topics."
+func topicAllowed(filter map[string]struct{}, topic string) bool {
+	if len(filter) == 0 {
+		return true
+	}
+	_, pass := filter[topic]
+	return pass
 }
 
 // allowedTopics is the server-side whitelist for SSE topic subscriptions.

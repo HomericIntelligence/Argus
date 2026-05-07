@@ -1,5 +1,8 @@
 package catalog
 
+// ServiceDef describes a single backing service Atlas knows how to poll.
+// It captures the wire-level coordinates (port, protocol) plus the path used
+// for liveness checks and the optional UI path advertised on the dashboard.
 type ServiceDef struct {
 	Name       string
 	Port       int
@@ -8,6 +11,8 @@ type ServiceDef struct {
 	Proto      string
 }
 
+// KnownServices is the canonical, hard-coded service catalog used when no
+// dynamic discovery source is configured.
 var KnownServices = []ServiceDef{
 	{Name: "nats", Port: 4222, HealthPath: "/varz", Proto: "http"},
 	{Name: "nats-mon", Port: 8222, HealthPath: "/varz", Proto: "http"},

@@ -16,9 +16,9 @@ type fakePoller struct {
 	err  error
 }
 
-func (f *fakePoller) Name() string             { return f.name }
-func (f *fakePoller) LastSuccess() time.Time   { return f.last }
-func (f *fakePoller) LastError() error         { return f.err }
+func (f *fakePoller) Name() string           { return f.name }
+func (f *fakePoller) LastSuccess() time.Time { return f.last }
+func (f *fakePoller) LastError() error       { return f.err }
 
 // fakeNATS satisfies natsReadyLike for tests.
 type fakeNATS struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"time"
 )
@@ -23,23 +24,48 @@ type cliPeer struct {
 
 // CLISource invokes `tailscale status --json` to enumerate devices.
 // If the binary is not found or the socket is not present, Devices returns
-// an error immediately.
-type CLISource struct{}
+// an error immediately. Timeout is the subprocess wall-clock cap (default 5s
+// when zero), sourced from ATLAS_TAILSCALE_CLI_TIMEOUT.
+type CLISource struct {
+	Timeout time.Duration
+}
 
-// Devices runs `tailscale status --json` with a 5-second timeout.
+// Devices runs `tailscale status --json` with the configured subprocess
+// timeout (default 5s when c.Timeout is zero or negative).
 func (c CLISource) Devices(ctx context.Context) ([]Device, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	timeout := c.Timeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")
-	out, err := cmd.Output()
+	// We deliberately do NOT use cmd.Output() — it reads the subprocess
+	// stdout into an unbounded buffer, which would let a hostile or
+	// runaway tailscale binary stream gigabytes into Atlas (compose memory
+	// limit is 128 MiB). StdoutPipe + io.LimitReader caps the read at
+	// maxResponseBytes. See the constant in api.go for rationale.
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("tailscale cli: exec failed: %w", err)
+		return nil, fmt.Errorf("tailscale cli: stdout pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("tailscale cli: start: %w", err)
+	}
+	out, readErr := io.ReadAll(io.LimitReader(stdout, maxResponseBytes))
+	// Always Wait so we reap the subprocess regardless of read outcome.
+	waitErr := cmd.Wait()
+	if readErr != nil {
+		return nil, fmt.Errorf("tailscale cli: read stdout (cap %d bytes): %w", maxResponseBytes, readErr)
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("tailscale cli: exec failed: %w", waitErr)
 	}
 
 	var status cliStatus
 	if err := json.Unmarshal(out, &status); err != nil {
-		return nil, fmt.Errorf("tailscale cli: parse JSON: %w", err)
+		return nil, fmt.Errorf("tailscale cli: parse JSON (cap %d bytes): %w", maxResponseBytes, err)
 	}
 
 	devices := make([]Device, 0, 1+len(status.Peers))

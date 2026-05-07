@@ -1,3 +1,5 @@
+// Package events implements an in-process pub/sub event bus with a fixed-size
+// ring-buffer history and lock-free fan-out to registered subscribers.
 package events
 
 import (
@@ -15,13 +17,13 @@ type ringBuffer struct {
 	size int
 }
 
-func newRingBuffer(cap int) *ringBuffer {
-	if cap <= 0 {
-		cap = 1
+func newRingBuffer(capacity int) *ringBuffer {
+	if capacity <= 0 {
+		capacity = 1
 	}
 	return &ringBuffer{
-		buf: make([]Event, cap),
-		cap: cap,
+		buf: make([]Event, capacity),
+		cap: capacity,
 	}
 }
 
@@ -60,68 +62,142 @@ func (r *ringBuffer) Snapshot(n int) []Event {
 
 // Bus is an in-process pub/sub event bus with a ring-buffer history and
 // non-blocking fan-out to registered subscribers.
+//
+// The subscriber set is stored as an immutable slice behind an
+// atomic.Pointer (copy-on-write). Publish reads the slice with a single
+// atomic load and iterates it lock-free; only the ring-buffer push uses a
+// narrow mutex. Subscribe and Unsubscribe take a small mutex (subsMu),
+// build a NEW slice, and Store it. This eliminates the contention
+// bottleneck where N concurrent publishers would otherwise serialize on a
+// single write-lock during fan-out.
+//
+// Concurrency invariants:
+//
+//   - Subscribe stores the new slice before returning, so any Publish that
+//     starts after Subscribe returns will observe the new subscriber.
+//   - Unsubscribe atomically swaps in a new slice without the channel; any
+//     Publish whose Load() preceded the Store may still send one final event
+//     to the channel. Unsubscribe does NOT close the channel — closing while
+//     a concurrent Publish is mid-send would race. The caller is expected to
+//     drop the channel reference; the channel will be GC'd once no goroutine
+//     holds it. (The existing SSE handler exits its read loop before
+//     Unsubscribe runs, so this is the natural pattern.)
+//   - The drops counter is updated atomically and not protected by any lock.
 type Bus struct {
-	mu   sync.RWMutex
-	subs map[chan Event]struct{}
-	ring *ringBuffer
+	// subs is an *atomic.Pointer to an immutable []chan Event. Reads in
+	// Publish are lock-free.
+	subs atomic.Pointer[[]chan Event]
+	// subsMu serializes Subscribe / Unsubscribe writers building the new
+	// slice. It is never held during fan-out.
+	subsMu sync.Mutex
+
+	// ringMu protects the ring buffer; held only during Push/Snapshot.
+	ringMu sync.Mutex
+	ring   *ringBuffer
+
 	// drops counts events not delivered due to a full subscriber channel.
 	drops int64
+	// seq is a monotonically-increasing counter used to stamp Event.ID inside
+	// Publish so that consumers (e.g. the SSE handler) can de-duplicate events
+	// that appear in BOTH a ring-buffer snapshot and a live subscriber channel.
+	seq uint64
 }
 
 // NewBus returns a new Bus whose ring buffer holds at most ringCap events.
 func NewBus(ringCap int) *Bus {
-	return &Bus{
-		subs: make(map[chan Event]struct{}),
+	b := &Bus{
 		ring: newRingBuffer(ringCap),
 	}
+	empty := make([]chan Event, 0)
+	b.subs.Store(&empty)
+	return b
 }
 
 // Subscribe returns a new channel that will receive published events.
 // bufSize is the channel's buffer depth; use 0 for an unbuffered channel.
+//
+// Any Publish call that begins after Subscribe returns is guaranteed to see
+// the new subscriber.
 func (b *Bus) Subscribe(bufSize int) <-chan Event {
 	ch := make(chan Event, bufSize)
-	b.mu.Lock()
-	b.subs[ch] = struct{}{}
-	b.mu.Unlock()
+	b.subsMu.Lock()
+	cur := b.subs.Load()
+	next := make([]chan Event, len(*cur)+1)
+	copy(next, *cur)
+	next[len(*cur)] = ch
+	b.subs.Store(&next)
+	b.subsMu.Unlock()
 	return ch
 }
 
-// Unsubscribe removes ch from the subscriber set and closes it.
+// Unsubscribe removes ch from the subscriber set.
+//
+// Note: Unsubscribe does NOT close the channel. Closing while a concurrent
+// Publish (whose atomic Load preceded our Store) is mid-send would race and
+// could panic with "send on closed channel". Instead, after Unsubscribe
+// returns, any in-flight Publish that already loaded the previous slice may
+// deliver one final event; subsequent Publishes will not. Once the
+// caller's read loop exits and no goroutine retains the channel, GC
+// reclaims it.
 func (b *Bus) Unsubscribe(ch <-chan Event) {
-	b.mu.Lock()
-	// The map key type must be chan Event (bidirectional) so we need to
-	// recover it. We iterate to find the matching channel.
-	for k := range b.subs {
-		if k == ch {
-			delete(b.subs, k)
-			close(k)
+	b.subsMu.Lock()
+	cur := b.subs.Load()
+	idx := -1
+	for i, c := range *cur {
+		if c == ch {
+			idx = i
 			break
 		}
 	}
-	b.mu.Unlock()
+	if idx < 0 {
+		b.subsMu.Unlock()
+		return
+	}
+	next := make([]chan Event, 0, len(*cur)-1)
+	next = append(next, (*cur)[:idx]...)
+	next = append(next, (*cur)[idx+1:]...)
+	b.subs.Store(&next)
+	b.subsMu.Unlock()
 }
 
 // Publish records e in the ring buffer and attempts a non-blocking send to
 // every registered subscriber. Events dropped due to a full channel increment
 // the drop counter atomically.
+//
+// Publish stamps e.ID with a monotonically-increasing per-Bus sequence number
+// BEFORE pushing into the ring or fanning out to subscribers, overwriting any
+// value the caller provided. The ID stamped on the event in the ring buffer
+// matches the ID delivered to subscribers, allowing consumers (e.g. the SSE
+// handler) to de-duplicate events that appear in both a snapshot and the live
+// channel.
+//
+// Publish takes a narrow lock for the ring-buffer push only; the fan-out loop
+// reads the subscriber slice via a single atomic Load and runs lock-free, so
+// concurrent Publishes do not serialize on the subscriber set.
 func (b *Bus) Publish(e Event) {
-	b.mu.Lock()
+	e.ID = atomic.AddUint64(&b.seq, 1)
+	// Ring buffer push is a separate concern with its own narrow lock.
+	b.ringMu.Lock()
 	b.ring.Push(e)
-	for ch := range b.subs {
+	b.ringMu.Unlock()
+
+	// Fan-out: load the immutable subscriber slice and iterate without any
+	// lock. Each send is non-blocking; full channels increment drops.
+	subs := b.subs.Load()
+	for _, ch := range *subs {
 		select {
 		case ch <- e:
 		default:
 			atomic.AddInt64(&b.drops, 1)
 		}
 	}
-	b.mu.Unlock()
 }
 
 // Snapshot returns up to n of the most-recent events in chronological
 // (oldest-first) order.
 func (b *Bus) Snapshot(n int) []Event {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.ringMu.Lock()
+	defer b.ringMu.Unlock()
 	return b.ring.Snapshot(n)
 }
 

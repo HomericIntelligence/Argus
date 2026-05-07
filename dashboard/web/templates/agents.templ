@@ -21,18 +21,24 @@ func uniqueHosts(agents []store.AgentRecord) []string {
 
 templ AgentsPage(agents []store.AgentRecord, search, statusFilter, hostFilter string) {
 	@Layout("Agents") {
-		<div class="filter-bar">
-			<input type="text" name="search" value={ search } placeholder="Search name / host"
+		<div class="filter-bar" role="search" aria-label="Filter agents">
+			<label class="sr-only" for="agents-search">Search agents</label>
+			<input id="agents-search" type="text" name="search" value={ search } placeholder="Search name / host"
+				aria-label="Search agents by name or host"
 				hx-get="/partials/agents/table" hx-target="#agents-table-body"
 				hx-trigger="keyup changed delay:300ms" hx-include="[name='status'],[name='host']"/>
-			<select name="status" hx-get="/partials/agents/table" hx-target="#agents-table-body"
+			<label class="sr-only" for="agents-status-filter">Filter by status</label>
+			<select id="agents-status-filter" name="status" aria-label="Filter by status"
+				hx-get="/partials/agents/table" hx-target="#agents-table-body"
 				hx-trigger="change" hx-include="[name='search'],[name='host']">
 				<option value="">All statuses</option>
 				<option value="idle" selected={ statusFilter == "idle" }>idle</option>
 				<option value="running" selected={ statusFilter == "running" }>running</option>
 				<option value="error" selected={ statusFilter == "error" }>error</option>
 			</select>
-			<select name="host" hx-get="/partials/agents/table" hx-target="#agents-table-body"
+			<label class="sr-only" for="agents-host-filter">Filter by host</label>
+			<select id="agents-host-filter" name="host" aria-label="Filter by host"
+				hx-get="/partials/agents/table" hx-target="#agents-table-body"
 				hx-trigger="change" hx-include="[name='search'],[name='status']">
 				<option value="">All hosts</option>
 				for _, h := range uniqueHosts(agents) {
@@ -40,14 +46,14 @@ templ AgentsPage(agents []store.AgentRecord, search, statusFilter, hostFilter st
 				}
 			</select>
 		</div>
-		<table class="data-table">
+		<table class="data-table" aria-label="Agents">
 			<thead>
 				<tr>
-					<th>ID</th>
-					<th>Name</th>
-					<th>Host</th>
-					<th>Status</th>
-					<th>Updated</th>
+					<th scope="col">ID</th>
+					<th scope="col">Name</th>
+					<th scope="col">Host</th>
+					<th scope="col">Status</th>
+					<th scope="col">Updated</th>
 				</tr>
 			</thead>
 			<tbody id="agents-table-body"

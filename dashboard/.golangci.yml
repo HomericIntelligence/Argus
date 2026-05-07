@@ -16,6 +16,62 @@ linters:
     - gosec
     - errorlint   # require errors.Is / errors.As / %w wrapping
     - bodyclose   # ensure HTTP response bodies are closed
+    - revive      # modern golint replacement: naming, comments, control flow
+    - gocyclo     # cyclomatic complexity ceiling — keeps functions testable
+    - funlen      # function length ceiling — complements gocyclo
+    - dupl        # detect token-level code clones (DRY enforcement)
+  settings:
+    gocyclo:
+      # Industry-conventional ceiling for "well-tested" code. Anything above 15
+      # is hard to reason about and harder to test. PR #473 already split the
+      # known worst offender (Subscriber.Start), so this should be quiet.
+      min-complexity: 15
+    funlen:
+      # Industry-conventional thresholds. Complements gocyclo: a function can
+      # be long without being branchy (and vice versa). PR #473 split the
+      # longest offender (Subscriber.Start) and PR #477 fixed gocyclo's
+      # findings, so most functions should already be under these limits.
+      lines: 80
+      statements: 50
+    dupl:
+      # Token-clone threshold. Default (150) is too lenient for production code;
+      # 100 catches the kinds of duplicates the §4 audit called out (e.g. the
+      # 12× cache Set/Get pairs collapsed by PR #474) without false-positiving
+      # on small struct-field assignment blocks.
+      threshold: 100
+  exclusions:
+    rules:
+      # gocyclo/funlen/dupl measure production functions — table-driven tests
+      # legitimately have many cases / are long / repeat scenario setup, and
+      # that is the desired pattern, not a smell. Skip _test.go for these
+      # linters. (golangci-lint also excludes _test.go from dupl by default,
+      # but make it explicit alongside gocyclo/funlen.)
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - funlen
+          - dupl
+
+# Formatters run separately from linters in golangci-lint v2. gofumpt is a
+# stricter superset of gofmt: tighter import groups, no empty line before a
+# closing brace of a single-statement block, etc. The §4 audit called out the
+# lack of formatter enforcement; this closes that gap.
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      # -extra enables additional stricter rules (e.g. normalizing for-range
+      # statements, flattening single-statement blocks). The diff at default
+      # vs. -extra is identical for this codebase, so we take -extra for the
+      # strongest guarantees going forward.
+      extra-rules: true
+  exclusions:
+    paths:
+      # Generated templ files (_templ.go) are produced by the templ codegen;
+      # their formatting is owned by the generator, not by hand. Skip gofumpt
+      # for them so re-running templ doesn't fight the formatter.
+      - ".*_templ\\.go$"
 
 # G401 (weak crypto, e.g. md5/sha1) and G501 (md5 import) are intentionally
 # NOT excluded. Atlas does not use weak crypto in production code; if a future

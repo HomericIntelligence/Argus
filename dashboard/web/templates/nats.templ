@@ -14,6 +14,7 @@ func itoa(n int) string               { return strconv.Itoa(n) }
 
 templ NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsDashURL, natsTopURL, natsMon string) {
 	@Layout("NATS") {
+		<h1 class="sr-only">NATS</h1>
 		<h2 class="section-title">JetStream Streams</h2>
 		<div
 			id="nats-streams"
@@ -56,13 +57,13 @@ templ NATSPage(streams []store.NATSStreamInfo, conns []store.NATSConnInfo, natsD
 }
 
 templ NATSStreamRows(streams []store.NATSStreamInfo) {
-	<table class="data-table">
+	<table class="data-table" aria-label="JetStream streams">
 		<thead>
 			<tr>
-				<th>Stream</th>
-				<th>Subjects</th>
-				<th>Messages</th>
-				<th>Consumers</th>
+				<th scope="col">Stream</th>
+				<th scope="col">Subjects</th>
+				<th scope="col">Messages</th>
+				<th scope="col">Consumers</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -71,7 +72,7 @@ templ NATSStreamRows(streams []store.NATSStreamInfo) {
 			} else {
 				for _, s := range streams {
 					<tr>
-						<td class="mono">{ s.Name }</td>
+						<th scope="row" class="mono">{ s.Name }</th>
 						<td class="mono">{ joinSubjects(s.Subjects) }</td>
 						<td class="mono">{ formatUint(s.Messages) }</td>
 						<td class="mono">{ itoa(s.Consumers) }</td>
@@ -83,15 +84,15 @@ templ NATSStreamRows(streams []store.NATSStreamInfo) {
 }
 
 templ NATSConnRows(conns []store.NATSConnInfo) {
-	<table class="data-table">
+	<table class="data-table" aria-label="NATS connections">
 		<thead>
 			<tr>
-				<th>Name</th>
-				<th>IP</th>
-				<th>Subs</th>
-				<th>In</th>
-				<th>Out</th>
-				<th>Uptime</th>
+				<th scope="col">Name</th>
+				<th scope="col">IP</th>
+				<th scope="col">Subs</th>
+				<th scope="col">In</th>
+				<th scope="col">Out</th>
+				<th scope="col">Uptime</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -100,7 +101,7 @@ templ NATSConnRows(conns []store.NATSConnInfo) {
 			} else {
 				for _, c := range conns {
 					<tr>
-						<td>{ c.Name }</td>
+						<th scope="row">{ c.Name }</th>
 						<td class="mono">{ c.IP }</td>
 						<td class="mono">{ itoa(c.Subscriptions) }</td>
 						<td class="mono">{ formatInt(c.InMsgs) }</td>

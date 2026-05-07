@@ -171,7 +171,7 @@ func itoa(i int) string {
 // registry. 200 with a per-component JSON body if every check is OK; 503 with
 // the same body shape if any check fails.
 func MakeReadyzHandler(reg *ReadyRegistry) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		snap := reg.Snapshot()
 		body := map[string]any{
 			"ok":         true,

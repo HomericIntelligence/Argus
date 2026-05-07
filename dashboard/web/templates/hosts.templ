@@ -4,10 +4,10 @@ import "github.com/HomericIntelligence/atlas/internal/store"
 
 templ HostsPage(devices []store.HostView) {
 	@Layout("Hosts") {
-		<div class="hosts-grid">
+		<section class="hosts-grid" aria-label="Hosts">
 			for _, d := range devices {
 				@HostCard(d)
 			}
-		</div>
+		</section>
 	}
 }
