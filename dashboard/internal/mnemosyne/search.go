@@ -2,6 +2,9 @@ package mnemosyne
 
 import "strings"
 
+// Filter returns the subset of skills whose Name, Description, Category, or
+// Tags contain every whitespace-separated token in query (case-insensitive).
+// An empty query returns the input slice unchanged.
 func Filter(skills []Skill, query string) []Skill {
 	if query == "" {
 		return skills

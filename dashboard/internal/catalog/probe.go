@@ -1,3 +1,5 @@
+// Package catalog enumerates the well-known Atlas backing services and probes
+// each host for their availability.
 package catalog
 
 import (

@@ -91,7 +91,7 @@ func TestRecordResult_ZeroElapsedSkipsHistogram(t *testing.T) {
 	}
 }
 
-func TestSetMetrics_Concurrent(t *testing.T) {
+func TestSetMetrics_Concurrent(_ *testing.T) {
 	b := newBase("test", nil)
 	done := make(chan struct{})
 	go func() {
@@ -106,7 +106,7 @@ func TestSetMetrics_Concurrent(t *testing.T) {
 	<-done
 }
 
-func TestNoopMetrics_IsDefault(t *testing.T) {
+func TestNoopMetrics_IsDefault(_ *testing.T) {
 	b := newBase("test", nil)
 	// recordResult must not panic even though we never set a real sink.
 	b.recordResult(nil, time.Millisecond)

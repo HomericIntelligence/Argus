@@ -72,7 +72,7 @@ func TestAgamemnonPoller_FetchUpdatesCache(t *testing.T) {
 }
 
 func TestAgamemnonPoller_HTTP500_CacheNotUpdated(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -216,7 +216,7 @@ func TestNATSPoller_FetchUpdatesCache(t *testing.T) {
 }
 
 func TestNATSPoller_VarzHTTP500_CacheNotUpdated(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "error", http.StatusInternalServerError)
 	}))
 	defer srv.Close()

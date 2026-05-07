@@ -315,7 +315,7 @@ type blockingResponseWriter struct {
 	ctx context.Context
 }
 
-func (b *blockingResponseWriter) Write(p []byte) (int, error) {
+func (b *blockingResponseWriter) Write(_ []byte) (int, error) {
 	<-b.ctx.Done()
 	return 0, b.ctx.Err()
 }

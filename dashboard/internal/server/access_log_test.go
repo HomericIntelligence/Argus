@@ -26,7 +26,7 @@ func TestAccessLog_DoesNotLeakQueryString(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
 
-	handler := accessLog(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := accessLog(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -56,7 +56,7 @@ func TestAccessLog_DoesNotLeakQueryString(t *testing.T) {
 func TestAccessLog_LogsPathAndStatus(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
-	handler := accessLog(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := accessLog(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 

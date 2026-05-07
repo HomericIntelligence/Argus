@@ -1,3 +1,5 @@
+// Package poller implements the periodic JSON-poll loops that fetch state
+// from Atlas's upstream services (Agamemnon, NATS monitoring) into the cache.
 package poller
 
 import (

@@ -26,7 +26,7 @@ func TestGetJSON_BoundedByMaxResponseBytes(t *testing.T) {
 
 	// Server streams a JSON array of stringified zeros that is much
 	// larger than the cap (~10 KiB > 256 B).
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`[`))
@@ -57,7 +57,7 @@ func TestGetJSON_BoundedByMaxResponseBytes(t *testing.T) {
 // JSON response decodes fine. Locks in that the LimitReader does not
 // regress correct behaviour on realistic payloads.
 func TestGetJSON_AcceptsPayloadsUnderCap(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`["alpha","beta","gamma"]`))
 	}))

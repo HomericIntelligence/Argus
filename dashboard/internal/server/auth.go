@@ -11,6 +11,7 @@ import (
 // AuthMode represents the authentication scheme for the Atlas dashboard.
 type AuthMode string
 
+// AuthMode constants are the canonical values accepted by ATLAS_AUTH_MODE.
 const (
 	AuthNone   AuthMode = "none"
 	AuthBasic  AuthMode = "basic"

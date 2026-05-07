@@ -83,13 +83,13 @@ func (s *Server) routes() http.Handler {
 // handleLivez is the unauthenticated liveness probe. It returns 200 if the
 // process is up — it does NOT validate upstream connectivity. Use /readyz for
 // component-level readiness aggregation.
-func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleLivez(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))
 }
 
-func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleOverview(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(overviewHTML)
 }

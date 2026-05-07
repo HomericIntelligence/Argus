@@ -1,3 +1,5 @@
+// Package config loads and validates the ATLAS_* environment variables that
+// drive the Atlas dashboard runtime configuration.
 package config
 
 import (
@@ -11,6 +13,9 @@ import (
 	"time"
 )
 
+// Config holds the runtime-tunable knobs for the Atlas dashboard. Every
+// field is sourced from an ATLAS_* environment variable in Load and may be
+// validated by Validate before use.
 type Config struct {
 	ListenAddr         string
 	LogLevel           slog.Level
