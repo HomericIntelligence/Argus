@@ -216,6 +216,11 @@ Templates use [templ](https://templ.guide/). Generated `*_templ.go` files are co
 templ generate ./...
 ```
 
+The `templ-generate` pre-commit hook (see the repo's
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#pre-commit-hooks)) runs this for you on every commit
+and fails if the committed `*_templ.go` files drift from the `.templ` sources — but the
+manual command above is still the fastest way to refresh during development.
+
 ## Operating Atlas
 
 - [`docs/architecture.md`](docs/architecture.md) — component composition, concurrency model, resource bounds, security posture.
