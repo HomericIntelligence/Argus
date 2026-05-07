@@ -4,11 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// maxResponseBytes caps how much we will read from any upstream JSON
+// endpoint before giving up. Defends against a compromised or hostile
+// upstream (Agamemnon, Nestor, NATS monitoring) streaming a multi-GB
+// response and OOM'ing Atlas (the compose memory limit is 128 MiB).
+//
+// 16 MiB is an order of magnitude above any realistic /v1/agents,
+// /varz, /jsz?detail=1, or /connz payload — even a 1k-stream JetStream
+// cluster's /jsz?detail=1 fits comfortably inside it — while staying
+// well below the OOM threshold.
+//
+// Declared as a var (not a const) so tests can lower it without staging
+// a 16 MiB fake response. Production paths must NEVER mutate this; if a
+// future deployment legitimately needs a higher ceiling, prefer adding a
+// config knob over runtime mutation.
+var maxResponseBytes int64 = 16 << 20 // 16 MiB
 
 // MetricsSink is the metric-recording surface a poller needs. *server.AtlasMetrics
 // satisfies this interface; tests can pass a no-op or a counting fake. Pollers
@@ -120,8 +137,12 @@ func (b *base) getJSON(ctx context.Context, url string, dst any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-		return fmt.Errorf("decode %s: %w", url, err)
+	// Cap how much we will pull from the upstream before failing. See
+	// maxResponseBytes above for the rationale; io.LimitReader returns EOF
+	// at the cap, which the JSON decoder surfaces as a syntax error if the
+	// payload was actually truncated mid-document.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(dst); err != nil {
+		return fmt.Errorf("decode %s (cap %d bytes): %w", url, maxResponseBytes, err)
 	}
 	return nil
 }
