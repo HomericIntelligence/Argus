@@ -9,3 +9,7 @@ data/
 secrets/
 configs/nginx/htpasswd
 configs/nginx/htpasswd.generated
+
+# air hot-reload build artifacts (see `just dev` / dashboard/.air.toml)
+dashboard/tmp/
+dashboard/build-errors.log

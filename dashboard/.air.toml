@@ -1,0 +1,63 @@
+# air config for the Atlas dashboard.
+# https://github.com/air-verse/air
+#
+# Pair this with `templ generate --watch` (run from `dashboard/` in a
+# separate process). air watches GENERATED Go files (including
+# web/templates/*_templ.go that templ rewrites on .templ changes) and
+# rebuilds + restarts the binary; templ owns the .templ -> _templ.go
+# pipeline. The two watchers stay in their own lanes.
+#
+# Run via `just dev` from the repo root.
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Build the dashboard entry point.
+  cmd = "go build -o ./tmp/main ./cmd/argus-dashboard"
+  bin = "./tmp/main"
+  full_bin = "./tmp/main"
+
+  # Watch source roots that produce the binary.
+  include_dir = ["cmd", "internal", "web/templates"]
+  include_ext = ["go"]
+
+  # Don't react to .templ source edits — templ generate --watch handles
+  # those and writes _templ.go which we *do* watch (above).
+  exclude_regex = ["_test\\.go$", ".*\\.templ$"]
+
+  # Keep test directories, lint cache, and coverage out of the rebuild loop.
+  exclude_dir = ["tests", "tmp", ".golangci-cache", "web/static", "docs", "scripts"]
+  exclude_file = ["coverage.out"]
+
+  # Only react to actual content writes, not stat-only events.
+  exclude_unchanged = true
+  follow_symlink = false
+
+  # Coalesce a burst of saves into a single rebuild (editors may write
+  # multiple times in a few ms when saving).
+  delay = 200  # ms
+
+  # Surface build errors but don't kill the watcher.
+  stop_on_error = false
+  send_interrupt = true
+  kill_delay = "500ms"
+
+  log = "build-errors.log"
+
+[log]
+  time = true
+
+[color]
+  # Colorize when stdout is a TTY; air falls back to plain on pipes.
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = false
+  keep_scroll = true

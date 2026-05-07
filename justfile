@@ -48,6 +48,13 @@ validate:
     {{compose_cmd}} config --quiet
     @echo "Config is valid."
 
+# Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
+dev:
+    @command -v templ >/dev/null 2>&1 || { echo "templ not found on PATH. Install: go install github.com/a-h/templ/cmd/templ@v0.3.1001"; exit 1; }
+    @command -v air >/dev/null 2>&1 || { echo "air not found on PATH. Install: go install github.com/air-verse/air@latest"; exit 1; }
+    @test -f .env || { echo ".env missing. Run ./scripts/setup.sh first."; exit 1; }
+    @./scripts/dev-watch.sh
+
 # Run local test suite
 test:
     python3 -m pytest tests/ -v 2>/dev/null || python3 -m unittest discover -s tests -v
