@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -224,4 +227,191 @@ func TestMiddleware_UnknownModeFailsClosed(t *testing.T) {
 			t.Errorf("mode %q: expected 401, got %d (middleware must fail closed on unknown mode)", string(mode), rr.Code)
 		}
 	}
+}
+
+// captureSlog redirects slog.Default() into a buffer for the duration of
+// the test, returning the buffer and a restore function. Tests must call
+// the restore function in a t.Cleanup so failures don't leak the test
+// logger into other tests running in parallel.
+func captureSlog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	prev := slog.Default()
+	var buf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+// TestAuth_LogsFailures asserts that every failed auth path emits exactly
+// one slog.Warn line with the documented field set, and that the line
+// NEVER contains the offered credential or token. Closes the §8 audit
+// finding "no audit-log channel for security events; failed auth attempts
+// are silently 401'd; not even an slog.Warn in checkBasic/checkBearer."
+//
+// Each case captures slog output, makes one request, and asserts:
+//   - exactly one "auth failure" line was emitted
+//   - the expected mode + reason discriminator are present
+//   - the offered credential/token does NOT appear anywhere in the line
+func TestAuth_LogsFailures(t *testing.T) {
+	const offeredSecret = "REDACTED-MUST-NEVER-APPEAR-IN-LOGS"
+
+	cases := []struct {
+		name       string
+		setup      func() http.Handler
+		req        func() *http.Request
+		wantMode   string
+		wantReason string
+	}{
+		{
+			name:  "bearer missing header",
+			setup: func() http.Handler { return applyMiddleware(AuthBearer, "", "", "secret", okHandler) },
+			req: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/readyz", nil)
+			},
+			wantMode:   "bearer",
+			wantReason: "missing-header",
+		},
+		{
+			name:  "bearer wrong header token",
+			setup: func() http.Handler { return applyMiddleware(AuthBearer, "", "", "secret", okHandler) },
+			req: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+				r.Header.Set("Authorization", "Bearer "+offeredSecret)
+				return r
+			},
+			wantMode:   "bearer",
+			wantReason: "wrong-token",
+		},
+		{
+			name:  "bearer wrong query token",
+			setup: func() http.Handler { return applyMiddleware(AuthBearer, "", "", "secret", okHandler) },
+			req: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/events?token="+offeredSecret, nil)
+			},
+			wantMode:   "bearer",
+			wantReason: "wrong-token",
+		},
+		{
+			name:  "bearer empty configured token",
+			setup: func() http.Handler { return applyMiddleware(AuthBearer, "", "", "", okHandler) },
+			req: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+				r.Header.Set("Authorization", "Bearer "+offeredSecret)
+				return r
+			},
+			wantMode:   "bearer",
+			wantReason: "empty-configured-token",
+		},
+		{
+			name:  "basic missing header",
+			setup: func() http.Handler { return applyMiddleware(AuthBasic, "u", "p", "", okHandler) },
+			req: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/readyz", nil)
+			},
+			wantMode:   "basic",
+			wantReason: "missing-header",
+		},
+		{
+			name:  "basic wrong creds",
+			setup: func() http.Handler { return applyMiddleware(AuthBasic, "u", "p", "", okHandler) },
+			req: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+				bad := base64.StdEncoding.EncodeToString([]byte("wronguser:" + offeredSecret))
+				r.Header.Set("Authorization", "Basic "+bad)
+				return r
+			},
+			wantMode:   "basic",
+			wantReason: "wrong-creds",
+		},
+		{
+			name:  "basic malformed base64",
+			setup: func() http.Handler { return applyMiddleware(AuthBasic, "u", "p", "", okHandler) },
+			req: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+				r.Header.Set("Authorization", "Basic !!!not-b64!!!")
+				return r
+			},
+			wantMode:   "basic",
+			wantReason: "malformed-base64",
+		},
+		{
+			name:  "unknown mode",
+			setup: func() http.Handler { return applyMiddleware(AuthMode("Bearer"), "", "", "secret", okHandler) },
+			req: func() *http.Request {
+				r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+				r.Header.Set("Authorization", "Bearer "+offeredSecret)
+				return r
+			},
+			wantMode:   "Bearer",
+			wantReason: "unknown-mode",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := captureSlog(t)
+			handler := tc.setup()
+
+			handler.ServeHTTP(httptest.NewRecorder(), tc.req())
+
+			out := buf.String()
+			lines := nonEmptyLines(out)
+			if len(lines) != 1 {
+				t.Fatalf("want exactly one log line, got %d:\n%s", len(lines), out)
+			}
+			line := lines[0]
+			for _, want := range []string{
+				`level=WARN`,
+				`msg="auth failure"`,
+				`mode=` + quoteIfNeeded(tc.wantMode),
+				`reason=` + quoteIfNeeded(tc.wantReason),
+			} {
+				if !strings.Contains(line, want) {
+					t.Errorf("log line missing %q.\nfull line: %s", want, line)
+				}
+			}
+			if strings.Contains(out, offeredSecret) {
+				t.Fatalf("LOG LEAKED THE OFFERED CREDENTIAL — this is a security regression.\noutput:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestAuth_NoLogOnSuccess asserts the happy path does not log — only
+// failures should be in the security event stream.
+func TestAuth_NoLogOnSuccess(t *testing.T) {
+	buf := captureSlog(t)
+	handler := applyMiddleware(AuthBearer, "", "", "secret", okHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if out := buf.String(); strings.Contains(out, "auth failure") {
+		t.Fatalf("happy path must not emit auth-failure log; got: %s", out)
+	}
+}
+
+// nonEmptyLines splits s on newlines and drops any empty trailing line
+// from a final \n. Avoids spurious "want 1 got 2" failures.
+func nonEmptyLines(s string) []string {
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// quoteIfNeeded wraps a value in double quotes if slog's TextHandler
+// would do so. slog quotes strings containing whitespace or special
+// characters; bare alphanumerics with hyphens are not quoted. Our
+// expected mode/reason values fall into the bare camp, but be defensive
+// in case future cases include spaces.
+func quoteIfNeeded(v string) string {
+	if strings.ContainsAny(v, " \t\"=") || v == "" {
+		return `"` + v + `"`
+	}
+	return v
 }
