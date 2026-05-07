@@ -1,3 +1,5 @@
+// Package store provides the in-memory cache that backs the Atlas dashboard's
+// API responses, populated by the various pollers and the NATS subscriber.
 package store
 
 import (

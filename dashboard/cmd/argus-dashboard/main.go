@@ -1,3 +1,6 @@
+// Command argus-dashboard is the Atlas dashboard binary: it loads
+// configuration, wires the cache/bus/pollers/HTTP server, and serves the
+// observability UI for the HomericIntelligence mesh.
 package main
 
 import (

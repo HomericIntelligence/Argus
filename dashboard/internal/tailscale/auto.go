@@ -23,11 +23,11 @@ func (a AutoSource) Devices(ctx context.Context) ([]Device, error) {
 	if a.Cfg != nil {
 		cli.Timeout = a.Cfg.TailscaleCLITimeout
 	}
-	if devices, err := cli.Devices(ctx); err == nil {
+	devices, err := cli.Devices(ctx)
+	if err == nil {
 		return devices, nil
-	} else {
-		slog.Debug("tailscale auto: CLI source failed, trying next", "err", err)
 	}
+	slog.Debug("tailscale auto: CLI source failed, trying next", "err", err)
 
 	// 2. Try API source if credentials are available.
 	if a.Cfg != nil && a.Cfg.TailscaleAPIKey != "" && a.Cfg.TailnetName != "" {
@@ -36,11 +36,11 @@ func (a AutoSource) Devices(ctx context.Context) ([]Device, error) {
 			Tailnet: a.Cfg.TailnetName,
 			Timeout: a.Cfg.TailscaleAPITimeout,
 		}
-		if devices, err := api.Devices(ctx); err == nil {
-			return devices, nil
-		} else {
-			slog.Debug("tailscale auto: API source failed, falling back to static", "err", err)
+		apiDevices, apiErr := api.Devices(ctx)
+		if apiErr == nil {
+			return apiDevices, nil
 		}
+		slog.Debug("tailscale auto: API source failed, falling back to static", "err", apiErr)
 	}
 
 	// 3. Fall back to static -- never errors.

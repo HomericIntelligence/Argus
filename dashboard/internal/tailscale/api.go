@@ -1,3 +1,6 @@
+// Package tailscale discovers Tailscale device inventory via the CLI, the
+// REST API, or a static configuration source, with an auto-source that tries
+// each in priority order.
 package tailscale
 
 import (

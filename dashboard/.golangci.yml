@@ -16,6 +16,7 @@ linters:
     - gosec
     - errorlint   # require errors.Is / errors.As / %w wrapping
     - bodyclose   # ensure HTTP response bodies are closed
+    - revive      # modern golint replacement: naming, comments, control flow
 
 # G401 (weak crypto, e.g. md5/sha1) and G501 (md5 import) are intentionally
 # NOT excluded. Atlas does not use weak crypto in production code; if a future

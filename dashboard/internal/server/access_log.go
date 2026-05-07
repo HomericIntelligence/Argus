@@ -1,3 +1,6 @@
+// Package server constructs the Atlas HTTP server: routes, middleware
+// (auth, rate-limit, access log, security headers), and the readiness
+// registry that the composition root populates.
 package server
 
 import (

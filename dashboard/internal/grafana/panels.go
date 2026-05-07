@@ -1,3 +1,5 @@
+// Package grafana describes the Grafana panels Atlas embeds via d-solo
+// iframes and helpers for constructing their URLs.
 package grafana
 
 // Panel describes a single Grafana panel that Atlas embeds via d-solo iframe.

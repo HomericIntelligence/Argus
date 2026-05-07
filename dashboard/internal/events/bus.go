@@ -1,3 +1,5 @@
+// Package events implements an in-process pub/sub event bus with a fixed-size
+// ring-buffer history and lock-free fan-out to registered subscribers.
 package events
 
 import (
@@ -15,13 +17,13 @@ type ringBuffer struct {
 	size int
 }
 
-func newRingBuffer(cap int) *ringBuffer {
-	if cap <= 0 {
-		cap = 1
+func newRingBuffer(capacity int) *ringBuffer {
+	if capacity <= 0 {
+		capacity = 1
 	}
 	return &ringBuffer{
-		buf: make([]Event, cap),
-		cap: cap,
+		buf: make([]Event, capacity),
+		cap: capacity,
 	}
 }
 

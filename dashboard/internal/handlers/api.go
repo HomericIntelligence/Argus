@@ -1,3 +1,6 @@
+// Package handlers contains the HTTP request handlers exposed by the Atlas
+// dashboard: REST/JSON API endpoints, the SSE event stream, and the host
+// detail pages.
 package handlers
 
 import (
@@ -21,7 +24,7 @@ func NewHosts(cache *store.Cache) *Hosts {
 }
 
 // ServeHTTP implements http.Handler.
-func (h *Hosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Hosts) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	views := store.BuildHostViews(h.cache)
 
 	w.Header().Set("Content-Type", "application/json")

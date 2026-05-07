@@ -23,7 +23,7 @@ func TestAPISource_BoundedByMaxResponseBytes(t *testing.T) {
 	maxResponseBytes = 256
 	t.Cleanup(func() { maxResponseBytes = prev })
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		// Stream ~10 KiB of valid-looking device array — well over the cap.
 		_, _ = w.Write([]byte(`{"devices":[{"hostname":"`))

@@ -12,7 +12,7 @@ import (
 )
 
 // okHandler returns 200 OK for any request; used as the downstream handler in tests.
-var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+var okHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 })
 

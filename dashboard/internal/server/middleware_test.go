@@ -28,7 +28,7 @@ func minimalServer(t *testing.T, grafana, loki, natsDash string) *Server {
 func runMiddleware(t *testing.T, s *Server) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	s.securityHeaders(next).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
