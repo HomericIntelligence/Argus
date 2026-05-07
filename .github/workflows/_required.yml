@@ -280,8 +280,8 @@ jobs:
           path: gitleaks.sarif
           retention-days: 90
 
-  build:
-    name: build
+  config-validate:
+    name: config-validate
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -295,11 +295,11 @@ jobs:
             elif command -v hclfmt &>/dev/null; then
               echo "$HCL_FILES" | xargs -I{} hclfmt --check {}
             else
-              echo "::notice::HCL files found but no nomad/hclfmt available; validating YAML configs as build step"
+              echo "::notice::HCL files found but no nomad/hclfmt available; falling back to YAML validation"
               yamllint -c .yamllint.yaml .
             fi
           else
-            echo "::notice::No build artifacts; config validation is the build step"
+            echo "::notice::No HCL files found; validating YAML configs"
             yamllint -c .yamllint.yaml .
           fi
 
