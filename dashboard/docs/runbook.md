@@ -102,11 +102,13 @@ interval** (default poll = 5 s, so the budget is ~10 s). Beyond that, `/readyz` 
 **Likely causes & checks**
 
 1. **Upstream service is down.** Atlas reads via plain HTTP — try the same URL Atlas uses:
+
    ```bash
    curl -fsS "$ATLAS_AGAMEMNON_URL/v1/agents"
    curl -fsS "$ATLAS_NATS_MON_URL/varz"
    curl -fsS "$ATLAS_NATS_MON_URL/jsz"
    ```
+
    If those fail from the Atlas host, fix the upstream first.
 2. **Slow upstream.** Atlas uses 3 s HTTP timeouts on outbound polls. A consistently slow
    upstream (>3 s response) will look like a permanent error in metrics. Increase
@@ -136,9 +138,11 @@ This is almost always one of:
   (`agent`, `task`, `myrmidon`, `research`, `pipeline`, `log`) all originate there.
 - **No upstream activity** — Atlas only fans out events that arrive from NATS or from its
   own pollers. If nothing is publishing, nothing arrives. Verify by publishing a test event:
+
   ```bash
   nats pub hi.agents.demo '{"id":"demo","status":"ok"}'
   ```
+
   An attached subscriber should immediately fan that out as `event: agent`.
 - **Topic filter excluding everything** — clients can constrain via `?topics=agent,task`.
   Drop the parameter to subscribe to all eight topics (six NATS-derived plus `nats`/`host`
