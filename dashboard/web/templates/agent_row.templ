@@ -7,11 +7,13 @@ templ AgentRow(a store.AgentRecord) {
 		hx-get={ agentPath(a.ID) }
 		hx-target="main"
 		hx-push-url="true"
-		style="cursor:pointer">
-		<td class="mono">{ shortID(a.ID) }</td>
+		tabindex="0"
+		role="link"
+		aria-label={ "Open agent " + a.Name }>
+		<th scope="row" class="mono">{ shortID(a.ID) }</th>
 		<td>{ a.Name }</td>
 		<td class="mono">{ a.Host }</td>
-		<td><span class={ "badge " + agentStatusClass(a.Status) }>{ a.Status }</span></td>
+		<td><span class={ "badge " + agentStatusClass(a.Status) } role="status" aria-label={ "Status: " + a.Status }>{ a.Status }</span></td>
 		<td class="ts mono">{ a.UpdatedAt.Format("15:04:05") }</td>
 	</tr>
 }

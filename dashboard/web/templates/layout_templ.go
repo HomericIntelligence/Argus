@@ -42,7 +42,7 @@ func Layout(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " — HomericIntelligence</title><link rel=\"stylesheet\" href=\"/static/css/atlas.css\"><script src=\"https://unpkg.com/htmx.org@1.9.12\" defer></script><script src=\"https://unpkg.com/htmx-ext-sse@2.2.2/sse.js\" defer></script><script src=\"/static/js/atlas.js\" defer></script></head><body><nav><span class=\"brand\">Atlas</span> <a href=\"/\">Overview</a> <a href=\"/hosts\">Hosts</a> <a href=\"/agents\">Agents</a> <a href=\"/tasks\">Tasks</a> <a href=\"/nats\">NATS</a> <a href=\"/grafana\">Grafana</a> <a href=\"/mnemosyne\">Mnemosyne</a> <span class=\"conn-dot\" title=\"SSE disconnected\"></span></nav><main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " — HomericIntelligence</title><link rel=\"stylesheet\" href=\"/static/css/atlas.css\"><script src=\"https://unpkg.com/htmx.org@1.9.12\" defer></script><script src=\"https://unpkg.com/htmx-ext-sse@2.2.2/sse.js\" defer></script><script src=\"/static/js/atlas.js\" defer></script></head><body><a class=\"sr-only\" href=\"#main-content\">Skip to main content</a><nav aria-label=\"Primary\"><span class=\"brand\">Atlas</span> <a href=\"/\">Overview</a> <a href=\"/hosts\">Hosts</a> <a href=\"/agents\">Agents</a> <a href=\"/tasks\">Tasks</a> <a href=\"/nats\">NATS</a> <a href=\"/grafana\">Grafana</a> <a href=\"/mnemosyne\">Mnemosyne</a> <span class=\"conn-dot\" role=\"status\" aria-live=\"polite\" aria-label=\"SSE disconnected\" title=\"SSE disconnected\"></span></nav><main id=\"main-content\" tabindex=\"-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

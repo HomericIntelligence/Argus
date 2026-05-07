@@ -6,26 +6,26 @@ import (
 
 templ GrafanaPage(panels []grafana.Panel, grafanaBase, from, to string) {
 	@Layout("Grafana") {
-		<div class="time-range-bar">
-			<span class="label">Time range:</span>
-			<button onclick="setTimeRange('now-1h','now')">1h</button>
-			<button onclick="setTimeRange('now-6h','now')">6h</button>
-			<button onclick="setTimeRange('now-24h','now')">24h</button>
-			<button onclick="setTimeRange('now-7d','now')">7d</button>
+		<div class="time-range-bar" role="toolbar" aria-label="Time range">
+			<span class="label" id="time-range-label">Time range:</span>
+			<button type="button" aria-label="Last 1 hour" onclick="setTimeRange('now-1h','now')">1h</button>
+			<button type="button" aria-label="Last 6 hours" onclick="setTimeRange('now-6h','now')">6h</button>
+			<button type="button" aria-label="Last 24 hours" onclick="setTimeRange('now-24h','now')">24h</button>
+			<button type="button" aria-label="Last 7 days" onclick="setTimeRange('now-7d','now')">7d</button>
 		</div>
-		<div class="grafana-grid">
+		<section class="grafana-grid" aria-label="Grafana panels">
 			for _, p := range panels {
-				<div class="panel-container">
-					<div class="panel-title">{ p.Title }</div>
+				<article class="panel-container" aria-label={ p.Title }>
+					<h2 class="panel-title">{ p.Title }</h2>
 					<iframe
 						src={ templ.SafeURL(grafana.PanelURL(grafanaBase, p, from, to)) }
 						sandbox="allow-scripts allow-popups"
 						loading="lazy"
 						title={ p.Title }>
 					</iframe>
-				</div>
+				</article>
 			}
-		</div>
+		</section>
 		<script>
 		function setTimeRange(from, to) {
 			document.querySelectorAll('.grafana-grid iframe').forEach(function(el) {
