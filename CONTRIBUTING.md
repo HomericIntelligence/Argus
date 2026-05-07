@@ -57,6 +57,24 @@ just status
 just test-scrape
 ```
 
+### Pre-commit hooks
+
+We use [pre-commit](https://pre-commit.com/) to catch formatting, linting, and templ-generate
+drift before a commit lands. Install once per clone:
+
+```bash
+pixi run pre-commit install
+```
+
+The hooks defined in `.pre-commit-config.yaml` cover:
+
+- **YAML/JSON/whitespace** — trailing whitespace, end-of-file, merge conflicts, `yamllint`.
+- **Go (`dashboard/`)** — `gofmt -s -w`, `golangci-lint run` (v2.12.2 — matches CI), and a
+  `templ generate` diff check (requires `templ` v0.3.1001 — `go install
+  github.com/a-h/templ/cmd/templ@v0.3.1001`).
+- **CI parity** — the Go hooks shell out to the same binaries CI runs, so a clean local
+  pre-commit means a green Go-side CI; CI remains the authoritative gate.
+
 ## What You Can Contribute
 
 - **Prometheus scrape configs** — New targets and scrape intervals
