@@ -48,8 +48,8 @@ type MetricsSink interface {
 // value so callers that never call SetMetrics still work.
 type noopMetrics struct{}
 
-func (noopMetrics) IncPollError(string)               {}
-func (noopMetrics) IncEndpointError(string, string)   {}
+func (noopMetrics) IncPollError(string)                 {}
+func (noopMetrics) IncEndpointError(string, string)     {}
 func (noopMetrics) ObservePollDuration(string, float64) {}
 
 // base is a shared helper for HTTP-based pollers. It tracks per-instance

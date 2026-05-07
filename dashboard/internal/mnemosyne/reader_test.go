@@ -40,7 +40,7 @@ Send an HTTP GET request to a remote endpoint.
 // Test 1: Load fixture .md file; assert Name, Description, Version, Tags populated.
 func TestLoadSkill(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "nats-publish.md"), []byte(fixtureSkill), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "nats-publish.md"), []byte(fixtureSkill), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,10 +70,10 @@ func TestLoadSkill(t *testing.T) {
 // Test 2: Filter("nats") returns only NATS-tagged skills; Filter("") returns all.
 func TestFilter(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "nats-publish.md"), []byte(fixtureSkill), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "nats-publish.md"), []byte(fixtureSkill), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "http-request.md"), []byte(fixtureSkill2), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "http-request.md"), []byte(fixtureSkill2), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

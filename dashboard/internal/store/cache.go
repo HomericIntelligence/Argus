@@ -16,18 +16,18 @@ const maxAgentEvents = 50
 // Cache is a thread-safe in-memory store for dashboard state.
 // It is extended with new fields as Atlas milestones add data sources.
 type Cache struct {
-	mu           sync.RWMutex
-	devices      []tailscale.Device    // added in #158
-	probes       []catalog.ProbeResult
-	probesAt     time.Time
+	mu       sync.RWMutex
+	devices  []tailscale.Device // added in #158
+	probes   []catalog.ProbeResult
+	probesAt time.Time
 	// probes extended in #159
-	agents       []AgentRecord         // added in #161
-	tasks        []TaskRecord          // added in #161
-	natsStats    NATSStats             // added in #161
-	agentEvents  map[string][]RawEvent // added in #163: per-agent event history
-	natsStreams  []NATSStreamInfo      // added in #165: JetStream stream list
-	natsConsumers []NATSConsumerInfo   // added in #165: JetStream consumer list
-	natsConns    []NATSConnInfo        // added in #165: NATS connections
+	agents        []AgentRecord         // added in #161
+	tasks         []TaskRecord          // added in #161
+	natsStats     NATSStats             // added in #161
+	agentEvents   map[string][]RawEvent // added in #163: per-agent event history
+	natsStreams   []NATSStreamInfo      // added in #165: JetStream stream list
+	natsConsumers []NATSConsumerInfo    // added in #165: JetStream consumer list
+	natsConns     []NATSConnInfo        // added in #165: NATS connections
 }
 
 // NewCache returns an empty Cache.
