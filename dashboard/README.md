@@ -52,7 +52,8 @@ A fresh `nats-server -js` has no streams provisioned, so `attached=0` and the su
 reports not-ready until you create them. To bring up just one for a smoke test:
 
 ```bash
-nats stream add homeric-agents --subjects 'hi.agents.>' --storage memory --retention limits --discard old --max-msgs=1000 --defaults
+nats stream add homeric-agents --subjects 'hi.agents.>' --storage memory \
+  --retention limits --discard old --max-msgs=1000 --defaults
 nats pub hi.agents.demo '{"id":"demo","status":"ok"}'
 ```
 
@@ -219,4 +220,5 @@ templ generate ./...
 
 - [`docs/architecture.md`](docs/architecture.md) — component composition, concurrency model, resource bounds, security posture.
 - [`docs/runbook.md`](docs/runbook.md) — diagnosis and recovery procedures (NATS subscriber, pollers, SSE, auth, restart/rollback).
+- [`docs/runbook/rollback.md`](docs/runbook/rollback.md) — emergency rollback procedure for a bad release.
 - [`docs/review-charter.md`](docs/review-charter.md) — the 6-dimension review-wave gate every Atlas PR is dispatched against.
