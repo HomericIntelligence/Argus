@@ -9,14 +9,22 @@ import (
 
 // countingMetrics is a concurrent-safe MetricsSink that records call counts.
 type countingMetrics struct {
-	pollErrors      atomic.Int64
+	pollErrors       atomic.Int64
+	endpointErrors   atomic.Int64
 	durationObserves atomic.Int64
-	lastSource      atomic.Value // string
+	lastSource       atomic.Value // string
+	lastEndpoint     atomic.Value // string
 }
 
 func (c *countingMetrics) IncPollError(source string) {
 	c.pollErrors.Add(1)
 	c.lastSource.Store(source)
+}
+
+func (c *countingMetrics) IncEndpointError(source, endpoint string) {
+	c.endpointErrors.Add(1)
+	c.lastSource.Store(source)
+	c.lastEndpoint.Store(endpoint)
 }
 
 func (c *countingMetrics) ObservePollDuration(source string, _ float64) {

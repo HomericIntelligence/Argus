@@ -2,6 +2,8 @@ package poller
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -96,31 +98,46 @@ func (p *NATSPoller) Start(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// fetch retrieves stats from /varz and /jsz and updates the cache.
-// /varz and /jsz failures gate poll-success (readiness); detail-endpoint
-// failures (/jsz?detail=1, /connz) are logged but do not gate.
+// fetch retrieves stats from /varz, /jsz?detail=1, and /connz and updates the
+// cache. ALL three endpoints gate poll-success: any failure surfaces in
+// LastError (and therefore /readyz) via errors.Join, naming which endpoint(s)
+// failed. The successful endpoints still update their cache slices — partial
+// freshness is fine; what's NOT fine is misreporting "everything fresh" to
+// /readyz while one of the caches is silently stale.
+//
+// Per-endpoint failures also increment atlas_poll_endpoint_errors_total via
+// MetricsSink.IncEndpointError so operators can attribute failures to a
+// specific endpoint without inflating the cycle-level atlas_poll_errors_total
+// counter (which still increments exactly once per failed cycle, regardless
+// of how many of the three endpoints failed).
 func (p *NATSPoller) fetch(ctx context.Context) {
 	start := time.Now()
-	err := p.fetchInner(ctx)
-	if err != nil {
-		slog.Warn("nats poller: fetch failed", "err", err)
+	errs := []error{
+		p.fetchVarzJsz(ctx),
+		p.fetchStreams(ctx),
+		p.fetchConns(ctx),
 	}
-	p.recordResult(err, time.Since(start))
-
-	// Detail endpoints are best-effort: their failures must not mark the
-	// poller unready, since the primary varz/jsz cache is already populated.
-	p.fetchDetail(ctx)
+	joined := errors.Join(errs...)
+	if joined != nil {
+		slog.Warn("nats poller: one or more endpoints failed", "err", joined)
+	}
+	p.recordResult(joined, time.Since(start))
 }
 
-func (p *NATSPoller) fetchInner(ctx context.Context) error {
+// fetchVarzJsz polls /varz and /jsz and writes the aggregate NATSStats slice.
+// /jsz here is the lightweight summary endpoint; the detail endpoint is polled
+// separately by fetchStreams.
+func (p *NATSPoller) fetchVarzJsz(ctx context.Context) error {
 	var varz varzResponse
 	if err := p.getJSON(ctx, p.url+"/varz", &varz); err != nil {
-		return err
+		p.incEndpointError("varz")
+		return fmt.Errorf("varz: %w", err)
 	}
 
 	var jsz jszResponse
 	if err := p.getJSON(ctx, p.url+"/jsz", &jsz); err != nil {
-		return err
+		p.incEndpointError("jsz")
+		return fmt.Errorf("jsz: %w", err)
 	}
 
 	p.cache.SetNATSStats(store.NATSStats{
@@ -132,42 +149,52 @@ func (p *NATSPoller) fetchInner(ctx context.Context) error {
 	return nil
 }
 
-// fetchDetail polls /jsz?detail=1 for stream list and /connz for connections.
-// Errors on any sub-request are logged and that section of the cache is left intact.
-func (p *NATSPoller) fetchDetail(ctx context.Context) {
+// fetchStreams polls /jsz?detail=1 for the stream list. On error the
+// stream-list section of the cache is left intact (the previous values stay
+// in place rather than being cleared) but the failure is reported to the
+// caller so /readyz reflects the staleness.
+func (p *NATSPoller) fetchStreams(ctx context.Context) error {
 	var jszDetail jszDetailResponse
 	if err := p.getJSON(ctx, p.url+"/jsz?detail=1", &jszDetail); err != nil {
-		slog.Warn("nats poller: failed to fetch /jsz?detail=1", "err", err)
-	} else {
-		streams := make([]store.NATSStreamInfo, 0, len(jszDetail.Streams))
-		for _, s := range jszDetail.Streams {
-			streams = append(streams, store.NATSStreamInfo{
-				Name:      s.Config.Name,
-				Subjects:  s.Config.Subjects,
-				Messages:  s.State.Messages,
-				Bytes:     s.State.Bytes,
-				Consumers: s.State.Consumers,
-				Created:   s.Created,
-			})
-		}
-		p.cache.SetNATSStreams(streams)
+		p.incEndpointError("jsz_detail")
+		return fmt.Errorf("jsz_detail: %w", err)
 	}
+	streams := make([]store.NATSStreamInfo, 0, len(jszDetail.Streams))
+	for _, s := range jszDetail.Streams {
+		streams = append(streams, store.NATSStreamInfo{
+			Name:      s.Config.Name,
+			Subjects:  s.Config.Subjects,
+			Messages:  s.State.Messages,
+			Bytes:     s.State.Bytes,
+			Consumers: s.State.Consumers,
+			Created:   s.Created,
+		})
+	}
+	p.cache.SetNATSStreams(streams)
+	return nil
+}
 
+// fetchConns polls /connz for the active client connection list. On error the
+// connection-list section of the cache is left intact and the failure is
+// reported to the caller so /readyz reflects the staleness — closes the §3
+// audit MAJOR finding "NATSPoller readiness asymmetry."
+func (p *NATSPoller) fetchConns(ctx context.Context) error {
 	var connz connzResponse
 	if err := p.getJSON(ctx, p.url+"/connz", &connz); err != nil {
-		slog.Warn("nats poller: failed to fetch /connz", "err", err)
-	} else {
-		conns := make([]store.NATSConnInfo, 0, len(connz.Connections))
-		for _, c := range connz.Connections {
-			conns = append(conns, store.NATSConnInfo{
-				Name:          c.Name,
-				IP:            c.IP,
-				Subscriptions: c.Subscriptions,
-				InMsgs:        c.InMsgs,
-				OutMsgs:       c.OutMsgs,
-				Uptime:        c.Uptime,
-			})
-		}
-		p.cache.SetNATSConns(conns)
+		p.incEndpointError("connz")
+		return fmt.Errorf("connz: %w", err)
 	}
+	conns := make([]store.NATSConnInfo, 0, len(connz.Connections))
+	for _, c := range connz.Connections {
+		conns = append(conns, store.NATSConnInfo{
+			Name:          c.Name,
+			IP:            c.IP,
+			Subscriptions: c.Subscriptions,
+			InMsgs:        c.InMsgs,
+			OutMsgs:       c.OutMsgs,
+			Uptime:        c.Uptime,
+		})
+	}
+	p.cache.SetNATSConns(conns)
+	return nil
 }
