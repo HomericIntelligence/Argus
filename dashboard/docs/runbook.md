@@ -75,7 +75,7 @@ status to `503`. The component name and `error` / `note` fields tell you where t
 Once the upstream issue is resolved, restart Atlas:
 
 ```bash
-docker compose restart atlas
+docker compose restart argus-dashboard
 # or, in k8s:
 kubectl rollout restart deployment/atlas
 ```
@@ -114,7 +114,7 @@ interval** (default poll = 5 s, so the budget is ~10 s). Beyond that, `/readyz` 
    upstream (>3 s response) will look like a permanent error in metrics. Increase
    the upstream's capacity or move it closer to Atlas.
 3. **DNS / routing change.** Compose service names (`agamemnon`, `nats`) only resolve inside
-   the `argus` Docker network. Verify with `docker compose exec atlas ping -c1 nats`.
+   the `argus` Docker network. Verify with `docker compose exec argus-dashboard ping -c1 nats`.
 
 **Recovery**
 
@@ -159,12 +159,12 @@ This is almost always one of:
 **Checks**
 
 1. **Token actually set in environment of the running container?**
-   `docker compose exec atlas env | grep -E '^ATLAS_AUTH'` — must show `ATLAS_AUTH_MODE=bearer`
+   `docker compose exec argus-dashboard env | grep -E '^ATLAS_AUTH'` — must show `ATLAS_AUTH_MODE=bearer`
    and a non-empty `ATLAS_AUTH_BEARER_TOKEN`.
 2. **Header form correct?** Must be `Authorization: Bearer <token>` exactly (case-sensitive
    `Bearer`). For SSE / EventSource (which can't set headers), use `?token=<token>` query param.
 3. **Token has whitespace/newline?** Common `.env` paste bug; verify with
-   `docker compose exec atlas printenv ATLAS_AUTH_BEARER_TOKEN | xxd | head -1`.
+   `docker compose exec argus-dashboard printenv ATLAS_AUTH_BEARER_TOKEN | xxd | head -1`.
 4. **Trailing slash / redirect?** chi does not redirect 301; route paths must match exactly.
 
 > **v0.2.0 caveat — case sensitivity in `ATLAS_AUTH_MODE`.** The middleware compares the
@@ -237,8 +237,8 @@ and the upstream services Atlas observes — Atlas itself is stateless.
 
 ```bash
 # Compose
-docker compose restart atlas
-docker compose logs -f --tail=50 atlas
+docker compose restart argus-dashboard
+docker compose logs -f --tail=50 argus-dashboard
 
 # Kubernetes
 kubectl rollout restart deployment/atlas
@@ -250,7 +250,7 @@ Rollback to a prior tag:
 
 ```bash
 # Pin to the previous immutable tag — never rely on :latest for rollbacks
-docker compose up -d --pull always atlas  # after editing image: tag in compose
+docker compose up -d --pull always argus-dashboard  # after editing image: tag in compose
 # or
 kubectl set image deployment/atlas atlas=ghcr.io/homericintelligence/atlas:v0.1.0
 ```
