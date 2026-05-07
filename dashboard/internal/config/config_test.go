@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func discardLogger() *slog.Logger {
@@ -119,6 +120,146 @@ func TestValidate_EmptyOptionalURL(t *testing.T) {
 // Defense-in-depth: server.Middleware now also fails closed on unknown modes
 // (see TestMiddleware_UnknownModeFailsClosed). Either fix alone closes the
 // bypass; both together make the bug structurally hard to reintroduce.
+// TestLoadDuration_FallsBackToDefault exercises the parse-or-fallback contract
+// for every ATLAS_* time.Duration env var promoted in the Bucket-4 §4 audit.
+// Operators will mistype; we'd rather degrade silently to the documented
+// default than refuse to start.
+func TestLoadDuration_FallsBackToDefault(t *testing.T) {
+	cases := []struct {
+		key  string
+		def  time.Duration
+		read func(*Config) time.Duration
+	}{
+		{"ATLAS_HTTP_READ_TIMEOUT", 10 * time.Second, func(c *Config) time.Duration { return c.HTTPReadTimeout }},
+		{"ATLAS_HTTP_IDLE_TIMEOUT", 60 * time.Second, func(c *Config) time.Duration { return c.HTTPIdleTimeout }},
+		{"ATLAS_UPSTREAM_TIMEOUT", 3 * time.Second, func(c *Config) time.Duration { return c.UpstreamTimeout }},
+		{"ATLAS_TAILSCALE_API_TIMEOUT", 10 * time.Second, func(c *Config) time.Duration { return c.TailscaleAPITimeout }},
+		{"ATLAS_TAILSCALE_CLI_TIMEOUT", 5 * time.Second, func(c *Config) time.Duration { return c.TailscaleCLITimeout }},
+		{"ATLAS_PROBE_INTERVAL", 10 * time.Second, func(c *Config) time.Duration { return c.ProbeInterval }},
+		{"ATLAS_NATS_POLL_INTERVAL", 5 * time.Second, func(c *Config) time.Duration { return c.NATSPollInterval }},
+		{"ATLAS_TAILSCALE_REFRESH_INTERVAL", 30 * time.Second, func(c *Config) time.Duration { return c.TailscaleRefreshInterval }},
+		{"ATLAS_SSE_HEARTBEAT_INTERVAL", 15 * time.Second, func(c *Config) time.Duration { return c.SSEHeartbeatInterval }},
+		{"ATLAS_NATS_ACK_WAIT", 30 * time.Second, func(c *Config) time.Duration { return c.NATSAckWait }},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.key+"/positive_750ms", func(t *testing.T) {
+			t.Setenv(tc.key, "750ms")
+			c := Load()
+			if got := tc.read(c); got != 750*time.Millisecond {
+				t.Fatalf("%s=750ms parsed as %v; want 750ms", tc.key, got)
+			}
+		})
+		t.Run(tc.key+"/garbage_falls_back", func(t *testing.T) {
+			t.Setenv(tc.key, "not-a-duration")
+			c := Load()
+			if got := tc.read(c); got != tc.def {
+				t.Fatalf("%s=garbage parsed as %v; want default %v", tc.key, got, tc.def)
+			}
+		})
+		t.Run(tc.key+"/negative_falls_back", func(t *testing.T) {
+			t.Setenv(tc.key, "-5s")
+			c := Load()
+			if got := tc.read(c); got != tc.def {
+				t.Fatalf("%s=-5s parsed as %v; want default %v", tc.key, got, tc.def)
+			}
+		})
+		t.Run(tc.key+"/zero_falls_back", func(t *testing.T) {
+			t.Setenv(tc.key, "0s")
+			c := Load()
+			if got := tc.read(c); got != tc.def {
+				t.Fatalf("%s=0s parsed as %v; want default %v", tc.key, got, tc.def)
+			}
+		})
+	}
+}
+
+// TestLoadDuration_DefaultsWhenUnset asserts that with no env var set the
+// documented default lands in the Config field.
+func TestLoadDuration_DefaultsWhenUnset(t *testing.T) {
+	c := Load()
+	cases := []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{"HTTPReadTimeout", c.HTTPReadTimeout, 10 * time.Second},
+		{"HTTPIdleTimeout", c.HTTPIdleTimeout, 60 * time.Second},
+		{"UpstreamTimeout", c.UpstreamTimeout, 3 * time.Second},
+		{"TailscaleAPITimeout", c.TailscaleAPITimeout, 10 * time.Second},
+		{"TailscaleCLITimeout", c.TailscaleCLITimeout, 5 * time.Second},
+		{"ProbeInterval", c.ProbeInterval, 10 * time.Second},
+		{"NATSPollInterval", c.NATSPollInterval, 5 * time.Second},
+		{"TailscaleRefreshInterval", c.TailscaleRefreshInterval, 30 * time.Second},
+		{"SSEHeartbeatInterval", c.SSEHeartbeatInterval, 15 * time.Second},
+		{"NATSAckWait", c.NATSAckWait, 30 * time.Second},
+	}
+	for _, tc := range cases {
+		if tc.got != tc.want {
+			t.Errorf("%s default = %v; want %v", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+// TestLoadInt_FallsBackToDefault covers the int-typed promotions
+// (ATLAS_SSE_SUBSCRIBER_BUFFER, ATLAS_BUS_RING_CAPACITY, ATLAS_NATS_MAX_ACK_PENDING).
+func TestLoadInt_FallsBackToDefault(t *testing.T) {
+	cases := []struct {
+		key  string
+		def  int
+		read func(*Config) int
+	}{
+		{"ATLAS_SSE_SUBSCRIBER_BUFFER", 1000, func(c *Config) int { return c.SSESubscriberBuffer }},
+		{"ATLAS_BUS_RING_CAPACITY", 256, func(c *Config) int { return c.BusRingCapacity }},
+		{"ATLAS_NATS_MAX_ACK_PENDING", 1024, func(c *Config) int { return c.NATSMaxAckPending }},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.key+"/positive", func(t *testing.T) {
+			t.Setenv(tc.key, "42")
+			c := Load()
+			if got := tc.read(c); got != 42 {
+				t.Fatalf("%s=42 parsed as %d; want 42", tc.key, got)
+			}
+		})
+		t.Run(tc.key+"/garbage_falls_back", func(t *testing.T) {
+			t.Setenv(tc.key, "not-an-int")
+			c := Load()
+			if got := tc.read(c); got != tc.def {
+				t.Fatalf("%s=garbage parsed as %d; want default %d", tc.key, got, tc.def)
+			}
+		})
+		t.Run(tc.key+"/zero_falls_back", func(t *testing.T) {
+			t.Setenv(tc.key, "0")
+			c := Load()
+			if got := tc.read(c); got != tc.def {
+				t.Fatalf("%s=0 parsed as %d; want default %d", tc.key, got, tc.def)
+			}
+		})
+		t.Run(tc.key+"/negative_falls_back", func(t *testing.T) {
+			t.Setenv(tc.key, "-7")
+			c := Load()
+			if got := tc.read(c); got != tc.def {
+				t.Fatalf("%s=-7 parsed as %d; want default %d", tc.key, got, tc.def)
+			}
+		})
+	}
+}
+
+func TestLoadInt_DefaultsWhenUnset(t *testing.T) {
+	c := Load()
+	if c.SSESubscriberBuffer != 1000 {
+		t.Errorf("SSESubscriberBuffer default = %d; want 1000", c.SSESubscriberBuffer)
+	}
+	if c.BusRingCapacity != 256 {
+		t.Errorf("BusRingCapacity default = %d; want 256", c.BusRingCapacity)
+	}
+	if c.NATSMaxAckPending != 1024 {
+		t.Errorf("NATSMaxAckPending default = %d; want 1024", c.NATSMaxAckPending)
+	}
+}
+
 func TestValidate_NormalizesAuthMode(t *testing.T) {
 	for _, tc := range []struct {
 		name string

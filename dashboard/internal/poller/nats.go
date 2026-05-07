@@ -71,10 +71,15 @@ type NATSPoller struct {
 	url   string
 }
 
-// NewNATSPoller constructs a NATSPoller with a 3-second HTTP timeout.
+// NewNATSPoller constructs a NATSPoller using the upstream HTTP timeout from
+// cfg.UpstreamTimeout (ATLAS_UPSTREAM_TIMEOUT, default 3s).
 func NewNATSPoller(cfg *config.Config, cache *store.Cache) *NATSPoller {
+	timeout := cfg.UpstreamTimeout
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
 	return &NATSPoller{
-		base:  newBase("nats", &http.Client{Timeout: 3 * time.Second}),
+		base:  newBase("nats", &http.Client{Timeout: timeout}),
 		cache: cache,
 		url:   cfg.NATSMonURL,
 	}

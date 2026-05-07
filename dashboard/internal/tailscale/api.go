@@ -38,11 +38,13 @@ type apiDevice struct {
 
 // APISource fetches devices from the Tailscale HTTP API.
 // The HTTPClient field allows injection of a test server client; if nil, a
-// default client with a 10-second timeout is used.
+// default client is built using Timeout (or 10s if Timeout is zero / negative).
+// Timeout is sourced from ATLAS_TAILSCALE_API_TIMEOUT.
 type APISource struct {
 	APIKey     string
 	Tailnet    string
 	HTTPClient *http.Client
+	Timeout    time.Duration
 }
 
 // Devices calls GET https://api.tailscale.com/api/v2/tailnet/{tailnet}/devices
@@ -50,7 +52,11 @@ type APISource struct {
 func (a APISource) Devices(ctx context.Context) ([]Device, error) {
 	client := a.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		timeout := a.Timeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		client = &http.Client{Timeout: timeout}
 	}
 
 	url := fmt.Sprintf("https://api.tailscale.com/api/v2/tailnet/%s/devices", a.Tailnet)

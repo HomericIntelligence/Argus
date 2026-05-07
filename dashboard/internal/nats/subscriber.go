@@ -28,6 +28,14 @@ type Config struct {
 	NATSURL string
 	// Streams is the list of JetStream stream configurations to subscribe to.
 	Streams []StreamConfig
+	// AckWait is the JetStream consumer AckWait — how long the server waits
+	// for an Ack before re-delivering a message. Sourced from
+	// ATLAS_NATS_ACK_WAIT (default 30s when zero).
+	AckWait time.Duration
+	// MaxAckPending is the JetStream consumer MaxAckPending — the cap on
+	// un-acked in-flight messages per consumer. Sourced from
+	// ATLAS_NATS_MAX_ACK_PENDING (default 1024 when zero).
+	MaxAckPending int
 }
 
 // StreamConfig describes a single JetStream stream and the durable consumer
@@ -233,12 +241,20 @@ func (s *Subscriber) attach(js natsgo.JetStreamContext) error {
 // filter.
 func (s *Subscriber) subscribeStream(js natsgo.JetStreamContext, sc StreamConfig) (*natsgo.Subscription, error) {
 	handler := s.makeHandler(sc)
+	ackWait := s.cfg.AckWait
+	if ackWait <= 0 {
+		ackWait = 30 * time.Second
+	}
+	maxAckPending := s.cfg.MaxAckPending
+	if maxAckPending <= 0 {
+		maxAckPending = 1024
+	}
 	opts := []natsgo.SubOpt{
 		natsgo.Durable(sc.Durable),
 		natsgo.DeliverNew(),
 		natsgo.AckExplicit(),
-		natsgo.AckWait(30 * time.Second),
-		natsgo.MaxAckPending(1024),
+		natsgo.AckWait(ackWait),
+		natsgo.MaxAckPending(maxAckPending),
 	}
 	if len(sc.Subjects) <= 1 {
 		subject := ""
