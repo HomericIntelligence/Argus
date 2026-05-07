@@ -6,16 +6,60 @@ Go/Chi HTTP server with a dark-themed UI built on htmx and SSE.
 
 ## Quick Start
 
+The default `ATLAS_AUTH_MODE=bearer` requires `ATLAS_AUTH_BEARER_TOKEN`. The simplest way to
+get going locally is to set both, or to switch off auth explicitly with `ATLAS_AUTH_MODE=none`
+(strictly local — Atlas will log a warning).
+
 ```bash
-# Run with defaults (listens on :3002)
+# Local dev, auth off (logs a warning)
+ATLAS_AUTH_MODE=none go run ./cmd/argus-dashboard
+
+# Liveness probe is unauthenticated and always works
+curl -fsS http://localhost:3002/livez
+
+# Local dev, bearer auth (production-shaped)
+export ATLAS_AUTH_BEARER_TOKEN="$(openssl rand -hex 32)"
 go run ./cmd/argus-dashboard
 
-# Health check
-curl -fsS http://localhost:3002/healthz
+# Now /readyz, /metrics and the UI all require the token:
+curl -fsS -H "Authorization: Bearer ${ATLAS_AUTH_BEARER_TOKEN}" http://localhost:3002/readyz
 
 # Custom listen address
 ATLAS_LISTEN_ADDR=:8090 go run ./cmd/argus-dashboard
 ```
+
+### Run Atlas standalone (without the full Argus stack)
+
+You don't need Prometheus, Grafana, Loki, Agamemnon, or Nestor running to bring Atlas up —
+the pollers and NATS subscriber will just report "not connected" via `/readyz`. The minimum
+moving parts are Atlas itself plus optionally a local NATS server (with JetStream) for the SSE
+spine to wire up live.
+
+```bash
+# Terminal 1 — single-process NATS with JetStream
+nats-server -js
+
+# Terminal 2 — Atlas pointed at it, no upstream services configured
+ATLAS_AUTH_MODE=none \
+ATLAS_NATS_URL=nats://127.0.0.1:4222 \
+ATLAS_NATS_MON_URL=http://127.0.0.1:8222 \
+go run ./cmd/argus-dashboard
+```
+
+`/readyz` will report Agamemnon poller failing (no upstream is configured). The NATS
+subscriber attempts to attach to six JetStream streams (`homeric-{agents,tasks,myrmidon,research,pipeline,logs}`).
+A fresh `nats-server -js` has no streams provisioned, so `attached=0` and the subscriber
+reports not-ready until you create them. To bring up just one for a smoke test:
+
+```bash
+nats stream add homeric-agents --subjects 'hi.agents.>' --storage memory --retention limits --discard old --max-msgs=1000 --defaults
+nats pub hi.agents.demo '{"id":"demo","status":"ok"}'
+```
+
+The `event: agent` frame should appear immediately on `/events`.
+
+For full-stack development against the rest of the Argus services, see the parent
+[`ProjectArgus` README](../README.md) and `just start`.
 
 ## Configuration
 
@@ -32,7 +76,7 @@ All configuration is via environment variables with the `ATLAS_` prefix:
 | `ATLAS_HERMES_URL` | `http://hermes:8080` | Hermes event bridge URL |
 | `ATLAS_PROMETHEUS_URL` | `http://prometheus:9090` | Prometheus URL |
 | `ATLAS_GRAFANA_URL` | `http://grafana:3000` | Grafana URL |
-| `ATLAS_AUTH_MODE` | `none` | Auth mode (none/basic/bearer) |
+| `ATLAS_AUTH_MODE` | `bearer` | Auth mode (none/basic/bearer) — default since v0.2.0 |
 | `ATLAS_AUTH_BEARER_TOKEN` | `` | Bearer token (required when `ATLAS_AUTH_MODE=bearer`) |
 | `ATLAS_AUTH_USER` | `` | Basic auth username (required when `ATLAS_AUTH_MODE=basic`) |
 | `ATLAS_AUTH_PASS` | `` | Basic auth password (required when `ATLAS_AUTH_MODE=basic`) |
@@ -61,16 +105,20 @@ GET /events?topics=agent,task&replay=20
 | `topics` | Comma-separated topic filter. Omit to receive all topics. |
 | `replay` | Number of buffered events to replay on connect (ring buffer, max 256). |
 
-**Topics** (derived from NATS subject prefix):
+**Topics**: the SSE handler's server-side allowlist accepts the eight topics below
+(`internal/handlers/sse.go`). Six are derived from NATS subjects; two (`nats`, `host`)
+are bus-only — published by Atlas itself when its REST pollers refresh state.
 
-| Topic | NATS stream | Subject pattern |
-|---|---|---|
-| `agent` | `homeric-agents` | `hi.agents.>` |
-| `task` | `homeric-tasks` | `hi.tasks.>` |
-| `myrmidon` | `homeric-myrmidon` | `hi.myrmidon.>` |
-| `research` | `homeric-research` | `hi.research.>` |
-| `pipeline` | `homeric-pipeline` | `hi.pipeline.>` |
-| `log` | `homeric-logs` | `hi.logs.>` |
+| Topic | Source | NATS stream / origin | Subject pattern |
+|---|---|---|---|
+| `agent` | NATS subscriber | `homeric-agents` | `hi.agents.>` |
+| `task` | NATS subscriber | `homeric-tasks` | `hi.tasks.>` |
+| `myrmidon` | NATS subscriber | `homeric-myrmidon` | `hi.myrmidon.>` |
+| `research` | NATS subscriber | `homeric-research` | `hi.research.>` |
+| `pipeline` | NATS subscriber | `homeric-pipeline` | `hi.pipeline.>` |
+| `log` | NATS subscriber | `homeric-logs` | `hi.logs.>` |
+| `nats` | Internal bus | NATS poller (`varz`/`jsz`) | n/a |
+| `host` | Internal bus | Tailscale refresher / service prober | n/a |
 
 **Wire format** (per event):
 
@@ -93,9 +141,10 @@ Keepalive comment frames are sent every 15 seconds:
 |---|---|---|
 | `GET` | `/` | Overview page |
 | `GET` | `/hosts` | Tailscale host grid — cards refresh every 5 s via htmx |
-| `GET` | `/healthz` | Liveness probe — returns `ok` |
-| `GET` | `/readyz` | Readiness probe — returns `ok` |
-| `GET` | `/metrics` | Prometheus metrics exposition (always unauthenticated) |
+| `GET` | `/livez` | Liveness probe — always 200 if the process is up. **Unauthenticated.** |
+| `GET` | `/healthz` | Alias of `/livez` retained for backwards compatibility. **Unauthenticated.** |
+| `GET` | `/readyz` | Readiness probe — JSON aggregator over Agamemnon poller, NATS poller, NATS subscriber. 200 only when all components OK; 503 with the offending component named otherwise. **Auth-gated.** |
+| `GET` | `/metrics` | Prometheus metrics exposition. **Auth-gated** (since v0.2.0) — Prometheus scrape configs must send the bearer token. |
 | `GET` | `/events` | SSE event stream (see below) |
 | `GET` | `/api/hosts` | JSON array of hosts with per-service probe results |
 | `GET` | `/partials/host/{name}` | htmx fragment — single host card (used by 5 s poll) |
@@ -118,20 +167,26 @@ Set `ATLAS_AUTH_MODE` to configure the auth gate:
 
 | Mode | Behaviour |
 |------|-----------|
-| `none` (default) | No authentication required |
-| `bearer` | `Authorization: Bearer <token>` header required; SSE endpoints also accept `?token=<token>` |
-| `basic` | `Authorization: Basic <base64(user:pass)>` required |
+| `bearer` (default since v0.2.0) | `Authorization: Bearer <token>` header required; SSE endpoints also accept `?token=<token>`. Atlas refuses to start if the token is unset. |
+| `basic` | `Authorization: Basic <base64(user:pass)>` required. Atlas refuses to start if user or pass is unset. |
+| `none` | No authentication required. Logs a startup warning. **Do not use in production.** |
 
 Set `ATLAS_AUTH_BEARER_TOKEN`, `ATLAS_AUTH_USER`, `ATLAS_AUTH_PASS` accordingly.
-`/healthz`, `/readyz`, and `/metrics` are always unauthenticated.
 
-> **Note:** `/metrics` is public regardless of `ATLAS_AUTH_MODE`. It exposes internal counters
-> (NATS connection state, error rates, SSE client counts, build version). Network-restrict port
-> 3002 or use a reverse-proxy to protect it if Atlas faces an untrusted network.
+**Auth-gated routes** (require the configured mode): `/`, `/hosts`, `/agents`, `/tasks/{id}`,
+`/grafana`, `/nats`, `/mnemosyne`, all `/api/*` and `/partials/*`, `/events`, **`/readyz`**, **`/metrics`**.
+
+**Unauthenticated routes**: only `/livez` and `/healthz` (its alias). These return a static
+200 if the process is up and never reveal component or counter state.
+
+> **Operator note:** `/metrics` and `/readyz` were unauthenticated in pre-v0.2.0 builds.
+> If you are upgrading, update Prometheus scrape configs and Kubernetes readiness probes
+> to send the bearer token (Prometheus: `bearer_token_file:`; k8s: `httpGet.httpHeaders[]`).
 
 ## Metrics
 
-Atlas exposes Prometheus metrics at `/metrics` (always unauthenticated):
+Atlas exposes Prometheus metrics at `/metrics`. The endpoint is **auth-gated** since v0.2.0
+(see [Authentication](#authentication)) — your scrape job must present the configured credentials.
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -157,3 +212,9 @@ Templates use [templ](https://templ.guide/). Generated `*_templ.go` files are co
 ```bash
 templ generate ./...
 ```
+
+## Operating Atlas
+
+- [`docs/architecture.md`](docs/architecture.md) — component composition, concurrency model, resource bounds, security posture.
+- [`docs/runbook.md`](docs/runbook.md) — diagnosis and recovery procedures (NATS subscriber, pollers, SSE, auth, restart/rollback).
+- [`docs/review-charter.md`](docs/review-charter.md) — the 6-dimension review-wave gate every Atlas PR is dispatched against.

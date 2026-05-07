@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## Upgrade Guide: v0.1.0 → v0.2.0
+
+This release is not backwards-compatible with v0.1.0 deployments without operator action.
+The breaking changes are deliberate (closing audit findings) — please apply each step
+before rolling the new image.
+
+1. **Auth is on by default.** `ATLAS_AUTH_MODE` previously defaulted to `none`; in v0.2.0
+   it defaults to `bearer` and Atlas will refuse to start unless `ATLAS_AUTH_BEARER_TOKEN`
+   is also set. To preserve v0.1 behaviour explicitly (not recommended), set
+   `ATLAS_AUTH_MODE=none` in your `.env` — Atlas will log a warning at startup.
+2. **`/readyz` and `/metrics` are now auth-gated.** Update consumers:
+   - **Prometheus scrape config**: add `authorization: { credentials_file: /run/secrets/atlas_token }`
+     (or `bearer_token_file:`) to the Atlas scrape job.
+   - **Kubernetes readiness probe**: switch from `httpGet: { path: /readyz }` to send the bearer
+     token via `httpHeaders`, or move the probe to `/livez` (which remains unauthenticated and
+     is a pure process-up signal).
+   - **External monitors**: any blackbox prober hitting `/metrics` or `/readyz` needs the
+     token; `/livez` and its alias `/healthz` continue to work unauthenticated.
+3. **`/healthz` retained as alias of `/livez`.** Existing liveness probes pointing at
+   `/healthz` keep working without changes — but new deployments should prefer `/livez`.
+4. **Distroless image — no shell, no `wget`.** Container healthchecks that called
+   `wget`/`curl` from inside the image will no longer work (the runtime image is
+   `gcr.io/distroless/static-debian12:nonroot` — no shell, no package manager). Use HTTP
+   probes from the orchestrator (Docker Compose `healthcheck:` with an external runner,
+   k8s `httpGet:`, etc.) against `/livez`.
+5. **Multi-arch image — pin to `:v0.2.0` not `:latest`.** Releases are now built for
+   `linux/amd64` and `linux/arm64`. For reproducibility, pin Compose/Helm/manifests to
+   the explicit version tag (`ghcr.io/homericintelligence/atlas:v0.2.0`) rather than
+   `:latest`, which floats forward.
+6. **NATS subscriber attaches six JetStream streams** (`homeric-agents`, `-tasks`,
+   `-myrmidon`, `-research`, `-pipeline`, `-logs`). If your NATS deployment does not have
+   JetStream enabled or is missing any of these streams, `/readyz` will report the
+   subscriber as not-ready and the live SSE feed will only emit heartbeats.
+
 ## [0.2.0] - 2026-05-06
 
 Atlas reaches release-readiness. Closes the audit findings from
