@@ -86,6 +86,8 @@ All configuration is via environment variables with the `ATLAS_` prefix:
 | `ATLAS_TAILSCALE_API_KEY` | `` | API source: Tailscale API key |
 | `ATLAS_TAILNET_NAME` | `` | API source: Tailnet name (e.g. `example.com`) |
 | `ATLAS_POLL_AGAMEMNON_MS` | `5000` | Poll interval for Agamemnon in ms |
+| `ATLAS_RATE_LIMIT_PER_MIN` | `30` | Per-IP request budget (per minute) for every route except `/livez` and `/healthz`. `0` disables. |
+| `ATLAS_LIVEZ_RATE_LIMIT_PER_MIN` | `240` | Per-IP request budget (per minute) for `/livez` and `/healthz` only — high enough to accommodate 5-second k8s probes plus sidecars. `0` disables. |
 | `ATLAS_NATS_DASHBOARD_URL` | `` | Optional: URL of external nats-dashboard (linked on /nats page) |
 | `ATLAS_NATS_TOP_URL` | `` | Optional: ttyd URL serving nats-top (embedded as iframe on /nats page) |
 | `ATLAS_MNEMOSYNE_SKILLS_DIR` | `/mnt/mnemosyne/skills` | Path to Mnemosyne skills directory (read by /mnemosyne page) |

@@ -24,10 +24,26 @@ func (s *Server) routes() http.Handler {
 	// back-compat. /readyz and /metrics are auth-gated below: readiness reveals
 	// upstream component status (operational data), and metrics expose internal
 	// Prometheus state that should not be public.
-	r.Get("/livez", s.handleLivez)
-	r.Get("/healthz", s.handleLivez)
+	//
+	// The liveness routes get their own (higher) rate-limit budget because
+	// kubelets, sidecar agents, and external monitors typically probe them
+	// every few seconds — the standard 30/min budget that protects every
+	// other route would trip those probes and make k8s mark the pod dead.
+	// Default LivezRateLimitPerMin is 240 (k8s 5s probes = 12/min, with
+	// generous headroom for sidecars + retries).
+	r.Group(func(r chi.Router) {
+		r.Use(rateLimit(s.cfg.LivezRateLimitPerMin))
+		r.Get("/livez", s.handleLivez)
+		r.Get("/healthz", s.handleLivez)
+	})
 
 	r.Group(func(r chi.Router) {
+		// Per-IP rate limit applies BEFORE auth — exhausting an IP's
+		// budget on /readyz or /metrics returns 429 without ever
+		// invoking the auth path, which costs less than constant-time
+		// token comparison and saves an auth-failure log line per
+		// scanner request. Default RateLimitPerMin is 30.
+		r.Use(rateLimit(s.cfg.RateLimitPerMin))
 		r.Use(Middleware(AuthMode(s.cfg.AuthMode), s.cfg.AuthUser, s.cfg.AuthPass, s.cfg.AuthBearerToken))
 
 		r.Get("/readyz", MakeReadyzHandler(s.ready))

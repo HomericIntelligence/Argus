@@ -39,6 +39,21 @@ type Config struct {
 	// var to communicate the unit; the field is a time.Duration so the
 	// suffix is dropped on the Go side per staticcheck ST1011).
 	PollAgamemnon      time.Duration
+
+	// RateLimitPerMin is the per-IP request budget for every route except
+	// the dedicated liveness probes. Sourced from ATLAS_RATE_LIMIT_PER_MIN
+	// (default 30). Setting this to 0 disables rate limiting for non-livez
+	// routes — provided as an escape hatch for operators who hit a false
+	// positive; not recommended for production.
+	RateLimitPerMin int
+
+	// LivezRateLimitPerMin is the per-IP request budget for /livez and its
+	// /healthz alias. Sourced from ATLAS_LIVEZ_RATE_LIMIT_PER_MIN (default
+	// 240) — high enough that a 5-second k8s liveness probe (12 req/min)
+	// with a sidecar that also probes (24 req/min) plus restart-policy
+	// retries comfortably fits. Setting this to 0 disables the limit on
+	// the liveness routes specifically.
+	LivezRateLimitPerMin int
 }
 
 func getenv(key, def string) string {
@@ -67,6 +82,17 @@ func Load() *Config {
 		pollMs = 2000
 	}
 
+	// Rate-limit budgets. Negative or non-numeric values fall back to the
+	// default; an explicit 0 means "disabled" and is preserved (escape hatch).
+	rate, err := strconv.Atoi(getenv("ATLAS_RATE_LIMIT_PER_MIN", "30"))
+	if err != nil || rate < 0 {
+		rate = 30
+	}
+	livezRate, err := strconv.Atoi(getenv("ATLAS_LIVEZ_RATE_LIMIT_PER_MIN", "240"))
+	if err != nil || livezRate < 0 {
+		livezRate = 240
+	}
+
 	return &Config{
 		ListenAddr:         getenv("ATLAS_LISTEN_ADDR", ":3002"),
 		LogLevel:           logLevel,
@@ -90,7 +116,9 @@ func Load() *Config {
 		AuthUser:           getenv("ATLAS_AUTH_USER", ""),
 		AuthPass:           getenv("ATLAS_AUTH_PASS", ""),
 		AuthBearerToken:    getenv("ATLAS_AUTH_BEARER_TOKEN", ""),
-		PollAgamemnon:      time.Duration(pollMs) * time.Millisecond,
+		PollAgamemnon:        time.Duration(pollMs) * time.Millisecond,
+		RateLimitPerMin:      rate,
+		LivezRateLimitPerMin: livezRate,
 	}
 }
 
