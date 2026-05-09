@@ -11,10 +11,6 @@ GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GRAFANA_ADMIN_PASSWORD := env_var_or_default("GRAFANA_ADMIN_PASSWORD", "admin")
 GRAFANA_AUTH := "admin:" + GRAFANA_ADMIN_PASSWORD
 
-GRAFANA_PORT             := "3000"
-GRAFANA_URL              := "http://localhost:" + GRAFANA_PORT
-GRAFANA_ADMIN_PASSWORD   := env_var_or_default("GF_ADMIN_PASSWORD", "")
-
 # === Default ===
 
 default:
@@ -25,13 +21,6 @@ default:
 # One-command bootstrap: prereqs, pixi install, .env generation
 setup:
     @./scripts/setup.sh
-
-# Generate secrets/htpasswd from LOKI_AUTH_USER and LOKI_AUTH_PASSWORD in .env
-gen-htpasswd:
-    @scripts/gen-htpasswd.sh
-
-# Start all observability services
-start: gen-htpasswd
 
 # Generate configs/nginx/htpasswd using bcrypt; set LOKI_PASSWORD env var or be prompted
 gen-htpasswd:
@@ -45,7 +34,7 @@ gen-htpasswd:
     echo "configs/nginx/htpasswd written (bcrypt). Keep this file out of version control."
 
 # Start all observability services
-start:
+start: gen-htpasswd
     #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -f configs/nginx/htpasswd ]; then
@@ -93,10 +82,6 @@ logs SERVICE:
 
 # === Prometheus ===
 
-# Hot-reload Prometheus configuration via SIGHUP (--web.enable-lifecycle is disabled)
-reload-prometheus:
-    {{compose_cmd}} kill -s HUP prometheus && echo "Prometheus config reloaded."
-
 # Restart Prometheus to pick up configuration changes
 reload-prometheus:
     {{compose_cmd}} restart prometheus
@@ -141,7 +126,5 @@ test-jetstream:
 # Import all JSON dashboards from dashboards/ into Grafana via API
 import-dashboards:
     @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
-
-    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
 
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD={{GRAFANA_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
