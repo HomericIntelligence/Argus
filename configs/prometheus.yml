@@ -12,6 +12,12 @@ scrape_configs:
     static_configs:
       - targets: ['argus-exporter:9100']
 
+  # JetStream consumer: durable pull subscriber for hi.agents.> and hi.tasks.>
+  # Exposes real-time event-rate and task-latency metrics on port 9101
+  - job_name: 'jetstream-consumer'
+    static_configs:
+      - targets: ['jetstream-consumer:9101']
+
   # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:

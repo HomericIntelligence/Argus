@@ -90,6 +90,11 @@ restore VOLUME FILE:
 
 # === Grafana ===
 
+# Check jetstream-consumer metrics endpoint
+test-jetstream:
+    @echo "Checking jetstream-consumer metrics endpoint..."
+    curl -s http://localhost:9101/metrics | grep hi_jetstream
+
 # Import all JSON dashboards from dashboards/ into Grafana via API
 import-dashboards:
     @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
