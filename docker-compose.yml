@@ -119,7 +119,7 @@ services:
           cpus: "0.10"
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.32.1
     container_name: argus-alertmanager
     restart: unless-stopped
     ports:
