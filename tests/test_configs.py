@@ -238,6 +238,48 @@ class TestDockerComposeNetworkIsolation(unittest.TestCase):
         loki_ds = next(ds for ds in datasources if ds["type"] == "loki")
         assert loki_ds["url"] == "http://loki-proxy", (
             "Loki datasource must point to loki-proxy, not loki:3100 directly"
+class TestDockerComposePorts(unittest.TestCase):
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.services = self.compose["services"]
+
+    def _ports(self, service: str) -> list[str]:
+        return self.services[service].get("ports", [])
+
+    def test_prometheus_port_is_loopback_bound(self) -> None:
+        ports = self._ports("prometheus")
+        assert any(str(p).startswith("127.0.0.1:9090") for p in ports), (
+            f"Prometheus must bind to 127.0.0.1:9090, got: {ports}"
+        )
+
+    def test_prometheus_port_not_open_bound(self) -> None:
+        ports = self._ports("prometheus")
+        assert not any(str(p) == "9090:9090" for p in ports), (
+            f"Prometheus must not bind to 0.0.0.0:9090, got: {ports}"
+        )
+
+    def test_grafana_port_is_loopback_bound(self) -> None:
+        ports = self._ports("grafana")
+        assert any(str(p).startswith("127.0.0.1:3000") for p in ports), (
+            f"Grafana must bind to 127.0.0.1:3000, got: {ports}"
+        )
+
+    def test_grafana_port_not_open_bound(self) -> None:
+        ports = self._ports("grafana")
+        assert not any(str(p) == "3000:3000" for p in ports), (
+            f"Grafana must not bind to 0.0.0.0:3000, got: {ports}"
+        )
+
+    def test_exporter_port_is_loopback_bound(self) -> None:
+        ports = self._ports("argus-exporter")
+        assert any(str(p).startswith("127.0.0.1:9100") for p in ports), (
+            f"argus-exporter must bind to 127.0.0.1:9100, got: {ports}"
+        )
+
+    def test_grafana_anonymous_access_disabled(self) -> None:
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_AUTH_ANONYMOUS_ENABLED") == "false", (
+            f"GF_AUTH_ANONYMOUS_ENABLED must be 'false', got: {env.get('GF_AUTH_ANONYMOUS_ENABLED')}"
         )
 
 
