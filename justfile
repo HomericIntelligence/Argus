@@ -93,10 +93,14 @@ logs SERVICE:
 reload-prometheus:
     {{compose_cmd}} kill -s HUP prometheus && echo "Prometheus config reloaded."
 
-# Query Prometheus to verify all scrape targets are up
+# Restart Prometheus to pick up configuration changes
+reload-prometheus:
+    {{compose_cmd}} restart prometheus
+
+# Query Prometheus to verify all scrape targets are up (Prometheus is internal-only)
 test-scrape:
     @echo "Querying Prometheus for 'up' metric..."
-    curl -s "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
+    docker exec argus-prometheus wget -qO- "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
 
 # Manually test Agamemnon and Nestor health endpoints
 scrape-agamemnon:
