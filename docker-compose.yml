@@ -1,7 +1,7 @@
 networks:
   argus:
     driver: bridge
-  argus-loki:
+  loki-internal:
     driver: bridge
     internal: true
 
@@ -60,7 +60,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - argus-loki
+      - loki-internal
     deploy:
       resources:
         limits:
@@ -78,7 +78,7 @@ services:
       - ./secrets/htpasswd:/etc/nginx/htpasswd:ro
     networks:
       - argus
-      - argus-loki
+      - loki-internal
     depends_on:
       - loki
     deploy:
@@ -111,7 +111,8 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - argus-loki
+      - argus
+      - loki-internal
     depends_on:
       - loki
     deploy:
