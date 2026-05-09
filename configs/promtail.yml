@@ -3,7 +3,7 @@ server:
   grpc_listen_port: 0
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /run/promtail/positions.yaml
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
@@ -19,7 +19,33 @@ scrape_configs:
           host: ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
           __path__: /var/log/syslog
 
-  # Tail NATS server log — NATS log directory mounted at /logs/nats
+  # Tail Hermes application log
+  - job_name: hermes
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: hermes
+          service: project-hermes
+          __path__: /logs/hermes.log
+    pipeline_stages:
+      - replace:
+          expression: '(?i)(bearer\s+)[A-Za-z0-9._\-]+'
+          replace: '${1}<redacted>'
+      - replace:
+          expression: '(?i)(token[=:]\s*)[A-Za-z0-9._\-]+'
+          replace: '${1}<redacted>'
+      - replace:
+          expression: '(?i)(key[=:]\s*)[A-Za-z0-9._\-]+'
+          replace: '${1}<redacted>'
+      - replace:
+          expression: '(?i)(secret[=:]\s*)[A-Za-z0-9._\-]+'
+          replace: '${1}<redacted>'
+      - replace:
+          expression: '(?i)(password[=:]\s*)\S+'
+          replace: '${1}<redacted>'
+
+  # Tail NATS server log
   - job_name: nats
     static_configs:
       - targets:
