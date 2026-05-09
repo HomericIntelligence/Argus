@@ -125,6 +125,16 @@ class TestPromtailConfig(unittest.TestCase):
             f"got: {host_val!r}"
         )
 
+    def test_syslog_host_label_is_not_hardcoded(self):
+        """host label must use env var substitution, not a hardcoded hostname."""
+        raw = (CONFIGS_DIR / "promtail.yml").read_text()
+        assert "hermes" not in raw, "host label must not hardcode 'hermes'"
+
+    def test_syslog_host_label_uses_env_var(self):
+        """host label must reference HOSTNAME via env var expansion syntax."""
+        raw = (CONFIGS_DIR / "promtail.yml").read_text()
+        assert "HOSTNAME" in raw, "host label must reference ${HOSTNAME} for portability"
+
 
 class TestGrafanaDatasourcesConfig(unittest.TestCase):
     def setUp(self):
