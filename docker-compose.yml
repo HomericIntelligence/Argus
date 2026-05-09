@@ -119,6 +119,23 @@ services:
           memory: 128m
           cpus: "0.10"
 
+  alertmanager:
+    image: prom/alertmanager:v0.32.1
+    container_name: argus-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - argus
+    depends_on:
+      - prometheus
+
   grafana:
     image: grafana/grafana:11.2.2
     container_name: argus-grafana
@@ -252,3 +269,4 @@ volumes:
   prometheus_data:
   loki_data:
   grafana_data:
+  alertmanager_data:
