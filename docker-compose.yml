@@ -15,6 +15,8 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
+    expose:
+      - "9090"
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./rules:/etc/prometheus/rules:ro
@@ -42,11 +44,8 @@ services:
     image: grafana/loki:3.1.2
     container_name: argus-loki
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
+    expose:
+      - "3100"
     volumes:
       - ./configs/loki.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
@@ -181,37 +180,11 @@ services:
     build: ./exporter
     container_name: argus-exporter
     restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "3"
-    ports:
-      - "127.0.0.1:9100:9100"
-    environment:
-      AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
-      NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
-      NATS_URL: ${NATS_URL:-http://172.24.0.1:8222}
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9100/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - argus
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-          cpus: "0.10"
-
-  argus-dashboard:
-    image: ghcr.io/homericintelligence/atlas:v0.2.0
-    container_name: argus-dashboard
-    restart: unless-stopped
-    ports:
-      - "3002:3002"
+    expose:
+      - "9100"
+    volumes:
+      - ./exporter/exporter.py:/exporter.py:ro
+    command: python /exporter.py
     environment:
       ATLAS_LISTEN_ADDR: ":3002"
       ATLAS_AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
