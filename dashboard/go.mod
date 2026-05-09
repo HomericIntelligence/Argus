@@ -6,7 +6,7 @@ toolchain go1.25.10
 
 require (
 	github.com/a-h/templ v0.3.1001
-	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/httprate v0.15.0
 	github.com/nats-io/nats-server/v2 v2.14.0
 	github.com/nats-io/nats.go v1.51.0
