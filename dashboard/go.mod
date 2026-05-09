@@ -2,7 +2,7 @@ module github.com/HomericIntelligence/atlas
 
 go 1.23.0
 
-toolchain go1.25.9
+toolchain go1.25.10
 
 require (
 	github.com/a-h/templ v0.3.1001
