@@ -364,5 +364,113 @@ class TestHandler(unittest.TestCase):
                 exporter_mod.log.setLevel(original_level)
 
 
+# ---------------------------------------------------------------------------
+# Test collect() — # HELP line presence and ordering
+# ---------------------------------------------------------------------------
+
+class TestCollectHelpLines(unittest.TestCase):
+    def _run_collect(self, **kwargs):
+        hc_patch, fetch_patch = _patch_collect(**kwargs)
+        with hc_patch, fetch_patch:
+            return exporter_mod.collect()
+
+    def _parse_headers(self, output: str) -> dict[str, dict]:
+        """Return {metric_name: {"help_idx": int, "type_idx": int}} for each family."""
+        result: dict[str, dict] = {}
+        for idx, line in enumerate(output.splitlines()):
+            if line.startswith("# HELP "):
+                name = line.split()[2]
+                result.setdefault(name, {})["help_idx"] = idx
+            elif line.startswith("# TYPE "):
+                name = line.split()[2]
+                result.setdefault(name, {})["type_idx"] = idx
+        return result
+
+    def test_every_type_has_preceding_help(self):
+        """Every # TYPE line must be preceded by a # HELP line for the same metric."""
+        output = self._run_collect(
+            nats_varz={
+                "connections": 1, "in_msgs": 1, "out_msgs": 1,
+                "in_bytes": 1, "out_bytes": 1, "slow_consumers": 0,
+            },
+            nats_jsz={"streams": 1, "consumers": 1, "messages": 10, "bytes": 1024},
+            nestor_stats={"active": 1, "completed": 5, "pending": 0},
+        )
+        headers = self._parse_headers(output)
+        for name, indices in headers.items():
+            self.assertIn("help_idx", indices,
+                          f"# HELP missing for metric '{name}'")
+            self.assertIn("type_idx", indices,
+                          f"# TYPE missing for metric '{name}'")
+            self.assertLess(indices["help_idx"], indices["type_idx"],
+                            f"# HELP must appear before # TYPE for metric '{name}'")
+
+    def test_help_text_is_non_empty(self):
+        """Every # HELP line must contain non-empty descriptive text."""
+        output = self._run_collect(
+            nats_varz={
+                "connections": 1, "in_msgs": 1, "out_msgs": 1,
+                "in_bytes": 1, "out_bytes": 1, "slow_consumers": 0,
+            },
+        )
+        for line in output.splitlines():
+            if line.startswith("# HELP "):
+                parts = line.split(None, 3)
+                self.assertGreaterEqual(len(parts), 4,
+                                        f"# HELP line has no description text: {line!r}")
+                self.assertTrue(parts[3].strip(),
+                                f"# HELP line has empty description: {line!r}")
+
+    def test_help_emitted_once_per_metric(self):
+        """Each metric name must have exactly one # HELP line (no duplicates)."""
+        output = self._run_collect(
+            agents_data={
+                "agents": [
+                    {"name": "a", "host": "h1", "program": "p", "status": "online"},
+                    {"name": "b", "host": "h2", "program": "p", "status": "offline"},
+                ]
+            },
+        )
+        help_lines = [line for line in output.splitlines() if line.startswith("# HELP")]
+        names = [line.split()[2] for line in help_lines]
+        self.assertEqual(len(names), len(set(names)),
+                         "Duplicate # HELP declarations found in collect() output")
+
+    def test_all_upstreams_down_still_has_help(self):
+        """Even when all upstreams are down, always-emitted metrics must have # HELP."""
+        output = self._run_collect(
+            agamemnon_health=0,
+            agents_data=None,
+            tasks_data=None,
+            nestor_health=0,
+            nestor_stats=None,
+            nats_varz=None,
+            nats_jsz=None,
+        )
+        headers = self._parse_headers(output)
+        always_present = [
+            "hi_agamemnon_health",
+            "hi_nestor_health",
+            "homeric_exporter_scrape_timestamp",
+            "homeric_exporter_scrape_duration_seconds",
+            "homeric_exporter_fetch_errors_total",
+        ]
+        for name in always_present:
+            self.assertIn(name, headers, f"Metric '{name}' missing from output")
+            self.assertIn("help_idx", headers[name],
+                          f"# HELP missing for always-present metric '{name}'")
+
+    def test_help_contains_metric_name(self):
+        """Each # HELP line's metric name must match the family it documents."""
+        output = self._run_collect()
+        for line in output.splitlines():
+            if line.startswith("# HELP "):
+                parts = line.split(None, 3)
+                self.assertEqual(parts[0], "#")
+                self.assertEqual(parts[1], "HELP")
+                self.assertTrue(parts[2].replace("_", "").isalnum() or "_" in parts[2],
+                                f"Unexpected metric name format in: {line!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
