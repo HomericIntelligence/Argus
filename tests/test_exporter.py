@@ -286,6 +286,26 @@ class TestCollectMetricNames(unittest.TestCase):
 # Test Handler (HTTP server)
 # ---------------------------------------------------------------------------
 
+
+def _make_handler(path: str) -> tuple:
+    """Create a Handler instance with a mock socket/server for unit-testing methods
+    that don't require a real HTTP connection (e.g. log_message).
+
+    Returns (handler, mock_server) so callers can inspect either object.
+    """
+    mock_server = MagicMock()
+    mock_server.server_address = ("127.0.0.1", 0)
+    # Instantiating BaseHTTPRequestHandler calls handle() which would try I/O;
+    # suppress that by patching the method.
+    with patch.object(exporter_mod.Handler, "handle"):
+        handler = exporter_mod.Handler.__new__(exporter_mod.Handler)
+        handler.request = MagicMock()
+        handler.client_address = ("127.0.0.1", 0)
+        handler.server = mock_server
+        handler.path = path
+    return handler, mock_server
+
+
 @contextlib.contextmanager
 def _live_server():
     """Spin up a real ThreadingHTTPServer on an ephemeral port; yield the port."""
