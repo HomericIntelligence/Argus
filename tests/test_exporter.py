@@ -15,6 +15,7 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -75,6 +76,32 @@ class TestFetch(unittest.TestCase):
             result = exporter_mod._fetch("http://fake/data")
         self.assertIsInstance(result, dict)
         self.assertEqual(result["key"], "value")
+
+    def test_returns_none_on_oserror(self):
+        with patch("urllib.request.urlopen", side_effect=OSError("connection refused")):
+            result = exporter_mod._fetch("http://fake/data")
+        self.assertIsNone(result)
+
+    def test_returns_none_on_urlerror(self):
+        with patch("urllib.request.urlopen",
+                   side_effect=urllib.error.URLError("name or service not known")):
+            result = exporter_mod._fetch("http://fake/data")
+        self.assertIsNone(result)
+
+    def test_returns_none_on_json_decode_error(self):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"not-json"
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            result = exporter_mod._fetch("http://fake/data")
+        self.assertIsNone(result)
+
+    def test_propagates_unexpected_exception(self):
+        """Exceptions outside the specific tuple must not be swallowed."""
+        with patch("urllib.request.urlopen", side_effect=MemoryError("oom")):
+            with self.assertRaises(MemoryError):
+                exporter_mod._fetch("http://fake/data")
 
     def test_returns_none_on_exception(self):
         with patch("urllib.request.urlopen", side_effect=_urlopen_raises):
