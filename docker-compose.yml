@@ -10,6 +10,9 @@ services:
     image: prom/prometheus:v2.54.1
     container_name: argus-prometheus
     restart: unless-stopped
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging:
       driver: json-file
       options:
@@ -46,6 +49,14 @@ services:
     restart: unless-stopped
     expose:
       - "3100"
+    user: "10001:10001"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     volumes:
       - ./configs/loki.yml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
@@ -68,6 +79,9 @@ services:
     image: nginx:1.27-alpine
     container_name: argus-loki-proxy
     restart: unless-stopped
+    user: "101:101"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     ports:
       - "127.0.0.1:3101:80"
     volumes:
@@ -89,6 +103,9 @@ services:
     container_name: argus-promtail
     hostname: hermes
     restart: unless-stopped
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging:
       driver: json-file
       options:
@@ -140,6 +157,9 @@ services:
     image: grafana/grafana:11.2.2
     container_name: argus-grafana
     restart: unless-stopped
+    user: "472:472"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     logging:
       driver: json-file
       options:
@@ -180,11 +200,45 @@ services:
     build: ./exporter
     container_name: argus-exporter
     restart: unless-stopped
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     expose:
       - "9100"
+    ports:
+      - "127.0.0.1:9100:9100"
     volumes:
       - ./exporter/exporter.py:/exporter.py:ro
     command: python /exporter.py
+    environment:
+      AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
+      NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
+      NATS_URL: ${NATS_URL:-http://172.24.0.1:8222}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - argus
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.10"
+
+  argus-dashboard:
+    image: ghcr.io/homericintelligence/atlas:v0.2.0
+    container_name: argus-dashboard
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
     environment:
       ATLAS_LISTEN_ADDR: ":3002"
       ATLAS_AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
