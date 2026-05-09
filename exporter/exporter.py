@@ -56,6 +56,34 @@ def _health_check(url: str) -> int:
         return 0
 
 
+_METRIC_HELP: dict[str, str] = {
+    "hi_agamemnon_health":                    "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise",
+    "hi_agents_total":                        "Total number of agents registered in Agamemnon",
+    "hi_agents_online":                       "Number of agents with status=online",
+    "hi_agents_offline":                      "Number of agents with status!=online",
+    "hi_agent_online":                        "1 if this individual agent is online, 0 otherwise",
+    "hi_tasks_total":                         "Total number of tasks known to Agamemnon",
+    "hi_tasks_by_status":                     "Task count grouped by status label",
+    "hi_nestor_health":                       "1 if Nestor /v1/health returned HTTP 200, 0 otherwise",
+    "hi_nestor_research_active":              "Number of active research jobs in Nestor",
+    "hi_nestor_research_completed":           "Number of completed research jobs in Nestor",
+    "hi_nestor_research_pending":             "Number of pending research jobs in Nestor",
+    "nats_connections":                       "Current number of client connections to NATS",
+    "nats_in_msgs_total":                     "Cumulative inbound messages received by NATS server",
+    "nats_out_msgs_total":                    "Cumulative outbound messages sent by NATS server",
+    "nats_in_bytes_total":                    "Cumulative inbound bytes received by NATS server",
+    "nats_out_bytes_total":                   "Cumulative outbound bytes sent by NATS server",
+    "nats_slow_consumers":                    "Current number of slow consumers on NATS",
+    "nats_jetstream_streams":                 "Number of JetStream streams",
+    "nats_jetstream_consumers":               "Number of JetStream consumers",
+    "nats_jetstream_messages":                "Number of messages stored in JetStream",
+    "nats_jetstream_bytes":                   "Bytes stored in JetStream",
+    "homeric_exporter_scrape_timestamp_seconds": "Unix timestamp of the last completed scrape",
+    "homeric_exporter_scrape_duration_seconds":  "Wall-clock seconds spent in the last collect() call",
+    "homeric_exporter_fetch_errors_total":    "Number of upstream fetch failures per scrape, by upstream",
+}
+
+
 def collect() -> str:
     start = time.time()
     lines: list[str] = []
@@ -64,7 +92,9 @@ def collect() -> str:
     def gauge(name: str, help: str, value: float | int, labels: dict | None = None) -> None:
         lstr = ",".join(f'{k}="{v}"' for k, v in (labels or {}).items())
         if name not in emitted_types:
-            lines.append(f"# HELP {name} {help}")
+            help_text = _METRIC_HELP.get(name, "")
+            if help_text:
+                lines.append(f"# HELP {name} {help_text}")
             lines.append(f"# TYPE {name} gauge")
             emitted_types.add(name)
         lines.append(f"{name}{{{lstr}}} {value}")

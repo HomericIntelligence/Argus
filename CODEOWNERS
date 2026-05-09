@@ -1,0 +1,14 @@
+# CODEOWNERS — ProjectArgus
+#
+# All files default to requiring review from the HomericIntelligence team.
+# Pattern order: last matching pattern wins.
+
+* @mvillmow
+
+# CI and workflow changes require explicit approval
+.github/                      @mvillmow
+.github/workflows/            @mvillmow
+
+# Security-sensitive files
+SECURITY.md                   @mvillmow
+configs/nginx/htpasswd        @mvillmow

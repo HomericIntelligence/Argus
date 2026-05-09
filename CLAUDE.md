@@ -12,33 +12,83 @@ tailing. It does NOT modify Agamemnon or any other HomericIntelligence service.
 
 ## Stack Components
 
-| Service    | Image                          | Purpose                                 |
-|------------|--------------------------------|-----------------------------------------|
-| Prometheus | prom/prometheus:v2.54.1        | Scrape and store metrics                |
-| Loki       | grafana/loki:3.1.2             | Store and query log streams             |
-| Promtail   | grafana/promtail:3.1.2         | Tail container logs and ship to Loki    |
-| Grafana    | grafana/grafana:11.2.2         | Visualize metrics and logs              |
-| Atlas dashboard | ghcr.io/homericintelligence/atlas:latest | Unified status dashboard on :3002 |
-
-| Service    | Image                     | Purpose                                 |
-|------------|---------------------------|-----------------------------------------|
-| Prometheus | prom/prometheus:v2.54.1   | Scrape and store metrics                |
-| Loki       | grafana/loki:3.1.2        | Store and query log streams             |
-| Promtail   | grafana/promtail:3.1.2    | Tail container logs and ship to Loki    |
-| Grafana    | grafana/grafana:11.2.2    | Visualize metrics and logs              |
+| Service         | Image                          | Purpose                                 |
+|-----------------|--------------------------------|-----------------------------------------|
+| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                |
+| Loki            | grafana/loki:3.1.2             | Store and query log streams             |
+| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki       |
+| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki    |
+| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs              |
+| argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
 
 All services run on the `argus` Docker network and are managed via `docker-compose.yml`.
 
+## Architecture
+
+```mermaid
+graph TD
+    A[Agamemnon :8080] -->|HTTP pull| E[argus-exporter :9100]
+    N[Nestor :8081]    -->|HTTP pull| E
+    NATS[NATS :8222]   -->|HTTP pull| E
+    E -->|/metrics| P[Prometheus :9090]
+    NOMAD[Nomad :4646] -->|/v1/metrics| P
+    P -->|query| G[Grafana :3000]
+    L[Loki :3100] -->|query| G
+    PT[Promtail :9080] -->|push| L
+    LP[loki-proxy :3101] -->|auth proxy| L
+    LOGS[/var/log + NATS logs] -->|tail| PT
+```
+
+## Environment Variables
+
+Copy `.env.example` to `.env` before running `just start`. The stack will refuse
+to start without a `.env` file.
+
+| Variable            | Default in .env.example              | Required | Purpose                              |
+|---------------------|--------------------------------------|----------|--------------------------------------|
+| `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password               |
+| `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL               |
+| `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                  |
+| `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL         |
+| `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
+
+`172.20.0.1` / `172.24.0.1` are WSL2 host gateway addresses — they reach services
+running on the Windows host or in other WSL distros. Substitute Tailscale IPs for
+cross-host deployments.
+
 ## Scrape Targets
 
-| Job              | Host              | Path            | What it provides              |
-|------------------|-------------------|-----------------|-------------------------------|
-| agamemnon        | 172.20.0.1:8080   | /v1/agents      | Agent health via exporter     |
-| nestor           | 172.20.0.1:8081   | /v1/health      | Nestor health via exporter    |
-| nats             | localhost:8222    | /metrics        | Message rates, stream storage |
-| nomad            | localhost:4646    | /v1/metrics     | Job and allocation metrics    |
+| Job              | Source Env Var   | Default Host      | Path            | What it provides              |
+|------------------|------------------|-------------------|-----------------|-------------------------------|
+| homeric-exporter | —                | argus-exporter    | /metrics        | Agent, task, NATS metrics     |
+| prometheus       | —                | localhost:9090    | /metrics        | Prometheus self-monitoring    |
+| nomad            | —                | 172.20.0.1:4646   | /v1/metrics     | Job and allocation metrics    |
 
-`172.20.0.1` is the WSL2 host gateway — this reaches services running on the Windows host or in other WSL distros.
+The exporter aggregates Agamemnon, Nestor, and NATS data and exposes them as
+Prometheus metrics on port 9100.
+
+## Metric Naming Conventions
+
+All HomericIntelligence-specific metrics follow the `hi_` prefix:
+
+- `hi_agamemnon_health` — health probes (0/1 gauges)
+- `hi_agents_*` — agent inventory counts
+- `hi_tasks_*` — task counts by status
+- `hi_nestor_*` — Nestor health and research stats
+
+NATS metrics use the `nats_` prefix:
+
+- `nats_connections`, `nats_slow_consumers` — current state (gauges)
+- `nats_in_msgs_total`, `nats_out_msgs_total` — cumulative counters
+- `nats_jetstream_*` — JetStream stats
+
+Exporter self-metrics use the `homeric_exporter_` prefix:
+
+- `homeric_exporter_scrape_duration_seconds` — last collect() wall time
+- `homeric_exporter_scrape_timestamp_seconds` — unix timestamp of last scrape
+- `homeric_exporter_fetch_errors_total` — per-upstream fetch error counts
+
+All metrics include `# HELP` and `# TYPE` lines.
 
 ## Environment Variables
 
@@ -80,14 +130,22 @@ ProjectArgus/
 │   ├── prometheus.yml        # Scrape configs
 │   ├── loki.yml              # Loki server config
 │   ├── promtail.yml          # Log scraping config
+│   ├── nginx/
+│   │   ├── loki.conf         # Nginx proxy config for Loki auth
+│   │   └── htpasswd          # Basic auth credentials for Loki proxy
 │   └── grafana/
 │       ├── datasources.yml   # Auto-provision Prometheus + Loki datasources
 │       └── dashboards.yml    # Auto-provision dashboards from dashboards/
 ├── dashboards/               # Grafana dashboard JSON files
+├── exporter/
+│   ├── exporter.py           # Custom Prometheus exporter (stdlib only)
+│   └── Dockerfile            # Multi-stage, non-root image build
 ├── rules/
-│   └── agent-alerts.yml      # Prometheus alerting rules
+│   ├── agent-alerts.yml      # Prometheus alerting rules
+│   └── recording-rules.yml   # Pre-computed recording rules
 ├── scripts/
 │   └── scrape-agamemnon.sh   # Manual endpoint test script
+├── tests/                    # pytest unit tests
 ├── docker-compose.yml
 ├── justfile
 └── pixi.toml
@@ -99,6 +157,7 @@ ProjectArgus/
 2. All configuration is file-based and version-controlled; no manual Grafana UI changes that are not exported to JSON.
 3. Prometheus scrape interval is 15s globally; do not tighten below 10s without understanding cardinality impact.
 4. Loki retention is 30 days (720h); adjust `retention_period` in `configs/loki.yml` if storage is constrained.
+5. The `.env` file is gitignored and must never be committed. Use `.env.example` as the template.
 
 ## Development Guidelines
 
@@ -106,16 +165,28 @@ ProjectArgus/
 - Add new dashboards as JSON files in `dashboards/` and run `just import-dashboards`.
 - Alert rules in `rules/` also take effect after `just reload-prometheus`.
 - Use `just test-scrape` to verify the `up` metric for all targets before declaring a scrape job healthy.
+- Run `just test` to execute the unit test suite before submitting a PR.
+- `import-dashboards` reads `GF_ADMIN_PASSWORD` from `.env` — never hardcode credentials.
 
 ## Common Commands
 
 ```bash
-just start                   # docker compose up -d
+just start                   # docker compose up -d (requires .env)
 just stop                    # docker compose down
 just status                  # docker compose ps
 just logs <service>          # docker compose logs -f <service>
-just reload-prometheus       # POST /-/reload to Prometheus
+just reload-prometheus       # Send SIGHUP to Prometheus (hot-reload config)
 just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
+just test                    # Run pytest unit tests
+just backup                  # Back up data volumes to ./backups/
 ```
+
+## AI Agent Collaboration Notes
+
+- This is a **config-only / infrastructure** repository. There is no application code to compile.
+- The primary source of truth for metric definitions is `exporter/exporter.py`.
+- Do not add scrape targets that pull from services outside the HomericIntelligence ecosystem without discussion.
+- Alert rule changes in `rules/` must be validated with `just validate` before merging.
+- See `AGENTS.md` for multi-agent coordination protocol.

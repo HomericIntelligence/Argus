@@ -14,6 +14,8 @@ Use [GitHub's private vulnerability reporting](../../security/advisories/new) to
 submit a vulnerability report directly on this repository. This is the preferred
 channel — reports are private, tracked, and linked to the repository.
 
+Send an email to: **<villmow.products@gmail.com>**
+
 ### Email (Fallback)
 
 Send an email to: **<villmow.products@gmail.com>**
