@@ -124,7 +124,10 @@ jobs:
           if-no-files-found: warn
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v9 is required for golangci-lint v2 binaries; the older v6 action
+        # rejects "v2.x" version strings outright. SHA-pinned to v9.2.0
+        # (current latest as of 2026-05-07) per the repo's pin convention.
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         with:
           version: v2.12.2
           working-directory: dashboard

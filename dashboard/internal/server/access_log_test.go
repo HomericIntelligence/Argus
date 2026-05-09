@@ -21,7 +21,12 @@ import (
 // path with a recognisable secret query value and verifying the secret does
 // not appear anywhere in the captured log output.
 func TestAccessLog_DoesNotLeakQueryString(t *testing.T) {
-	const secret = "ssetoken-must-not-appear-in-logs-12345"
+	// Test fixture, not a real credential — the whole point of the test is
+	// that this string MUST NOT appear in the captured log output. gosec's
+	// G101 pattern-matches the variable name `secret`, but suppressing it
+	// here is correct: this is a sentinel value the test searches for to
+	// prove the access log strips query strings.
+	const secret = "ssetoken-must-not-appear-in-logs-12345" //#nosec G101 -- intentional sentinel for redaction-behaviour assertion
 
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
