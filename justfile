@@ -11,6 +11,10 @@ GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GRAFANA_ADMIN_PASSWORD := env_var_or_default("GRAFANA_ADMIN_PASSWORD", "admin")
 GRAFANA_AUTH := "admin:" + GRAFANA_ADMIN_PASSWORD
 
+GRAFANA_PORT             := "3000"
+GRAFANA_URL              := "http://localhost:" + GRAFANA_PORT
+GRAFANA_ADMIN_PASSWORD   := env_var_or_default("GF_ADMIN_PASSWORD", "")
+
 # === Default ===
 
 default:
@@ -128,3 +132,5 @@ import-dashboards:
     @test -n "${GF_ADMIN_PASSWORD:-}" || { echo "ERROR: GF_ADMIN_PASSWORD is not set. Source .env first."; exit 1; }
 
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
+
+    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD={{GRAFANA_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
