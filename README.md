@@ -45,7 +45,7 @@ cp .env.example .env   # copy and edit for your environment
 just start
 ```
 
-Then access Grafana at http://localhost:3001 (default credentials: admin / admin).
+Then access Grafana at <http://localhost:3001> (default credentials: admin / admin).
 
 ## Environment Configuration
 
