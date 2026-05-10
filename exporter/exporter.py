@@ -116,13 +116,13 @@ def collect() -> str:
 
     # ── Parallelise all independent upstream fetches ──────────────────────
     with ThreadPoolExecutor(max_workers=7) as pool:
-        f_agamemnon_health = pool.submit(_health_check, f"{AGAMEMNON_URL}/v1/health")
-        f_agents           = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/agents")
-        f_tasks            = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/tasks")
-        f_nestor_health    = pool.submit(_health_check, f"{NESTOR_URL}/v1/health")
-        f_nestor_stats     = pool.submit(_fetch,        f"{NESTOR_URL}/v1/research/stats")
-        f_nats_varz        = pool.submit(_fetch,        f"{NATS_URL}/varz")
-        f_nats_jsz         = pool.submit(_fetch,        f"{NATS_URL}/jsz")
+        f_agamemnon_health = pool.submit(_health_check, f"{AGAMEMNON_URL}/v1/health", AGAMEMNON_TLS_CA)
+        f_agents           = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/agents", AGAMEMNON_TLS_CA)
+        f_tasks            = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/tasks",  AGAMEMNON_TLS_CA)
+        f_nestor_health    = pool.submit(_health_check, f"{NESTOR_URL}/v1/health",    NESTOR_TLS_CA)
+        f_nestor_stats     = pool.submit(_fetch,        f"{NESTOR_URL}/v1/research/stats", NESTOR_TLS_CA)
+        f_nats_varz        = pool.submit(_fetch,        f"{NATS_URL}/varz",           NATS_TLS_CA)
+        f_nats_jsz         = pool.submit(_fetch,        f"{NATS_URL}/jsz",            NATS_TLS_CA)
         # Resolve all futures before building metric lines
         agamemnon_health = f_agamemnon_health.result()
         agents_data      = f_agents.result()
@@ -224,11 +224,11 @@ class Handler(BaseHTTPRequestHandler):
         log.debug(fmt, *args)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     log.info("homeric-exporter starting on port %d", PORT)
     log.info("Scraping Agamemnon at %s (CA: %s)", AGAMEMNON_URL, AGAMEMNON_TLS_CA or "system trust store")
     log.info("Scraping Nestor at %s (CA: %s)", NESTOR_URL, NESTOR_TLS_CA or "system trust store")
     log.info("Scraping NATS at %s (CA: %s)", NATS_URL, NATS_TLS_CA or "system trust store")
     if not _TLS_VERIFY:
         log.warning("TLS certificate verification is DISABLED (TLS_VERIFY=false)")
-    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()  # nosec B104

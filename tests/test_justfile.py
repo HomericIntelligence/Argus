@@ -1,7 +1,6 @@
 """
 Assert that the justfile contains no hardcoded Grafana credentials.
 """
-import re
 import unittest
 from pathlib import Path
 

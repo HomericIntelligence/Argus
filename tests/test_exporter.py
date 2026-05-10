@@ -7,7 +7,6 @@ connections are made during the test suite.
 from __future__ import annotations
 
 import contextlib
-import io
 import json
 import sys
 import threading
@@ -126,12 +125,12 @@ def _patch_collect(
     agents_data = agents_data or {}
     tasks_data = tasks_data or {}
 
-    def _fake_health_check(url: str) -> int:
+    def _fake_health_check(url: str, ca_file=None) -> int:
         if "agamemnon" in url or "8080" in url:
             return agamemnon_health
         return nestor_health
 
-    def _fake_fetch(url: str) -> dict | None:
+    def _fake_fetch(url: str, ca_file=None) -> dict | None:
         if "/v1/agents" in url:
             return agents_data
         if "/v1/tasks" in url:

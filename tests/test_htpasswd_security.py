@@ -3,7 +3,6 @@ Tests for issue #130: htpasswd file must not be tracked in git;
 secrets/htpasswd must be generated at runtime from environment variables.
 """
 import os
-import re
 import stat
 import subprocess
 import tempfile
