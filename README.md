@@ -40,6 +40,7 @@ on first run. It is idempotent — safe to re-run.
 
 Then access Grafana at <http://localhost:3000> (credentials: admin / the password set in `.env`).
 
+```bash
 cp .env.example .env   # copy and edit for your environment
 just start
 ```
@@ -48,7 +49,8 @@ Then access Grafana at http://localhost:3001 (default credentials: admin / admin
 
 ## Environment Configuration
 
-All environment-specific values live in a `.env` file that is **not** committed to version control. A fully-documented template is provided:
+All environment-specific values live in a `.env` file that is **not** committed to version
+control. A fully-documented template is provided:
 
 ```bash
 cp .env.example .env
