@@ -2,15 +2,10 @@
 from __future__ import annotations
 
 import importlib
-import json
 import os
 import ssl
 import sys
-import threading
-import unittest.mock
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest

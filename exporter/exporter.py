@@ -231,4 +231,4 @@ if __name__ == "__main__":
     log.info("Scraping NATS at %s (CA: %s)", NATS_URL, NATS_TLS_CA or "system trust store")
     if not _TLS_VERIFY:
         log.warning("TLS certificate verification is DISABLED (TLS_VERIFY=false)")
-    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()  # nosec B104

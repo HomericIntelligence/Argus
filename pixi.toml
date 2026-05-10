@@ -25,10 +25,11 @@ jq = ">=1.6,<2"
 jq = ">=1.6,<2"
 
 [tasks]
-start  = "just start"
-stop   = "just stop"
-status = "just status"
-test   = "python -m pytest tests/ -v"
+start     = "just start"
+stop      = "just stop"
+status    = "just status"
+test      = "python -m pytest tests/ -v"
+test-unit = "python -m pytest tests/ -v --cov=exporter --cov-report=term-missing --cov-report=xml"
 
 [feature.lint.dependencies]
 python = ">=3.11"
