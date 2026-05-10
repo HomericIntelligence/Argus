@@ -78,9 +78,11 @@ dev:
     @./scripts/dev-watch.sh
 
 # Run local test suite
+test:
+    pixi run test
 
 # Run local test suite with coverage
-test:
+test-unit:
     pixi run test-unit
 
 # Tail logs for a specific service (e.g. just logs prometheus)

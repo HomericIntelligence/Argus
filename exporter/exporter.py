@@ -116,13 +116,13 @@ def collect() -> str:
 
     # ── Parallelise all independent upstream fetches ──────────────────────
     with ThreadPoolExecutor(max_workers=7) as pool:
-        f_agamemnon_health = pool.submit(_health_check, f"{AGAMEMNON_URL}/v1/health")
-        f_agents           = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/agents")
-        f_tasks            = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/tasks")
-        f_nestor_health    = pool.submit(_health_check, f"{NESTOR_URL}/v1/health")
-        f_nestor_stats     = pool.submit(_fetch,        f"{NESTOR_URL}/v1/research/stats")
-        f_nats_varz        = pool.submit(_fetch,        f"{NATS_URL}/varz")
-        f_nats_jsz         = pool.submit(_fetch,        f"{NATS_URL}/jsz")
+        f_agamemnon_health = pool.submit(_health_check, f"{AGAMEMNON_URL}/v1/health", AGAMEMNON_TLS_CA)
+        f_agents           = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/agents", AGAMEMNON_TLS_CA)
+        f_tasks            = pool.submit(_fetch,        f"{AGAMEMNON_URL}/v1/tasks",  AGAMEMNON_TLS_CA)
+        f_nestor_health    = pool.submit(_health_check, f"{NESTOR_URL}/v1/health",    NESTOR_TLS_CA)
+        f_nestor_stats     = pool.submit(_fetch,        f"{NESTOR_URL}/v1/research/stats", NESTOR_TLS_CA)
+        f_nats_varz        = pool.submit(_fetch,        f"{NATS_URL}/varz",           NATS_TLS_CA)
+        f_nats_jsz         = pool.submit(_fetch,        f"{NATS_URL}/jsz",            NATS_TLS_CA)
         # Resolve all futures before building metric lines
         agamemnon_health = f_agamemnon_health.result()
         agents_data      = f_agents.result()
