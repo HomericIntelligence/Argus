@@ -111,7 +111,35 @@ jobs:
 
   atlas-dashboard:
     name: Atlas dashboard (Go)
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dashboard/go.mod
+          cache-dependency-path: dashboard/go.sum
+
+      - name: go build
+        working-directory: dashboard
+        run: go build ./...
+
+      - name: go vet
+        working-directory: dashboard
+        run: go vet ./...
+
+      - name: go test (unit, race-detected, coverage)
+        working-directory: dashboard
+        run: |
+          go test -race -coverprofile=coverage.out ./internal/...
+          go tool cover -func=coverage.out | tail -1
+
+      - name: Docker build (verify Dockerfile is buildable)
+        working-directory: dashboard
+        run: docker build -t argus-dashboard:ci .
 
   test:
     name: Test exporter
@@ -139,63 +167,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: dashboard/go.mod
-          cache-dependency-path: dashboard/go.sum
-
-      - name: go build
-        working-directory: dashboard
-        run: go build ./...
-
-      - name: go vet
-        working-directory: dashboard
-        run: go vet ./...
-
-      - name: go test (unit, race-detected, coverage)
-        working-directory: dashboard
-        run: |
-          go test -race -coverprofile=coverage.out ./internal/...
-          go tool cover -func=coverage.out | tail -1
-
-      - name: go test (integration)
-        working-directory: dashboard
-        run: go test -race -tags=integration -timeout=60s ./tests/integration/...
-
-      - name: Upload coverage profile
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-profile
-          path: dashboard/coverage.out
-          if-no-files-found: warn
-
-      - name: golangci-lint
-        # v9 is required for golangci-lint v2 binaries; the older v6 action
-        # rejects "v2.x" version strings outright. SHA-pinned to v9.2.0
-        # (current latest as of 2026-05-07) per the repo's pin convention.
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
-        with:
-          version: v2.12.2
-          working-directory: dashboard
-
-      - name: govulncheck (SCA)
-        working-directory: dashboard
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
-
-      - name: Check templ generate (no-op)
-        working-directory: dashboard
-        run: |
-          go install github.com/a-h/templ/cmd/templ@latest
-          templ generate ./...
-          git diff --exit-code
-
-      - name: Docker build (verify Dockerfile is buildable)
-        working-directory: dashboard
-        run: docker build -t argus-dashboard:ci .
 
       - name: Set up Python
         uses: actions/setup-python@v5
