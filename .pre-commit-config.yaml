@@ -13,52 +13,11 @@ repos:
       - id: yamllint
         args: ["--config-file", ".yamllint.yaml"]
         files: \.(yml|yaml)$
-  # Go-aware hooks for the dashboard/ subtree. All three are local
-  # `language: system` hooks — they shell out to whatever's on $PATH and
-  # avoid pulling in third-party (often archived) wrapper repos. Required
-  # binaries:
-  #   * gofmt          — bundled with Go (>= 1.23, see dashboard/go.mod)
-  #   * golangci-lint  — v2.x (CI pins v2.12.2; see .github/workflows/ci.yml)
-  #   * templ          — v0.3.1001 (pin in dashboard/go.mod);
-  #                      install: go install github.com/a-h/templ/cmd/templ@v0.3.1001
   - repo: local
     hooks:
-      - id: gofmt
-        name: gofmt (dashboard/)
-        description: Run gofmt -s -w over dashboard Go files; fail if anything was rewritten.
-        entry: >-
-          bash -c 'set -euo pipefail;
-          command -v gofmt >/dev/null
-          || { echo "gofmt not found on PATH; install Go >= 1.23 (see dashboard/go.mod)"; exit 1; };
-          cd dashboard && gofmt -l -s -w . && cd .. &&
-          git diff --exit-code -- "dashboard/**/*.go"'
-        language: system
-        types: [go]
-        files: ^dashboard/.*\.go$
+      - id: check-version-consistency
+        name: Check pixi.toml version matches CHANGELOG
+        language: python
+        entry: python scripts/check-version-consistency.py
         pass_filenames: false
-      - id: golangci-lint
-        name: golangci-lint (dashboard/)
-        description: Run golangci-lint v2 over dashboard packages; matches CI's authoritative gate.
-        entry: >-
-          bash -c 'set -euo pipefail;
-          command -v golangci-lint >/dev/null
-          || { echo "golangci-lint not found on PATH; install v2.12.2 with
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2"; exit 1; };
-          cd dashboard && golangci-lint run ./...'
-        language: system
-        types: [go]
-        files: ^dashboard/.*\.go$
-        pass_filenames: false
-      - id: templ-generate
-        name: templ generate diff (dashboard/)
-        description: Regenerate *_templ.go from *.templ; fail if committed output drifts from sources.
-        entry: >-
-          bash -c 'set -euo pipefail;
-          command -v templ >/dev/null
-          || { echo "templ not found on PATH; install the pinned version with
-          go install github.com/a-h/templ/cmd/templ@v0.3.1001"; exit 1; };
-          cd dashboard && templ generate ./... && cd .. &&
-          git diff --exit-code -- "dashboard/web/templates/*_templ.go"'
-        language: system
-        files: ^dashboard/web/templates/.*\.(templ|templ\.go)$
-        pass_filenames: false
+        files: ^(pixi\.toml|CHANGELOG\.md)$

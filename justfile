@@ -129,3 +129,13 @@ test-jetstream:
 # Reads GRAFANA_ADMIN_PASSWORD from .env (required — never hardcoded)
 import-dashboards:
     GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD={{GRAFANA_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+
+# === Versioning ===
+
+# Bump version and promote CHANGELOG (patch|minor|major)
+bump TYPE:
+    bash scripts/bump-version.sh {{TYPE}}
+
+# Preview CHANGELOG entries since last tag without committing
+generate-changelog:
+    bash scripts/generate-changelog.sh

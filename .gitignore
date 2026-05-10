@@ -7,3 +7,6 @@ data/
 .DS_Store
 *.swp
 configs/nginx/htpasswd
+__pycache__/
+*.pyc
+*.pyo
