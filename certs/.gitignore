@@ -1,0 +1,5 @@
+# Generated certificates and private keys — never commit these
+*.key
+*.crt
+*.csr
+*.srl

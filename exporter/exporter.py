@@ -8,49 +8,64 @@ from __future__ import annotations
 import json
 import logging
 import os
-import signal
-import threading
+import ssl
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("homeric-exporter")
 
-AGAMEMNON_URL = os.environ.get("AGAMEMNON_URL", "http://172.20.0.1:8080")
-NESTOR_URL    = os.environ.get("NESTOR_URL",    "http://172.20.0.1:8081")
-NATS_URL      = os.environ.get("NATS_URL",      "http://172.24.0.1:8222")
-PORT          = int(os.environ.get("EXPORTER_PORT", "9100"))
+AGAMEMNON_URL     = os.environ.get("AGAMEMNON_URL",     "http://172.20.0.1:8080")
+NESTOR_URL        = os.environ.get("NESTOR_URL",        "http://172.20.0.1:8081")
+NATS_URL          = os.environ.get("NATS_URL",          "http://172.24.0.1:8222")
+PORT              = int(os.environ.get("EXPORTER_PORT", "9100"))
 
-_raw_timeout = os.environ.get("SCRAPE_TIMEOUT", "5")
-try:
-    SCRAPE_TIMEOUT: float = float(_raw_timeout)
-except ValueError:
-    log.warning("SCRAPE_TIMEOUT=%r is not numeric; falling back to 5", _raw_timeout)
-    SCRAPE_TIMEOUT = 5.0
+# Optional CA bundle paths for TLS verification on each upstream.
+# Set to the path of a CA certificate file (PEM) to enable custom trust.
+# Leave unset to use the system trust store (appropriate when the upstream
+# uses a publicly-trusted cert or when Tailscale handles transport encryption).
+AGAMEMNON_TLS_CA  = os.environ.get("AGAMEMNON_TLS_CA")
+NESTOR_TLS_CA     = os.environ.get("NESTOR_TLS_CA")
+NATS_TLS_CA       = os.environ.get("NATS_TLS_CA")
 
-for _var, _val in (("AGAMEMNON_URL", AGAMEMNON_URL),
-                   ("NESTOR_URL",    NESTOR_URL),
-                   ("NATS_URL",      NATS_URL)):
-    if not _val:
-        log.warning("environment variable %s is empty; scrapes against this target will fail", _var)
+# Set TLS_VERIFY=false to disable certificate verification entirely.
+# Only for development — never disable in production.
+_TLS_VERIFY       = os.environ.get("TLS_VERIFY", "true").lower() != "false"
 
 
-def _fetch(url: str) -> dict | None:
+def _build_ssl_context(ca_file: Optional[str] = None) -> Optional[ssl.SSLContext]:
+    """Return an SSLContext for HTTPS requests, or None for plain HTTP."""
+    if not _TLS_VERIFY:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+    if ca_file:
+        ctx = ssl.create_default_context(cafile=ca_file)
+        return ctx
+    # No custom CA specified; use the system trust store (default urllib behaviour).
+    return None
+
+
+def _fetch(url: str, ca_file: Optional[str] = None) -> dict | None:
     try:
-        r = urllib.request.urlopen(url, timeout=SCRAPE_TIMEOUT)
+        ctx = _build_ssl_context(ca_file)
+        r = urllib.request.urlopen(url, timeout=5, context=ctx)
         return json.loads(r.read())
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as e:
         log.warning("fetch %s failed: %s", url, e)
         return None
 
 
-def _health_check(url: str) -> int:
+def _health_check(url: str, ca_file: Optional[str] = None) -> int:
     """Return 1 if the URL returns HTTP 200, 0 otherwise."""
     try:
-        r = urllib.request.urlopen(url, timeout=SCRAPE_TIMEOUT)
+        ctx = _build_ssl_context(ca_file)
+        r = urllib.request.urlopen(url, timeout=5, context=ctx)
         return 1 if r.status == 200 else 0
     except Exception:  # broad catch: probe must never propagate
         return 0
@@ -128,8 +143,9 @@ def collect() -> str:
     gauge("hi_agamemnon_health", "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise", agamemnon_health)
 
     # ── Agamemnon agents ───────────────────────────────────────────────────
-    if agents_data:
-        agents = agents_data.get("agents", [])
+    d = _fetch(f"{AGAMEMNON_URL}/v1/agents", AGAMEMNON_TLS_CA)
+    if d:
+        agents = d.get("agents", [])
         total   = len(agents)
         online  = sum(1 for a in agents if a.get("status") == "online")
         offline = total - online
@@ -210,20 +226,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     log.info("homeric-exporter starting on port %d", PORT)
-    log.info("Scraping Agamemnon at %s", AGAMEMNON_URL)
-    log.info("Scraping Nestor at %s", NESTOR_URL)
-    log.info("Scraping NATS at %s", NATS_URL)
-
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-
-    def _shutdown(signum, frame):
-        sig_name = signal.Signals(signum).name
-        log.info("received %s — shutting down gracefully", sig_name)
-        t = threading.Thread(target=server.shutdown, daemon=True)
-        t.start()
-
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT, _shutdown)
-
-    server.serve_forever()
-    log.info("homeric-exporter stopped cleanly")
+    log.info("Scraping Agamemnon at %s (CA: %s)", AGAMEMNON_URL, AGAMEMNON_TLS_CA or "system trust store")
+    log.info("Scraping Nestor at %s (CA: %s)", NESTOR_URL, NESTOR_TLS_CA or "system trust store")
+    log.info("Scraping NATS at %s (CA: %s)", NATS_URL, NATS_TLS_CA or "system trust store")
+    if not _TLS_VERIFY:
+        log.warning("TLS certificate verification is DISABLED (TLS_VERIFY=false)")
+    HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
