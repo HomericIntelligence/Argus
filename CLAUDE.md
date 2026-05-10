@@ -90,7 +90,7 @@ Exporter self-metrics use the `homeric_exporter_` prefix:
 
 All metrics include `# HELP` and `# TYPE` lines.
 
-## Environment Variables
+## Exporter Environment Variables
 
 Copy `.env.example` to `.env` at the repository root and set values before running `just start`.
 
