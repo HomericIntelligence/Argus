@@ -9,11 +9,9 @@ import json
 import sys
 import threading
 from pathlib import Path
-import time
 import types
 import urllib.request
-from io import BytesIO
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
