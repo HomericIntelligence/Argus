@@ -8,4 +8,11 @@ description = "Allow credential-like strings in test fixtures and example files"
 paths = [
     '''tests/''',
     '''\.env\.example$''',
+    '''htpasswd.example$''',
 ]
+
+[[rules]]
+description = "Detect htpasswd credential files"
+id = "htpasswd"
+regex = '''\$apr1\$|\$2y\$|\$2a\$'''
+path = '''htpasswd'''

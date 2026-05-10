@@ -1,14 +1,6 @@
 .env
 data/
 *.log
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-.ruff_cache/
-*.egg-info/
-dist/
-build/
 .pixi/
 .idea/
 .vscode/
@@ -19,3 +11,7 @@ configs/nginx/htpasswd
 htmlcov/
 coverage.xml
 .pytest_cache/
+secrets/
+__pycache__/
+*.pyc
+*.pyo

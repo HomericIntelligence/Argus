@@ -8,8 +8,7 @@ container_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "pod
 AGAMEMNON_URL := "http://172.20.0.1:8080"
 GRAFANA_PORT := "3001"
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
-GRAFANA_ADMIN_PASSWORD := env_var_or_default("GRAFANA_ADMIN_PASSWORD", "admin")
-GRAFANA_AUTH := "admin:" + GRAFANA_ADMIN_PASSWORD
+GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
 
 # === Default ===
 
@@ -143,9 +142,9 @@ test-jetstream:
     curl -s http://localhost:9101/metrics | grep hi_jetstream
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
-# Reads GRAFANA_ADMIN_PASSWORD from .env (required — never hardcoded)
+# Reads GF_ADMIN_PASSWORD from .env (required — never hardcoded)
 import-dashboards:
-    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_PASSWORD={{GRAFANA_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+    GRAFANA_PORT={{GRAFANA_PORT}} GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
 
 # === Versioning ===
 

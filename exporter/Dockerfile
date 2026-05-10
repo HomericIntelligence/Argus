@@ -1,16 +1,19 @@
 # Pinned to stable 3.12-slim; see tests/test_dockerfile_constraints.py for guard
-FROM python:3.14-slim AS base
+FROM python:3.12-slim AS base
 
 # Install no extra packages — exporter uses stdlib only
 WORKDIR /app
 
 FROM base AS final
 
-# Run as non-root
-RUN adduser --disabled-password --no-create-home exporter
-USER exporter
+# Create a dedicated non-root group and user with fixed UID/GID 1000
+RUN groupadd -g 1000 exporter \
+    && useradd -u 1000 -g exporter --no-create-home --shell /sbin/nologin exporter
 
 COPY --chown=exporter:exporter exporter.py /app/exporter.py
+
+# Run as non-root
+USER exporter
 
 EXPOSE 9100
 
