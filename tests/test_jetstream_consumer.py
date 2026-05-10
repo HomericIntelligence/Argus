@@ -8,6 +8,7 @@ import importlib
 import json
 import sys
 import threading
+from pathlib import Path
 import time
 import types
 import urllib.request
@@ -61,9 +62,10 @@ def _stub_nats():
 @pytest.fixture(autouse=True, scope="module")
 def consumer():
     """Import the consumer module once after the nats stub is in place."""
+    _consumer_path = Path(__file__).parent.parent / "jetstream-consumer" / "consumer.py"
     spec = importlib.util.spec_from_file_location(
         "consumer",
-        "/home/mvillmow/Projects/ProjectArgus/.worktrees/issue-4/jetstream-consumer/consumer.py",
+        _consumer_path,
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
