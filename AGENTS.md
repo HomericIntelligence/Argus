@@ -144,7 +144,7 @@ just status
 just test-scrape
 ```
 
-# AGENTS.md — Multi-Agent Coordination for ProjectArgus
+## AGENTS.md — Multi-Agent Coordination for ProjectArgus
 
 This file describes how AI agents and automated tooling should interact with this
 repository. It follows the conventions established across HomericIntelligence projects.
