@@ -10,45 +10,14 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  - package-ecosystem: "docker"
-    directory: "/dashboard"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "dependencies"
-      - "atlas"
-    target-branch: "main"
-    commit-message:
-      prefix: "chore(deps)"
-
-  - package-ecosystem: "gomod"
-    directory: "/dashboard"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "dependencies"
-      - "atlas"
-    target-branch: "main"
-    commit-message:
-      prefix: "chore(deps)"
-    groups:
-      # Group prometheus client + transitive Prometheus libs into one PR
-      # so the metric-stack moves as a unit.
-      prometheus:
-        patterns:
-          - "github.com/prometheus/*"
-      # Group nats client + server (test dep) so they stay version-aligned.
-      nats:
-        patterns:
-          - "github.com/nats-io/*"
-
-  - package-ecosystem: "github-actions"
+  - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      time: "08:00"
     labels:
       - "dependencies"
-      - "ci"
     target-branch: "main"
     commit-message:
-      prefix: "chore(ci)"
+      prefix: "chore(deps)"
