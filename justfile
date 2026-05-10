@@ -73,8 +73,10 @@ dev:
     @./scripts/dev-watch.sh
 
 # Run local test suite
+
+# Run local test suite with coverage
 test:
-    python3 -m pytest tests/ -v 2>/dev/null || python3 -m unittest discover -s tests -v
+    pixi run test-unit
 
 # Tail logs for a specific service (e.g. just logs prometheus)
 logs SERVICE:

@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+addopts = [
+  "--cov=exporter",
+  "--cov-report=term-missing",
+  "--cov-report=html",
+  "--cov-report=xml",
+]
+
+[tool.coverage.run]
+source = ["exporter"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 82
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "class .*\\bProtocol\\):",
+  "@(abc\\.)?abstractmethod",
+]
