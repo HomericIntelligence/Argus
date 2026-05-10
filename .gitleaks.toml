@@ -8,7 +8,7 @@ description = "Allow credential-like strings in test fixtures and example files"
 paths = [
     '''tests/''',
     '''\.env\.example$''',
-    '''htpasswd.example$''',
+    '''htpasswd\.example$''',
 ]
 
 [[rules]]
