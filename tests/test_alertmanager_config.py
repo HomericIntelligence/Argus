@@ -112,7 +112,13 @@ class TestDockerComposeAlertmanager:
 
     def test_alertmanager_image(self, compose_config: dict) -> None:
         svc = compose_config["services"]["alertmanager"]
-        assert svc["image"] == "prom/alertmanager:latest"
+        img = svc["image"]
+        assert img.startswith("prom/alertmanager:"), (
+            f"Expected a prom/alertmanager image with a pinned tag, got: {img!r}"
+        )
+        assert img != "prom/alertmanager:latest", (
+            "alertmanager image must use a pinned tag, not :latest"
+        )
 
     def test_alertmanager_port_exposed(self, compose_config: dict) -> None:
         svc = compose_config["services"]["alertmanager"]

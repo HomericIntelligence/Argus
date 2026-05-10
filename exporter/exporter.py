@@ -84,16 +84,16 @@ _METRIC_HELP: dict[str, str] = {
     "hi_nestor_research_completed":           "Number of completed research jobs in Nestor",
     "hi_nestor_research_pending":             "Number of pending research jobs in Nestor",
     "nats_connections":                       "Current number of client connections to NATS",
-    "nats_in_msgs_total":                     "Cumulative inbound messages received by NATS server",
-    "nats_out_msgs_total":                    "Cumulative outbound messages sent by NATS server",
-    "nats_in_bytes_total":                    "Cumulative inbound bytes received by NATS server",
-    "nats_out_bytes_total":                   "Cumulative outbound bytes sent by NATS server",
+    "nats_in_msgs":                           "Current inbound message rate from NATS server",
+    "nats_out_msgs":                          "Current outbound message rate from NATS server",
+    "nats_in_bytes":                          "Current inbound bytes rate from NATS server",
+    "nats_out_bytes":                         "Current outbound bytes rate from NATS server",
     "nats_slow_consumers":                    "Current number of slow consumers on NATS",
     "nats_jetstream_streams":                 "Number of JetStream streams",
     "nats_jetstream_consumers":               "Number of JetStream consumers",
     "nats_jetstream_messages":                "Number of messages stored in JetStream",
     "nats_jetstream_bytes":                   "Bytes stored in JetStream",
-    "homeric_exporter_scrape_timestamp_seconds": "Unix timestamp of the last completed scrape",
+    "homeric_exporter_scrape_timestamp_seconds": "Unix timestamp (seconds) when the last scrape completed",
     "homeric_exporter_scrape_duration_seconds":  "Wall-clock seconds spent in the last collect() call",
     "homeric_exporter_fetch_errors_total":    "Number of upstream fetch failures per scrape, by upstream",
 }
@@ -182,10 +182,10 @@ def collect() -> str:
     # ── NATS ───────────────────────────────────────────────────────────────
     if nats_varz:
         gauge("nats_connections",    "Current number of client connections to NATS",              nats_varz.get("connections", 0))
-        gauge("nats_in_msgs_total",  "Total inbound messages received by NATS since start",       nats_varz.get("in_msgs", 0))
-        gauge("nats_out_msgs_total", "Total outbound messages sent by NATS since start",          nats_varz.get("out_msgs", 0))
-        gauge("nats_in_bytes_total", "Total inbound bytes received by NATS since start",          nats_varz.get("in_bytes", 0))
-        gauge("nats_out_bytes_total","Total outbound bytes sent by NATS since start",             nats_varz.get("out_bytes", 0))
+        gauge("nats_in_msgs",        "Current inbound message rate from NATS server",             nats_varz.get("in_msgs", 0))
+        gauge("nats_out_msgs",       "Current outbound message rate from NATS server",            nats_varz.get("out_msgs", 0))
+        gauge("nats_in_bytes",       "Current inbound bytes rate from NATS server",               nats_varz.get("in_bytes", 0))
+        gauge("nats_out_bytes",      "Current outbound bytes rate from NATS server",              nats_varz.get("out_bytes", 0))
         gauge("nats_slow_consumers", "Number of slow consumer connections detected by NATS",      nats_varz.get("slow_consumers", 0))
 
     if nats_jsz:
@@ -195,8 +195,8 @@ def collect() -> str:
         gauge("nats_jetstream_bytes",     "Total bytes stored across all JetStream streams",          nats_jsz.get("bytes", 0))
 
     # ── exporter self ──────────────────────────────────────────────────────
-    gauge("homeric_exporter_scrape_timestamp",        "Unix timestamp when the last scrape completed",              time.time())
-    gauge("homeric_exporter_scrape_duration_seconds", "Duration in seconds of the last upstream scrape cycle",     time.time() - start)
+    gauge("homeric_exporter_scrape_timestamp_seconds", "Unix timestamp (seconds) when the last scrape completed", time.time())
+    gauge("homeric_exporter_scrape_duration_seconds",  "Duration in seconds of the last upstream scrape cycle",  time.time() - start)
     for upstream, count in fetch_errors.items():
         gauge("homeric_exporter_fetch_errors_total",  "Number of fetch failures per upstream service",             count, {"upstream": upstream})
 

@@ -18,6 +18,8 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
+    ports:
+      - "127.0.0.1:9090:9090"
     expose:
       - "9090"
     volumes:
@@ -33,6 +35,12 @@ services:
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.config.file=/etc/prometheus/prometheus.yml"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - argus
     deploy:
@@ -142,7 +150,7 @@ services:
     container_name: argus-alertmanager
     restart: unless-stopped
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
@@ -167,7 +175,7 @@ services:
         max-size: "50m"
         max-file: "3"
     ports:
-      - "${GRAFANA_PORT:-3001}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     volumes:
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - ./configs/grafana:/etc/grafana/provisioning:ro
@@ -250,7 +258,7 @@ services:
     container_name: argus-dashboard
     restart: unless-stopped
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3002:3002"
     environment:
       ATLAS_LISTEN_ADDR: ":3002"
       ATLAS_AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
@@ -295,7 +303,7 @@ services:
     container_name: argus-jetstream-consumer
     restart: unless-stopped
     ports:
-      - "9101:9101"
+      - "127.0.0.1:9101:9101"
     volumes:
       - ./jetstream-consumer/consumer.py:/consumer.py:ro
     command: sh -c "pip install nats-py -q && python /consumer.py"

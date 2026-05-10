@@ -23,11 +23,21 @@ jq = ">=1.6,<2"
 
 [target.osx-64.dependencies]
 jq = ">=1.6,<2"
-python = ">=3.11"
-pytest = ">=7.0"
 
 [tasks]
-start     = "just start"
-stop      = "just stop"
-status    = "just status"
-test-unit = "pytest tests/ -v"
+start  = "just start"
+stop   = "just stop"
+status = "just status"
+test   = "python -m pytest tests/ -v"
+
+[feature.lint.dependencies]
+python = ">=3.11"
+
+[feature.lint.pypi-dependencies]
+pip-audit = ">=2.8"
+
+[feature.lint.tasks]
+pip-audit = "pip-audit"
+
+[environments]
+lint = { features = ["lint"], no-default-feature = true }

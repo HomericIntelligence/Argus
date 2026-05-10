@@ -475,7 +475,7 @@ class TestCollectHelpLines(unittest.TestCase):
         always_present = [
             "hi_agamemnon_health",
             "hi_nestor_health",
-            "homeric_exporter_scrape_timestamp",
+            "homeric_exporter_scrape_timestamp_seconds",
             "homeric_exporter_scrape_duration_seconds",
             "homeric_exporter_fetch_errors_total",
         ]

@@ -16,7 +16,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(gnatsd_varz_in_msgs[1m])",
+          "expr": "rate(nats_in_msgs_total[1m])",
           "legendFormat": "msgs/s in",
           "refId": "A"
         }
@@ -37,7 +37,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(gnatsd_varz_out_msgs[1m])",
+          "expr": "rate(nats_out_msgs_total[1m])",
           "legendFormat": "msgs/s out",
           "refId": "A"
         }
@@ -58,7 +58,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "gnatsd_varz_jetstream_stats_storage",
+          "expr": "nats_jetstream_bytes",
           "legendFormat": "Storage",
           "refId": "A"
         }
@@ -73,14 +73,14 @@
     },
     {
       "id": 4,
-      "title": "Active Subscriptions",
+      "title": "Active Connections",
       "type": "stat",
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "gnatsd_varz_subscriptions",
-          "legendFormat": "Subscriptions",
+          "expr": "nats_connections",
+          "legendFormat": "Connections",
           "refId": "A"
         }
       ],
@@ -97,12 +97,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(gnatsd_varz_in_msgs[1m])",
+          "expr": "rate(nats_in_msgs_total[1m])",
           "legendFormat": "In msg/s",
           "refId": "A"
         },
         {
-          "expr": "rate(gnatsd_varz_out_msgs[1m])",
+          "expr": "rate(nats_out_msgs_total[1m])",
           "legendFormat": "Out msg/s",
           "refId": "B"
         }
@@ -119,12 +119,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(gnatsd_varz_in_bytes[1m])",
+          "expr": "rate(nats_in_bytes_total[1m])",
           "legendFormat": "Bytes in/s",
           "refId": "A"
         },
         {
-          "expr": "rate(gnatsd_varz_out_bytes[1m])",
+          "expr": "rate(nats_out_bytes_total[1m])",
           "legendFormat": "Bytes out/s",
           "refId": "B"
         }

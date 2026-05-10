@@ -11,3 +11,7 @@ configs/nginx/htpasswd
 htmlcov/
 coverage.xml
 .pytest_cache/
+secrets/
+__pycache__/
+*.pyc
+*.pyo
