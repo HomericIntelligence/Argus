@@ -125,7 +125,7 @@ def _patch_collect(
     agents_data = agents_data or {}
     tasks_data = tasks_data or {}
 
-    def _fake_health_check(url: str) -> int:
+    def _fake_health_check(url: str, ca_file=None) -> int:
         if "agamemnon" in url or "8080" in url:
             return agamemnon_health
         return nestor_health

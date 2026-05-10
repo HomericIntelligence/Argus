@@ -224,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
         log.debug(fmt, *args)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     log.info("homeric-exporter starting on port %d", PORT)
     log.info("Scraping Agamemnon at %s (CA: %s)", AGAMEMNON_URL, AGAMEMNON_TLS_CA or "system trust store")
     log.info("Scraping Nestor at %s (CA: %s)", NESTOR_URL, NESTOR_TLS_CA or "system trust store")
