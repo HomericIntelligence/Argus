@@ -1,5 +1,5 @@
 # Pinned to stable 3.12-slim; see tests/test_dockerfile_constraints.py for guard
-FROM python:3.12-slim AS base
+FROM python:3.14-slim AS base
 
 # Install no extra packages — exporter uses stdlib only
 WORKDIR /app
