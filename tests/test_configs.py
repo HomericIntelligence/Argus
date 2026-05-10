@@ -253,6 +253,9 @@ class TestDockerComposePortBindings(unittest.TestCase):
         loki_ds = next(ds for ds in datasources if ds["type"] == "loki")
         assert loki_ds["url"] == "http://loki-proxy", (
             "Loki datasource must point to loki-proxy, not loki:3100 directly"
+        )
+
+
 class TestDockerComposePorts(unittest.TestCase):
     def setUp(self) -> None:
         self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
