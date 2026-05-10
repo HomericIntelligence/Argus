@@ -296,17 +296,13 @@ def _make_handler(path: str) -> tuple:
 
     Returns (handler, mock_server) so callers can inspect either object.
     """
-    mock_request = MagicMock()
-    mock_request.makefile.return_value = io.BytesIO(
-        f"GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode()
-    )
     mock_server = MagicMock()
     mock_server.server_address = ("127.0.0.1", 0)
     # Instantiating BaseHTTPRequestHandler calls handle() which would try I/O;
     # suppress that by patching the method.
     with patch.object(exporter_mod.Handler, "handle"):
         handler = exporter_mod.Handler.__new__(exporter_mod.Handler)
-        handler.request = mock_request
+        handler.request = MagicMock()
         handler.client_address = ("127.0.0.1", 0)
         handler.server = mock_server
         handler.path = path
