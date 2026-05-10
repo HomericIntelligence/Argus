@@ -7,7 +7,7 @@ networks:
 
 services:
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.54.1
     container_name: ${PROMETHEUS_CONTAINER_NAME:-argus-prometheus}
     restart: unless-stopped
     user: "65534:65534"
@@ -44,7 +44,7 @@ services:
           cpus: "0.50"
 
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.1.2
     container_name: ${LOKI_CONTAINER_NAME:-argus-loki}
     restart: unless-stopped
     expose:
@@ -99,7 +99,7 @@ services:
           cpus: "0.10"
 
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:3.1.2
     container_name: ${PROMTAIL_CONTAINER_NAME:-argus-promtail}
     restart: unless-stopped
     user: "65534:65534"
@@ -153,7 +153,7 @@ services:
       - prometheus
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.2.2
     container_name: ${GRAFANA_CONTAINER_NAME:-argus-grafana}
     restart: unless-stopped
     user: "472:472"
