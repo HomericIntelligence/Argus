@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:base"],
+  "baseBranches": ["main"],
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "ignorePaths": [],
+  "packageRules": [
+    {
+      "matchManagers": ["pixi"],
+      "groupName": "pixi build tools",
+      "schedule": ["before 5am on the first day of the month"]
+    }
+  ]
+}
