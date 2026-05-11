@@ -39,7 +39,13 @@ cleanup() {
   trap - INT TERM EXIT
   echo
   echo "dev-watch: stopping watchers..."
-  kill 0 2>/dev/null || true
+  # `kill 0` signals the whole process group; the watchers may already
+  # be gone (e.g. they exited first and triggered the trap), so a
+  # non-zero exit from kill is expected and benign. Log unexpected
+  # errors to stderr without aborting the cleanup.
+  if ! kill 0 2>/dev/null; then
+    echo "dev-watch: kill 0 reported no remaining processes (idempotent)" >&2
+  fi
 }
 trap cleanup INT TERM EXIT
 

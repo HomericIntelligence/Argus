@@ -67,7 +67,20 @@ jobs:
 
       - name: Security scan exporter Python
         run: |
-          pixi run bandit -ll -f json exporter/exporter.py > /tmp/bandit.json || true
+          # bandit exits non-zero when it finds issues; we want to capture
+          # the JSON report unconditionally and let the Python check below
+          # decide pass/fail based on severity. Use an explicit exit-code
+          # check instead of suppressing all failures with `|| true`.
+          set +e
+          pixi run bandit -ll -f json exporter/exporter.py > /tmp/bandit.json
+          bandit_rc=$?
+          set -e
+          # bandit exit codes: 0=clean, 1=issues found. Anything else is
+          # an unexpected error (e.g. parsing failure) and should fail.
+          if [ "$bandit_rc" -ne 0 ] && [ "$bandit_rc" -ne 1 ]; then
+              echo "::error::bandit exited with unexpected code $bandit_rc"
+              exit "$bandit_rc"
+          fi
           python3 << 'SCAN_CHECK'
           import json, sys
           with open('/tmp/bandit.json') as f:
