@@ -47,7 +47,7 @@ Mnemosyne browser
 The values below are hardcoded at v0.2.0 — operators sizing memory should account for these:
 
 | Bound | Value | Source |
-|---|---|---|
+| --- | --- | --- |
 | Event-bus ring capacity | 256 | `cmd/argus-dashboard/main.go` (`events.NewBus(256)`) |
 | Per-SSE-subscriber channel buffer | 1000 | `internal/handlers/sse.go` (`bus.Subscribe(1000)`) |
 | Per-agent event history | 50 | `internal/store/cache.go` (`maxAgentEvents`) |

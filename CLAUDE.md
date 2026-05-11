@@ -12,13 +12,13 @@ tailing. It does NOT modify Agamemnon or any other HomericIntelligence service.
 
 ## Stack Components
 
-| Service         | Image                          | Purpose                                 |
-|-----------------|--------------------------------|-----------------------------------------|
-| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                |
-| Loki            | grafana/loki:3.1.2             | Store and query log streams             |
-| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki       |
-| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki    |
-| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs              |
+| Service         | Image                          | Purpose                                                |
+|-----------------|--------------------------------|--------------------------------------------------------|
+| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
+| Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
+| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
+| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
+| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
 | argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
 
 All services run on the `argus` Docker network and are managed via `docker-compose.yml`.
@@ -44,12 +44,12 @@ graph TD
 Copy `.env.example` to `.env` before running `just start`. The stack will refuse
 to start without a `.env` file.
 
-| Variable            | Default in .env.example              | Required | Purpose                              |
-|---------------------|--------------------------------------|----------|--------------------------------------|
-| `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password               |
-| `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL               |
-| `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                  |
-| `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL         |
+| Variable            | Default in .env.example              | Required | Purpose                                            |
+|---------------------|--------------------------------------|----------|----------------------------------------------------|
+| `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password                             |
+| `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
+| `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
+| `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
 | `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
 
 `172.20.0.1` / `172.24.0.1` are WSL2 host gateway addresses — they reach services
@@ -97,7 +97,7 @@ Copy `.env.example` to `.env` at the repository root and set values before runni
 Atlas dashboard variables use the `ATLAS_` prefix — see `dashboard/README.md` for the full table.
 
 | Variable | Required | Default | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `NATS_LOG_DIR` | No | `~/.local/share/nats` | Host path Promtail mounts read-only for NATS logs |
 | `GF_ADMIN_PASSWORD` | **Yes** | `changeme` | Grafana admin password — change before first run |
 | `AGAMEMNON_URL` | No | `http://172.20.0.1:8080` | Agamemnon API base URL |
