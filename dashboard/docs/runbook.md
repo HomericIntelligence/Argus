@@ -204,7 +204,7 @@ ring-buffer size (256 events) on reconnect.
 Atlas uses Go `slog` with JSON output. Key structured fields:
 
 | Field | Meaning |
-|---|---|
+| --- | --- |
 | `level` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | `msg` | One-line event description |
 | `version` | Build-stamped via `-ldflags -X version.Version=...` |

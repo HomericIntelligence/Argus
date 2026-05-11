@@ -15,7 +15,7 @@ push data or commands back to any external service.
 **Permitted write targets** (within this repo only):
 
 | Path | Description |
-|------|-------------|
+| ------ | ------------- |
 | `configs/` | Prometheus, Loki, Promtail, Grafana config files |
 | `dashboards/` | Grafana dashboard JSON |
 | `rules/` | Prometheus alerting rules |
@@ -33,7 +33,7 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 Three agent classes operate on this repo:
 
 | Class | Spawned By | Write Access | Notes |
-|-------|-----------|--------------|-------|
+| ------- | ----------- | -------------- | ------- |
 | **Interactive** | Human via Claude Code CLI/IDE | Yes (user-confirmed) | Full permission scope |
 | **Myrmidon swarm worker** | `hephaestus:myrmidon-swarm` | Worktree only | `isolation: "worktree"` required |
 | **Agamemnon-orchestrated** | Remote trigger from Agamemnon | Read-only | Scrape validation and metric checks only |
@@ -46,7 +46,7 @@ ProjectArgus delegates orchestration to the **Hephaestus plugin**. There is no `
 directory in this repo. Use these skills instead:
 
 | Skill | Trigger Condition | Description |
-|-------|------------------|-------------|
+| ------- | ------------------ | ------------- |
 | `hephaestus:advise` | Before unfamiliar work or unknown errors | Searches team knowledge base for prior learnings |
 | `hephaestus:learn` | After experiments or novel discoveries | Saves session learnings as a new skill |
 | `hephaestus:myrmidon-swarm` | Multi-step parallel file changes | Hierarchical delegation (Opus → Sonnet → Haiku) |
@@ -62,7 +62,7 @@ directory in this repo. Use these skills instead:
 ## Model-Tier Assignments
 
 | Task Class | Model Tier | Rationale |
-|-----------|-----------|-----------|
+| ----------- | ----------- | ----------- |
 | Architecture decisions, cross-service impact analysis | L0/L1 — Opus | Strategic reasoning across many constraints |
 | Config authoring, dashboard JSON, alert rules, code review | L2/L3 — Sonnet | Domain specialist; cost-effective |
 | Boilerplate YAML edits, single-file formatting, lint fixes | L4/L5 — Haiku | Focused, fast, cheap |
@@ -102,7 +102,7 @@ writes files without user confirmation has violated this protocol.
 ## Wave Execution Constraints
 
 | Constraint | Value |
-|-----------|-------|
+| ----------- | ------- |
 | Max agents per wave | 5 |
 | Shared file writes within a wave | Not permitted |
 | Each agent write scope | Its own worktree only |
@@ -160,7 +160,7 @@ working in this repository should maintain this invariant.
 Agents are permitted to make the following changes autonomously:
 
 | Area | Permitted |
-|------|-----------|
+| ------ | ----------- |
 | `configs/prometheus.yml` — add/edit scrape jobs | Yes |
 | `configs/loki.yml` — adjust retention, limits | Yes |
 | `configs/promtail.yml` — add log scrape targets | Yes |

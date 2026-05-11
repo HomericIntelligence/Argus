@@ -91,7 +91,7 @@ For full-stack development against the rest of the Argus services, see the paren
 All configuration is via environment variables with the `ATLAS_` prefix:
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `ATLAS_LISTEN_ADDR` | `:3002` | HTTP listen address |
 | `ATLAS_LOG_LEVEL` | `info` | Log level (debug/info/warn/error) |
 | `ATLAS_NATS_URL` | `nats://nats:4222` | NATS server URL |
@@ -141,7 +141,7 @@ GET /events?topics=agent,task&replay=20
 ```
 
 | Parameter | Description |
-|---|---|
+| --- | --- |
 | `topics` | Comma-separated topic filter. Omit to receive all topics. |
 | `replay` | Number of buffered events to replay on connect (ring buffer, max 256). |
 
@@ -150,7 +150,7 @@ GET /events?topics=agent,task&replay=20
 are bus-only — published by Atlas itself when its REST pollers refresh state.
 
 | Topic | Source | NATS stream / origin | Subject pattern |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `agent` | NATS subscriber | `homeric-agents` | `hi.agents.>` |
 | `task` | NATS subscriber | `homeric-tasks` | `hi.tasks.>` |
 | `myrmidon` | NATS subscriber | `homeric-myrmidon` | `hi.myrmidon.>` |
@@ -178,7 +178,7 @@ Keepalive comment frames are sent every 15 seconds:
 ## HTTP Endpoints
 
 | Method | Path | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `/` | Overview page |
 | `GET` | `/hosts` | Tailscale host grid — cards refresh every 5 s via htmx |
 | `GET` | `/livez` | Liveness probe — always 200 if the process is up. **Unauthenticated.** |
@@ -206,7 +206,7 @@ Keepalive comment frames are sent every 15 seconds:
 Set `ATLAS_AUTH_MODE` to configure the auth gate:
 
 | Mode | Behaviour |
-|------|-----------|
+| ------ | ----------- |
 | `bearer` (default since v0.2.0) | `Authorization: Bearer <token>` header required; SSE endpoints also accept `?token=<token>`. Atlas refuses to start if the token is unset. |
 | `basic` | `Authorization: Basic <base64(user:pass)>` required. Atlas refuses to start if user or pass is unset. |
 | `none` | No authentication required. Logs a startup warning. **Do not use in production.** |
@@ -229,7 +229,7 @@ Atlas exposes Prometheus metrics at `/metrics`. The endpoint is **auth-gated** s
 (see [Authentication](#authentication)) — your scrape job must present the configured credentials.
 
 | Metric | Type | Description |
-|--------|------|-------------|
+| -------- | ------ | ------------- |
 | `atlas_build_info` | gauge | Build info (version, goversion labels) |
 | `atlas_nats_connected` | gauge | 1 if NATS is connected, 0 otherwise |
 | `atlas_sse_connected_clients` | gauge | Active SSE client connections |

@@ -49,7 +49,7 @@ all six dimensions below have returned `approved`.
 Every reviewer returns exactly one of:
 
 | Verdict | Meaning | Effect |
-|---|---|---|
+| --- | --- | --- |
 | `approved` | The dimension's criteria are met. | Counts toward the 6/6 needed to merge. |
 | `changes-requested` | At least one criterion is not met. | Author must address findings, then re-dispatch the wave (new team). |
 | `not-applicable` | The dimension genuinely does not apply to this PR (e.g., no UX surface). | Treated as `approved`. **Must include a one-sentence justification** in the task result body. |

@@ -59,7 +59,7 @@ cp .env.example .env
 Key variables:
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `AGAMEMNON_URL` | `http://172.20.0.1:8080` | Agamemnon API base URL |
 | `NESTOR_URL` | `http://172.20.0.1:8081` | Nestor API base URL |
 | `NATS_URL` | `http://172.24.0.1:8222` | NATS monitoring endpoint |

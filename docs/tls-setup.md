@@ -7,10 +7,10 @@ communication in the argus observability stack.
 
 The stack uses a two-tier TLS strategy:
 
-| Tier | Path | Mechanism |
-|------|------|-----------|
-| 1 (high priority) | exporter → Agamemnon/NATS/Nestor | Tailscale transport encryption |
-| 2 (best practice) | Docker-internal services | Self-signed CA + per-service certificates |
+| Tier              | Path                             | Mechanism                                 |
+|-------------------|----------------------------------|-------------------------------------------|
+| 1 (high priority) | exporter → Agamemnon/NATS/Nestor | Tailscale transport encryption            |
+| 2 (best practice) | Docker-internal services         | Self-signed CA + per-service certificates |
 
 ## Quick Start
 
@@ -90,7 +90,7 @@ errors when `https://` is pointed at an HTTP-only endpoint.
 ## Tier 2: Docker-Internal Paths
 
 | Service | Certificate | Mounted at |
-|---------|-------------|------------|
+| --------- | ------------- | ------------ |
 | Prometheus | `certs/prometheus.{crt,key}` | `/etc/prometheus/tls/` |
 | Loki | `certs/loki.{crt,key}` | `/etc/loki/tls/` |
 | Grafana | `certs/grafana.{crt,key}` | `/etc/grafana/tls/` |
