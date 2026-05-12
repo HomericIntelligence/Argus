@@ -15,13 +15,27 @@ tailing. It does NOT modify Agamemnon or any other HomericIntelligence service.
 | Service         | Image                          | Purpose                                                |
 |-----------------|--------------------------------|--------------------------------------------------------|
 | Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
+| Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
 | Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
 | loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
 | Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
 | Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
 | argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
 
-All services run on the `argus` Docker network and are managed via `docker-compose.yml`.
+### Network topology (two-network design)
+
+The compose stack defines two Docker bridge networks:
+
+- **`argus`** — public-facing bridge that prometheus, alertmanager, loki-proxy,
+  promtail, grafana, and argus-exporter share. Anything that needs to talk to
+  other services in the stack lives here.
+- **`loki-internal`** — `internal: true` bridge with no egress. Only `loki`,
+  `loki-proxy`, and `promtail` are attached. Loki is intentionally not on
+  `argus`, so the only path to reach it is via `loki-proxy` (which terminates
+  basic auth). Do not re-add `loki` to the `argus` network — that would let any
+  container hit Loki directly without auth.
+
+All services are managed via `docker-compose.yml`.
 
 ## Architecture
 
@@ -51,10 +65,14 @@ to start without a `.env` file.
 | `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
 | `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
 | `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
+| `PROMTAIL_HOST_LABEL` | unset (Promtail uses `$HOSTNAME`)  | No       | Override the `host` label Promtail attaches to log streams |
+| `CONTAINER_CMD`     | `docker` (auto-set to `podman` if `podman-compose` is on `$PATH`) | No | Runtime used by `scripts/backup.sh` and `scripts/restore.sh`; the justfile recipes pass `CONTAINER_CMD={{container_cmd}}` so you usually don't set this manually |
 
 `172.20.0.1` / `172.24.0.1` are WSL2 host gateway addresses — they reach services
 running on the Windows host or in other WSL distros. Substitute Tailscale IPs for
-cross-host deployments.
+cross-host deployments. The `NATS_URL` gateway IP `172.24.0.1` differs from
+the `172.20.0.1` used for Agamemnon/Nestor because NATS runs on a separate WSL
+distro with its own bridge — the discrepancy is intentional, not a typo.
 
 ## Scrape Targets
 
@@ -176,12 +194,16 @@ just stop                    # docker compose down
 just status                  # docker compose ps
 just logs <service>          # docker compose logs -f <service>
 just reload-prometheus       # Send SIGHUP to Prometheus (hot-reload config)
+just reload-alertmanager     # POST /-/reload to Alertmanager (hot-reload config)
+just test-alertmanager       # Check Alertmanager /-/healthy and cluster status
 just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
 just test                    # Run pytest unit tests
 just backup                  # Back up data volumes to ./backups/
 ```
+
+See `AGENTS.md` for the multi-agent coordination protocol used in this repo.
 
 ## AI Agent Collaboration Notes
 
