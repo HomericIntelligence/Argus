@@ -46,7 +46,7 @@ def versioned_sections(changelog: Path) -> list[str]:
 def has_versioned_header(version: str, changelog: Path) -> bool:
     """Return True if CHANGELOG contains a ## [<version>] section header."""
     pattern = re.compile(rf"^## \[{re.escape(version)}\]", re.MULTILINE)
-    return not pattern.search(changelog.read_text()) is None  # noqa: SIM103
+    return pattern.search(changelog.read_text()) is not None  # noqa: SIM103
 
 
 def check(repo_root: Path) -> int:
