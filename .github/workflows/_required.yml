@@ -265,6 +265,9 @@ jobs:
   integration-tests:
     name: integration-tests
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Validate docker image name formats
@@ -316,6 +319,9 @@ jobs:
   security-dependency-scan:
     name: security/dependency-scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Trivy filesystem scan
@@ -328,6 +334,9 @@ jobs:
   security-secrets-scan:
     name: security/secrets-scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
@@ -368,6 +377,9 @@ jobs:
   config-validate:
     name: config-validate
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Validate HCL files or fall back to YAML validation
@@ -391,6 +403,9 @@ jobs:
   schema-validation:
     name: schema-validation
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Validate workflow YAML files against GitHub Actions schema
@@ -403,6 +418,9 @@ jobs:
   deps-version-sync:
     name: deps/version-sync
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Ensure no :latest image tags in compose files
@@ -420,6 +438,9 @@ jobs:
   atlas-dashboard:
     name: atlas/dashboard
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Set up Go
