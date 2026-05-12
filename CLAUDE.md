@@ -85,6 +85,51 @@ distro with its own bridge — the discrepancy is intentional, not a typo.
 The exporter aggregates Agamemnon, Nestor, and NATS data and exposes them as
 Prometheus metrics on port 9100.
 
+The `NATS_URL` env var (`http://172.24.0.1:8222`) addresses the host gateway,
+which the exporter container uses to reach NATS on the WSL host. Prometheus,
+in contrast, scrapes NATS at `localhost:8222` — that target is interpreted
+*inside* the prometheus container (because both Prometheus and the NATS
+host gateway resolve to the host's loopback there). The two addresses point
+at the same NATS instance from different network namespaces.
+
+## Operator Notes
+
+These are easy-to-miss preconditions and runtime behaviours that operators
+new to the stack frequently trip on:
+
+1. **Copy `.env.example` to `.env` first.** `just start` and `docker compose`
+   both load `.env`; without it Grafana silently falls back to its
+   built-in `admin:admin` credentials.
+2. **`/tmp/hermes.log` must exist on the host before `just start`.** Promtail
+   bind-mounts the file. If it is missing, Docker creates an empty
+   *directory* at that path, which silently breaks the mount. Run
+   `touch /tmp/hermes.log` (or symlink to the real Hermes log) once per host.
+3. **Loki proxy htpasswd is generated automatically.** `just start` depends
+   on `just gen-htpasswd`, which writes `configs/nginx/htpasswd` from
+   `LOKI_AUTH_USER`/`LOKI_AUTH_PASSWORD` in `.env`. To rotate the password,
+   update `LOKI_AUTH_PASSWORD` in `.env`, then run `just gen-htpasswd && just restart`.
+4. **All host ports are loopback-only.** Prometheus (`127.0.0.1:9090`),
+   Grafana (`127.0.0.1:3001`), Alertmanager (`127.0.0.1:9093`), and the
+   exporter (`127.0.0.1:9100`) only accept connections from the host. To
+   reach them from another machine use an SSH tunnel
+   (`ssh -L 3001:localhost:3001 host`) or a Tailscale-encrypted route — the
+   stack intentionally does not expose unauthenticated metric/log endpoints
+   to the LAN.
+5. **`just test-scrape` requires the stack to be running.** After the host
+   port for Prometheus was removed, `test-scrape` runs the query *inside*
+   the prometheus container via `docker exec`. Use `just debug-prometheus`
+   and `just debug-loki` for ad-hoc inspection (these wrappers exec into
+   the respective containers).
+6. **`just backup` / `just restore` need a running compose project.** The
+   restore script calls `docker compose stop` to quiesce services before
+   replacing volume data; on a cold host with no containers, the stop is a
+   no-op and the script still runs, but operators should expect to bring
+   the stack up at least once before relying on restore.
+7. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
+   package for Windows; tasks like `just test-scrape` that pipe through `jq`
+   will fail there. Windows contributors should install `jq` via `winget` or
+   `choco` and put it on `$PATH`.
+
 ## Metric Catalog
 
 The full catalog of every metric the exporter emits — name, labels, and
