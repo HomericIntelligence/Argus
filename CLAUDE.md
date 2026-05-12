@@ -65,8 +65,15 @@ to start without a `.env` file.
 | `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
 | `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
 | `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
-| `PROMTAIL_HOST_LABEL` | unset (Promtail uses `$HOSTNAME`)  | No       | Override the `host` label Promtail attaches to log streams |
-| `CONTAINER_CMD`     | `docker` (auto-set to `podman` if `podman-compose` is on `$PATH`) | No | Runtime used by `scripts/backup.sh` and `scripts/restore.sh`; the justfile recipes pass `CONTAINER_CMD={{container_cmd}}` so you usually don't set this manually |
+
+Optional overrides (not required by `just start`):
+
+- `PROMTAIL_HOST_LABEL` — overrides the `host` label Promtail attaches to log
+  streams. Defaults to the container's `$HOSTNAME`.
+- `CONTAINER_CMD` — runtime used by `scripts/backup.sh` and `scripts/restore.sh`.
+  Defaults to `docker` (auto-promoted to `podman` if `podman-compose` is on
+  `$PATH`). Justfile recipes pass `CONTAINER_CMD={{container_cmd}}`
+  automatically, so you rarely need to set it by hand.
 
 `172.20.0.1` / `172.24.0.1` are WSL2 host gateway addresses — they reach services
 running on the Windows host or in other WSL distros. Substitute Tailscale IPs for
@@ -149,7 +156,8 @@ All HomericIntelligence-specific metrics follow the `hi_` prefix:
 NATS metrics use the `nats_` prefix:
 
 - `nats_connections`, `nats_slow_consumers` — current state (gauges)
-- `nats_in_msgs`, `nats_out_msgs`, `nats_in_bytes`, `nats_out_bytes` — current rates from `/varz` (gauges; reset on NATS restart)
+- `nats_in_msgs`, `nats_out_msgs`, `nats_in_bytes`, `nats_out_bytes` —
+  current rates from `/varz` (gauges; reset on NATS restart)
 - `nats_jetstream_*` — JetStream stats
 
 Exporter self-metrics use the `homeric_exporter_` prefix:
