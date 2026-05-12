@@ -206,6 +206,17 @@ class TestDockerComposeNetworkIsolation(unittest.TestCase):
 class TestDockerComposePortBindings(unittest.TestCase):
     """Assert no service port is bound to 0.0.0.0 (all-interfaces)."""
 
+    # Only the loopback address is permitted as a host port binding.
+    # Rationale: every Argus service exposes either metrics, dashboards, or
+    # log endpoints that we deliberately do NOT publish to the LAN — remote
+    # access goes via SSH tunnel or Tailscale (see CLAUDE.md "Operator
+    # Notes"). Binding to 0.0.0.0 (or any non-loopback address) would expose
+    # unauthenticated /metrics, /readyz, etc. to anyone on the same network.
+    #
+    # To add an exception (a service legitimately designed for LAN
+    # discovery), open a tracking issue, document the threat model in
+    # docker-compose.yml, and extend this set in the same PR — never bypass
+    # the test silently.
     ALLOWED_BINDINGS = {"127.0.0.1"}
 
     def setUp(self) -> None:
@@ -264,6 +275,17 @@ class TestDockerComposePortBindings(unittest.TestCase):
 
 
 class TestDockerComposePorts(unittest.TestCase):
+    # Only the loopback address is permitted as a host port binding.
+    # Rationale: every Argus service exposes either metrics, dashboards, or
+    # log endpoints that we deliberately do NOT publish to the LAN — remote
+    # access goes via SSH tunnel or Tailscale (see CLAUDE.md "Operator
+    # Notes"). Binding to 0.0.0.0 (or any non-loopback address) would expose
+    # unauthenticated /metrics, /readyz, etc. to anyone on the same network.
+    #
+    # To add an exception (a service legitimately designed for LAN
+    # discovery), open a tracking issue, document the threat model in
+    # docker-compose.yml, and extend this set in the same PR — never bypass
+    # the test silently.
     ALLOWED_BINDINGS = {"127.0.0.1"}
 
     def setUp(self) -> None:

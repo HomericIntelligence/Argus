@@ -11,6 +11,14 @@ repos:
       - id: ruff
         args: ["--fix"]
 
+  # Markdown linting — enforces .markdownlint.yaml across every Markdown
+  # file in the repo, mirroring how the yamllint hook above enforces YAML
+  # quality. Refs #379.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.13.0
+    hooks:
+      - id: markdownlint-cli2
+
   - repo: local
     hooks:
       - id: bandit

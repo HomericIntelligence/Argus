@@ -268,7 +268,9 @@ class TestCollectMetricNames(unittest.TestCase):
     def test_exporter_self_metrics_present(self):
         self.assertIn("homeric_exporter_scrape_duration_seconds", self.output)
         self.assertIn("homeric_exporter_scrape_timestamp_seconds", self.output)
-        self.assertIn("homeric_exporter_fetch_errors_total", self.output)
+        self.assertIn("homeric_exporter_fetch_errors", self.output)
+        # Must not carry the _total counter suffix (gauge, not counter)
+        self.assertNotIn("homeric_exporter_fetch_errors_total", self.output)
 
     def test_nats_msg_metrics_use_gauge_names_not_total(self):
         """nats_in_msgs and nats_out_msgs must not carry the _total counter suffix."""
@@ -476,7 +478,7 @@ class TestCollectHelpLines(unittest.TestCase):
             "hi_nestor_health",
             "homeric_exporter_scrape_timestamp_seconds",
             "homeric_exporter_scrape_duration_seconds",
-            "homeric_exporter_fetch_errors_total",
+            "homeric_exporter_fetch_errors",
         ]
         for name in always_present:
             self.assertIn(name, headers, f"Metric '{name}' missing from output")

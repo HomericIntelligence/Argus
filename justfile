@@ -1,3 +1,13 @@
+# `set dotenv-load` sources `.env` from the current directory before any
+# recipe runs — every variable in `.env` is exported to the recipe's process.
+# Several recipes depend on this; in particular `import-dashboards` reads
+# `GF_ADMIN_PASSWORD` to authenticate to Grafana, and `just start` relies on
+# docker-compose seeing the same `.env`.
+#
+# Required env vars (set in `.env`; see `.env.example` for the canonical list):
+#   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
+#                       only so `just --list` works without `.env`; production
+#                       deployments MUST override this.
 set dotenv-load
 
 # === Variables ===

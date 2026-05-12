@@ -246,6 +246,17 @@ All documentation files must follow these standards:
 - Lists must be surrounded by blank lines
 - Headings must be surrounded by blank lines
 
+## Dependency Updates (Renovate)
+
+Dependency-update automation is configured via `renovate.json` in the repo root,
+but the config is **inert until the Renovate GitHub App is installed at the
+org or repo level** (<https://github.com/apps/renovate>). If you are not seeing
+Renovate PRs against ProjectArgus, that almost certainly means the App is not
+installed — check the GitHub App settings on the
+[HomericIntelligence org](https://github.com/HomericIntelligence) and grant it
+access to ProjectArgus. Once installed, Renovate will pick up the existing
+`renovate.json` automatically; no further repo-side action is needed.
+
 ## Reporting Issues
 
 ### Bug Reports

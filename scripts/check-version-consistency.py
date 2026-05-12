@@ -15,8 +15,15 @@ from __future__ import annotations
 
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib  # Python 3.11+ stdlib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python < 3.11
+    # tomli is the upstream of stdlib tomllib; install it via the pre-commit
+    # hook's `additional_dependencies`, or `pip install tomli`, when the
+    # interpreter pre-commit picks up is older than 3.11.
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 def load_version(pixi_toml: Path) -> str:
@@ -39,7 +46,7 @@ def versioned_sections(changelog: Path) -> list[str]:
 def has_versioned_header(version: str, changelog: Path) -> bool:
     """Return True if CHANGELOG contains a ## [<version>] section header."""
     pattern = re.compile(rf"^## \[{re.escape(version)}\]", re.MULTILINE)
-    return not pattern.search(changelog.read_text()) is None  # noqa: SIM103
+    return pattern.search(changelog.read_text()) is not None  # noqa: SIM103
 
 
 def check(repo_root: Path) -> int:

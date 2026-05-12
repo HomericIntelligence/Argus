@@ -15,13 +15,27 @@ tailing. It does NOT modify Agamemnon or any other HomericIntelligence service.
 | Service         | Image                          | Purpose                                                |
 |-----------------|--------------------------------|--------------------------------------------------------|
 | Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
+| Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
 | Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
 | loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
 | Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
 | Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
 | argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
 
-All services run on the `argus` Docker network and are managed via `docker-compose.yml`.
+### Network topology (two-network design)
+
+The compose stack defines two Docker bridge networks:
+
+- **`argus`** — public-facing bridge that prometheus, alertmanager, loki-proxy,
+  promtail, grafana, and argus-exporter share. Anything that needs to talk to
+  other services in the stack lives here.
+- **`loki-internal`** — `internal: true` bridge with no egress. Only `loki`,
+  `loki-proxy`, and `promtail` are attached. Loki is intentionally not on
+  `argus`, so the only path to reach it is via `loki-proxy` (which terminates
+  basic auth). Do not re-add `loki` to the `argus` network — that would let any
+  container hit Loki directly without auth.
+
+All services are managed via `docker-compose.yml`.
 
 ## Architecture
 
@@ -52,9 +66,20 @@ to start without a `.env` file.
 | `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
 | `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
 
+Optional overrides (not required by `just start`):
+
+- `PROMTAIL_HOST_LABEL` — overrides the `host` label Promtail attaches to log
+  streams. Defaults to the container's `$HOSTNAME`.
+- `CONTAINER_CMD` — runtime used by `scripts/backup.sh` and `scripts/restore.sh`.
+  Defaults to `docker` (auto-promoted to `podman` if `podman-compose` is on
+  `$PATH`). Justfile recipes pass `CONTAINER_CMD={{container_cmd}}`
+  automatically, so you rarely need to set it by hand.
+
 `172.20.0.1` / `172.24.0.1` are WSL2 host gateway addresses — they reach services
 running on the Windows host or in other WSL distros. Substitute Tailscale IPs for
-cross-host deployments.
+cross-host deployments. The `NATS_URL` gateway IP `172.24.0.1` differs from
+the `172.20.0.1` used for Agamemnon/Nestor because NATS runs on a separate WSL
+distro with its own bridge — the discrepancy is intentional, not a typo.
 
 ## Scrape Targets
 
@@ -66,6 +91,58 @@ cross-host deployments.
 
 The exporter aggregates Agamemnon, Nestor, and NATS data and exposes them as
 Prometheus metrics on port 9100.
+
+The `NATS_URL` env var (`http://172.24.0.1:8222`) addresses the host gateway,
+which the exporter container uses to reach NATS on the WSL host. Prometheus,
+in contrast, scrapes NATS at `localhost:8222` — that target is interpreted
+*inside* the prometheus container (because both Prometheus and the NATS
+host gateway resolve to the host's loopback there). The two addresses point
+at the same NATS instance from different network namespaces.
+
+## Operator Notes
+
+These are easy-to-miss preconditions and runtime behaviours that operators
+new to the stack frequently trip on:
+
+1. **Copy `.env.example` to `.env` first.** `just start` and `docker compose`
+   both load `.env`; without it Grafana silently falls back to its
+   built-in `admin:admin` credentials.
+2. **`/tmp/hermes.log` must exist on the host before `just start`.** Promtail
+   bind-mounts the file. If it is missing, Docker creates an empty
+   *directory* at that path, which silently breaks the mount. Run
+   `touch /tmp/hermes.log` (or symlink to the real Hermes log) once per host.
+3. **Loki proxy htpasswd is generated automatically.** `just start` depends
+   on `just gen-htpasswd`, which writes `configs/nginx/htpasswd` from
+   `LOKI_AUTH_USER`/`LOKI_AUTH_PASSWORD` in `.env`. To rotate the password,
+   update `LOKI_AUTH_PASSWORD` in `.env`, then run `just gen-htpasswd && just restart`.
+4. **All host ports are loopback-only.** Prometheus (`127.0.0.1:9090`),
+   Grafana (`127.0.0.1:3001`), Alertmanager (`127.0.0.1:9093`), and the
+   exporter (`127.0.0.1:9100`) only accept connections from the host. To
+   reach them from another machine use an SSH tunnel
+   (`ssh -L 3001:localhost:3001 host`) or a Tailscale-encrypted route — the
+   stack intentionally does not expose unauthenticated metric/log endpoints
+   to the LAN.
+5. **`just test-scrape` requires the stack to be running.** After the host
+   port for Prometheus was removed, `test-scrape` runs the query *inside*
+   the prometheus container via `docker exec`. Use `just debug-prometheus`
+   and `just debug-loki` for ad-hoc inspection (these wrappers exec into
+   the respective containers).
+6. **`just backup` / `just restore` need a running compose project.** The
+   restore script calls `docker compose stop` to quiesce services before
+   replacing volume data; on a cold host with no containers, the stop is a
+   no-op and the script still runs, but operators should expect to bring
+   the stack up at least once before relying on restore.
+7. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
+   package for Windows; tasks like `just test-scrape` that pipe through `jq`
+   will fail there. Windows contributors should install `jq` via `winget` or
+   `choco` and put it on `$PATH`.
+
+## Metric Catalog
+
+The full catalog of every metric the exporter emits — name, labels, and
+semantics — lives at [`docs/metrics.md`](docs/metrics.md). Treat
+`exporter/exporter.py`'s `_METRIC_HELP` dict as the source of truth and update
+`docs/metrics.md` in the same commit when renaming or adding a metric.
 
 ## Metric Naming Conventions
 
@@ -79,14 +156,15 @@ All HomericIntelligence-specific metrics follow the `hi_` prefix:
 NATS metrics use the `nats_` prefix:
 
 - `nats_connections`, `nats_slow_consumers` — current state (gauges)
-- `nats_in_msgs_total`, `nats_out_msgs_total` — cumulative counters
+- `nats_in_msgs`, `nats_out_msgs`, `nats_in_bytes`, `nats_out_bytes` —
+  current rates from `/varz` (gauges; reset on NATS restart)
 - `nats_jetstream_*` — JetStream stats
 
 Exporter self-metrics use the `homeric_exporter_` prefix:
 
 - `homeric_exporter_scrape_duration_seconds` — last collect() wall time
 - `homeric_exporter_scrape_timestamp_seconds` — unix timestamp of last scrape
-- `homeric_exporter_fetch_errors_total` — per-upstream fetch error counts
+- `homeric_exporter_fetch_errors` — per-upstream fetch error counts (gauge; resets each scrape)
 
 All metrics include `# HELP` and `# TYPE` lines.
 
@@ -176,12 +254,16 @@ just stop                    # docker compose down
 just status                  # docker compose ps
 just logs <service>          # docker compose logs -f <service>
 just reload-prometheus       # Send SIGHUP to Prometheus (hot-reload config)
+just reload-alertmanager     # POST /-/reload to Alertmanager (hot-reload config)
+just test-alertmanager       # Check Alertmanager /-/healthy and cluster status
 just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
 just test                    # Run pytest unit tests
 just backup                  # Back up data volumes to ./backups/
 ```
+
+See `AGENTS.md` for the multi-agent coordination protocol used in this repo.
 
 ## AI Agent Collaboration Notes
 

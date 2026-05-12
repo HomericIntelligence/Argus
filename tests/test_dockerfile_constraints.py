@@ -11,7 +11,14 @@ REPO_ROOT = Path(__file__).parent.parent
 DOCKERFILE = REPO_ROOT / "exporter" / "Dockerfile"
 
 _MIN_VERSION = (3, 11)
-_MAX_VERSION = (3, 12)
+# Approved Python version ceiling. Advance this only after the next CPython
+# release is GA (https://devguide.python.org/versions/) AND has been
+# manually verified to build the exporter image and pass the full test
+# suite. Process: bump _MAX_VERSION in the same PR that bumps the FROM
+# line in exporter/Dockerfile so the test stays a single source of truth.
+# Python 3.13 reached GA on 2024-10-07; widen the ceiling to (3, 13) so
+# a manual base-image bump doesn't trip the regression test.
+_MAX_VERSION = (3, 13)
 
 
 class TestDockerfileConstraints(unittest.TestCase):
