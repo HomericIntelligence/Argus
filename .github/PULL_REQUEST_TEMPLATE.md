@@ -26,6 +26,8 @@
 - [ ] No credentials or secrets in the diff
 - [ ] Existing metric names not renamed without dashboard update in this PR
 - [ ] Alert rule changes do not regress existing alerts
+- [ ] `CHANGELOG.md` updated under `[Unreleased]` (skip only for chore-only
+      PRs that do not affect user-visible behaviour)
 
 ## Related Issues
 
