@@ -95,7 +95,7 @@ _METRIC_HELP: dict[str, str] = {
     "nats_jetstream_bytes":                   "Bytes stored in JetStream",
     "homeric_exporter_scrape_timestamp_seconds": "Unix timestamp (seconds) when the last scrape completed",
     "homeric_exporter_scrape_duration_seconds":  "Wall-clock seconds spent in the last collect() call",
-    "homeric_exporter_fetch_errors_total":    "Number of upstream fetch failures per scrape, by upstream",
+    "homeric_exporter_fetch_errors":          "Number of upstream fetch failures per scrape, by upstream",
 }
 
 
@@ -198,7 +198,7 @@ def collect() -> str:
     gauge("homeric_exporter_scrape_timestamp_seconds", "Unix timestamp (seconds) when the last scrape completed", time.time())
     gauge("homeric_exporter_scrape_duration_seconds",  "Duration in seconds of the last upstream scrape cycle",  time.time() - start)
     for upstream, count in fetch_errors.items():
-        gauge("homeric_exporter_fetch_errors_total",  "Number of fetch failures per upstream service",             count, {"upstream": upstream})
+        gauge("homeric_exporter_fetch_errors",  "Number of fetch failures per upstream service",             count, {"upstream": upstream})
 
     return "\n".join(lines) + "\n"
 

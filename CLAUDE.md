@@ -79,14 +79,14 @@ All HomericIntelligence-specific metrics follow the `hi_` prefix:
 NATS metrics use the `nats_` prefix:
 
 - `nats_connections`, `nats_slow_consumers` — current state (gauges)
-- `nats_in_msgs_total`, `nats_out_msgs_total` — cumulative counters
+- `nats_in_msgs`, `nats_out_msgs`, `nats_in_bytes`, `nats_out_bytes` — current rates from `/varz` (gauges; reset on NATS restart)
 - `nats_jetstream_*` — JetStream stats
 
 Exporter self-metrics use the `homeric_exporter_` prefix:
 
 - `homeric_exporter_scrape_duration_seconds` — last collect() wall time
 - `homeric_exporter_scrape_timestamp_seconds` — unix timestamp of last scrape
-- `homeric_exporter_fetch_errors_total` — per-upstream fetch error counts
+- `homeric_exporter_fetch_errors` — per-upstream fetch error counts (gauge; resets each scrape)
 
 All metrics include `# HELP` and `# TYPE` lines.
 
