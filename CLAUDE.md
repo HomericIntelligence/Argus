@@ -85,6 +85,13 @@ distro with its own bridge — the discrepancy is intentional, not a typo.
 The exporter aggregates Agamemnon, Nestor, and NATS data and exposes them as
 Prometheus metrics on port 9100.
 
+## Metric Catalog
+
+The full catalog of every metric the exporter emits — name, labels, and
+semantics — lives at [`docs/metrics.md`](docs/metrics.md). Treat
+`exporter/exporter.py`'s `_METRIC_HELP` dict as the source of truth and update
+`docs/metrics.md` in the same commit when renaming or adding a metric.
+
 ## Metric Naming Conventions
 
 All HomericIntelligence-specific metrics follow the `hi_` prefix:
