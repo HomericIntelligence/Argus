@@ -15,8 +15,15 @@ from __future__ import annotations
 
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib  # Python 3.11+ stdlib
+except ModuleNotFoundError:  # pragma: no cover - exercised on Python < 3.11
+    # tomli is the upstream of stdlib tomllib; install it via the pre-commit
+    # hook's `additional_dependencies`, or `pip install tomli`, when the
+    # interpreter pre-commit picks up is older than 3.11.
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 def load_version(pixi_toml: Path) -> str:
