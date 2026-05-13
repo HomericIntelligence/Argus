@@ -56,6 +56,7 @@ start: gen-htpasswd
         echo "ERROR: configs/nginx/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
         exit 1
     fi
+    ./scripts/check-grafana-password.sh
     {{compose_cmd}} up -d
 
 # Stop all services
@@ -68,6 +69,7 @@ status:
 
 # Restart all services (stop then start)
 restart: gen-htpasswd
+    ./scripts/check-grafana-password.sh
     {{compose_cmd}} down
     {{compose_cmd}} up -d
 
