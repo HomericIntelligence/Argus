@@ -171,6 +171,54 @@ class TestPromtailConfig(unittest.TestCase):
                     f"{pat!r}; got expressions: {joined!r}"
                 )
 
+    def _hermes_replace_expressions(self) -> list[str]:
+        hermes_job = next(
+            (j for j in self.config["scrape_configs"] if j.get("job_name") == "hermes"),
+            None,
+        )
+        assert hermes_job is not None, "hermes scrape job not found"
+        stages = hermes_job.get("pipeline_stages", [])
+        exprs: list[str] = []
+        for stage in stages:
+            if isinstance(stage, dict) and "replace" in stage:
+                expr = stage["replace"].get("expression")
+                if expr:
+                    exprs.append(expr)
+        return exprs
+
+    def test_hermes_redacts_url_embedded_credentials(self):
+        """Issue #194: scheme://user:password@host must be redacted."""
+        import re
+
+        exprs = self._hermes_replace_expressions()
+        sample = "connecting to https://alice:hunter2@db.example.com/foo"
+        for expr in exprs:
+            sample = re.sub(expr, "<redacted>", sample, flags=re.IGNORECASE)
+        assert "hunter2" not in sample, (
+            f"URL-embedded password leaked through redaction stages: {sample!r}"
+        )
+        assert "alice" not in sample, (
+            f"URL-embedded username leaked through redaction stages: {sample!r}"
+        )
+
+    def test_hermes_redacts_query_string_api_keys(self):
+        """Issue #194: ?api_key= / &access_token= etc must be redacted."""
+        import re
+
+        exprs = self._hermes_replace_expressions()
+        cases = [
+            ("GET /v1?api_key=abc123XYZ&name=alice", "abc123XYZ"),
+            ("url?access_token=tok_DEADBEEF&next=x", "tok_DEADBEEF"),
+            ("/auth?client_secret=shh_SECRET_42 done", "shh_SECRET_42"),
+        ]
+        for line, secret in cases:
+            redacted = line
+            for expr in exprs:
+                redacted = re.sub(expr, "<redacted>", redacted, flags=re.IGNORECASE)
+            assert secret not in redacted, (
+                f"query-string secret {secret!r} leaked: input={line!r} output={redacted!r}"
+            )
+
 
 class TestGrafanaDatasourcesConfig(unittest.TestCase):
     def setUp(self):
