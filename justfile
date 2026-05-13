@@ -76,7 +76,7 @@ clean:
     {{compose_cmd}} down -v
 
 # Validate docker-compose config, YAML files, and required runtime files
-validate:
+validate: check-env-example
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
@@ -85,6 +85,11 @@ validate:
         exit 1
     fi
     echo "Config is valid."
+
+# Verify every env var referenced by docker-compose.yml is documented in
+# .env.example. Fails on undocumented drift (issue #215).
+check-env-example:
+    @bash scripts/check-env-example.sh
 
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:
