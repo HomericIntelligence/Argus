@@ -143,6 +143,34 @@ class TestPromtailConfig(unittest.TestCase):
         raw = (CONFIGS_DIR / "promtail.yml").read_text()
         assert "HOSTNAME" in raw, "host label must reference ${HOSTNAME} for portability"
 
+    def test_redaction_enabled_jobs_have_secret_patterns(self):
+        """All jobs that read host/app logs containing user-supplied data must
+        redact the same five secret patterns (bearer, token, key, secret,
+        password). Adding a new such job without redaction is a security
+        regression — extend REDACTION_ENABLED_JOBS below.
+
+        Issue #190: extended to syslog (host-level logs may contain secrets
+        if system services log credentials).
+        """
+        REDACTION_ENABLED_JOBS = {"syslog", "hermes", "nats"}
+        REQUIRED_PATTERNS = ("bearer", "token", "key", "secret", "password")
+
+        jobs_by_name = {
+            j["job_name"]: j for j in self.config["scrape_configs"]
+        }
+        for job_name in REDACTION_ENABLED_JOBS:
+            assert job_name in jobs_by_name, f"expected scrape job {job_name!r}"
+            stages = jobs_by_name[job_name].get("pipeline_stages")
+            assert stages, f"{job_name!r} must have pipeline_stages for redaction"
+            joined = " ".join(
+                str(s.get("replace", {}).get("expression", "")) for s in stages
+            ).lower()
+            for pat in REQUIRED_PATTERNS:
+                assert pat in joined, (
+                    f"{job_name!r} pipeline_stages missing redaction for "
+                    f"{pat!r}; got expressions: {joined!r}"
+                )
+
 
 class TestGrafanaDatasourcesConfig(unittest.TestCase):
     def setUp(self):
