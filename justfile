@@ -75,10 +75,16 @@ restart: gen-htpasswd
 clean:
     {{compose_cmd}} down -v
 
-# Validate docker-compose config and YAML files
+# Validate docker-compose config, YAML files, and required runtime files
 validate:
+    #!/usr/bin/env bash
+    set -euo pipefail
     {{compose_cmd}} config --quiet
-    @echo "Config is valid."
+    if [ ! -f configs/nginx/htpasswd ]; then
+        echo "ERROR: configs/nginx/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+        exit 1
+    fi
+    echo "Config is valid."
 
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:
