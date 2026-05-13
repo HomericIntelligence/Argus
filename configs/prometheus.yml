@@ -50,6 +50,12 @@ scrape_configs:
       - targets: ['argus-dashboard:3002']
     metrics_path: /metrics
 
+  # Alertmanager self-monitoring: exposes alert pipeline health
+  # (alertmanager_alerts, alertmanager_notifications_total, etc.) on :9093/metrics
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+
 # NOTE: Promtail (port 9080) is intentionally NOT scraped here. Promtail
 # exposes useful self-metrics (lines ingested, target counts, push errors)
 # but they cardinality-multiply per tailed file/job and we keep this
