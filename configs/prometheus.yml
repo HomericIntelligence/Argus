@@ -37,13 +37,18 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Nomad job and allocation metrics
+  # Nomad job and allocation metrics.
+  # The target host:port is provided via the NOMAD_ADDR env var, which is
+  # interpolated into this file by the prometheus service entrypoint (see
+  # docker-compose.yml). Default in .env.example matches the WSL2 host
+  # gateway (172.20.0.1:4646). Update .env to point at the Nomad agent
+  # reachable from inside the argus bridge network.
   - job_name: 'nomad'
     metrics_path: /v1/metrics
     params:
       format: ['prometheus']
     static_configs:
-      - targets: ['172.20.0.1:4646']
+      - targets: ['${NOMAD_ADDR}']
 
   - job_name: atlas
     static_configs:
