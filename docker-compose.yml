@@ -192,6 +192,13 @@ services:
       GF_SERVER_PROTOCOL: https
       GF_SERVER_CERT_FILE: /etc/grafana/tls/grafana.crt
       GF_SERVER_CERT_KEY: /etc/grafana/tls/grafana.key
+      # Pin Grafana's external URL so it ignores untrusted Host headers
+      # (host-header injection mitigation). Grafana is bound to
+      # 127.0.0.1:${GRAFANA_PORT:-3001} on the host and only reachable via
+      # local browser, SSH tunnel, or VPN — so the default root URL points
+      # at loopback. Override GF_SERVER_ROOT_URL in .env if you front
+      # Grafana with a reverse proxy on a different hostname.
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-https://localhost:${GRAFANA_PORT:-3001}/}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
