@@ -73,15 +73,17 @@ Key variables:
 
 ## Dashboards
 
-- **HomericIntelligence - Agent Health**: Agent count, active/hibernated agents, uptime
-- **NATS Event Bus**: Message rate, JetStream storage, subject counts
-- **Task Throughput**: Tasks created/completed/failed per hour, dispatch latency
-- **Argus Stack Health**: Prometheus scrape-target count (`up`), Homeric Exporter health, total targets. Stat panels
-  backed by Prometheus.
-- **Log Explorer**: Syslog and NATS log streams. Log panels backed by Loki.
-
-- **Argus Stack Health**: Prometheus scrape-target up/down status, exporter health
-- **Log Explorer**: Syslog and NATS log streams via Loki
+- **HomericIntelligence - Agent Health** (`agent-health.json`, uid: `agent-health`):
+  Agent count, active/hibernated agents, uptime
+- **NATS Event Bus** (`nats-events.json`, uid: `nats-events`):
+  Message rate, JetStream storage, subject counts
+- **Task Throughput** (`task-throughput.json`, uid: `task-throughput`):
+  Tasks created/completed/failed per hour, dispatch latency
+- **Argus Stack Health** (`argus-health.json`, uid: `argus-health`):
+  Prometheus scrape-target count (`up`), Homeric Exporter health, total targets.
+  Stat panels backed by Prometheus.
+- **Log Explorer** (`loki-explorer.json`, uid: `loki-explorer`):
+  Syslog and NATS log streams. Log panels backed by Loki.
 
 ## Configuration
 
