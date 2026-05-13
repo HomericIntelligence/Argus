@@ -100,6 +100,21 @@ jobs:
       - name: Lint shell scripts
         run: shellcheck --severity=warning scripts/*.sh
 
+      - name: Assert htpasswd is not tracked
+        # Guard against accidental re-addition of nginx basic-auth credentials
+        # to the index (see issue #229, follow-up from #101). Matches the
+        # canonical path plus any file named `htpasswd` or `*.htpasswd`.
+        run: |
+          set -euo pipefail
+          tracked=$(git ls-files -- 'configs/nginx/htpasswd' '**/htpasswd' 'htpasswd' '*.htpasswd' '**/*.htpasswd')
+          if [ -n "$tracked" ]; then
+            echo "::error::htpasswd file(s) found in the git index:"
+            echo "$tracked"
+            echo "These must not be committed. Remove with: git rm --cached <path>"
+            exit 1
+          fi
+          echo "OK: no htpasswd files tracked"
+
   unit-tests:
     name: Python unit tests + coverage
     runs-on: ubuntu-latest
