@@ -40,6 +40,20 @@ jobs:
             rules/atlas-alerts.yml \
             docker-compose.yml
 
+      - name: Validate Promtail config syntax
+        run: |
+          # Run promtail -check-syntax against the committed config inside
+          # the same image used by the compose stack. The config references
+          # env vars; promtail expands them at parse time when
+          # -config.expand-env=true, with missing vars resolving to an empty
+          # string — fine for a syntax-only check.
+          docker run --rm \
+            -v "$PWD/configs/promtail.yml:/etc/promtail/promtail.yml:ro" \
+            grafana/promtail:3.1.2 \
+            -config.file=/etc/promtail/promtail.yml \
+            -config.expand-env=true \
+            -check-syntax
+
       - name: Validate Grafana dashboard JSON
         run: |
           for f in dashboards/*.json; do
