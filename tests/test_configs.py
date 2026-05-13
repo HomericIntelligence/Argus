@@ -171,6 +171,71 @@ class TestPromtailConfig(unittest.TestCase):
                     f"{pat!r}; got expressions: {joined!r}"
                 )
 
+    def _replace_expressions(self, job_name: str) -> list[str]:
+        job = next(
+            (j for j in self.config["scrape_configs"] if j.get("job_name") == job_name),
+            None,
+        )
+        assert job is not None, f"{job_name} scrape job not found"
+        stages = job.get("pipeline_stages", [])
+        exprs: list[str] = []
+        for stage in stages:
+            if isinstance(stage, dict) and "replace" in stage:
+                expr = stage["replace"].get("expression")
+                if expr:
+                    exprs.append(expr)
+        return exprs
+
+    def _jobs_with_redaction(self) -> list[str]:
+        """Return job_names that already perform credential redaction."""
+        jobs: list[str] = []
+        for j in self.config["scrape_configs"]:
+            stages = j.get("pipeline_stages") or []
+            if any(isinstance(s, dict) and "replace" in s for s in stages):
+                jobs.append(j["job_name"])
+        return jobs
+
+    def test_url_embedded_credentials_redacted_in_all_redaction_pipelines(self):
+        """Issue #194: scheme://user:password@host must be redacted in every
+        pipeline that already does credential redaction."""
+        import re
+
+        jobs = self._jobs_with_redaction()
+        assert jobs, "expected at least one job with redaction stages"
+        sample_in = "connecting to https://alice:hunter2@db.example.com/foo"
+        for job in jobs:
+            sample = sample_in
+            for expr in self._replace_expressions(job):
+                sample = re.sub(expr, "<redacted>", sample, flags=re.IGNORECASE)
+            assert "hunter2" not in sample, (
+                f"job {job!r}: URL-embedded password leaked: {sample!r}"
+            )
+            assert "alice" not in sample, (
+                f"job {job!r}: URL-embedded username leaked: {sample!r}"
+            )
+
+    def test_query_string_api_keys_redacted_in_all_redaction_pipelines(self):
+        """Issue #194: ?api_key= / &access_token= etc must be redacted in every
+        pipeline that already does credential redaction."""
+        import re
+
+        jobs = self._jobs_with_redaction()
+        cases = [
+            ("GET /v1?api_key=abc123XYZ&name=alice", "abc123XYZ"),
+            ("url?access_token=tok_DEADBEEF&next=x", "tok_DEADBEEF"),
+            ("/auth?client_secret=shh_SECRET_42 done", "shh_SECRET_42"),
+        ]
+        for job in jobs:
+            exprs = self._replace_expressions(job)
+            for line, secret in cases:
+                redacted = line
+                for expr in exprs:
+                    redacted = re.sub(expr, "<redacted>", redacted, flags=re.IGNORECASE)
+                assert secret not in redacted, (
+                    f"job {job!r}: query-string secret {secret!r} leaked: "
+                    f"input={line!r} output={redacted!r}"
+                )
+
 
 class TestGrafanaDatasourcesConfig(unittest.TestCase):
     def setUp(self):
