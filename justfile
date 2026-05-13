@@ -78,7 +78,7 @@ clean:
     {{compose_cmd}} down -v
 
 # Validate docker-compose config, YAML files, and required runtime files
-validate: check-env-example
+validate: check-env-example validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
@@ -92,6 +92,17 @@ validate: check-env-example
 # .env.example. Fails on undocumented drift (issue #215).
 check-env-example:
     @bash scripts/check-env-example.sh
+
+# Validate promtail config syntax via the official image's -check-syntax
+validate-promtail:
+    @echo "Validating configs/promtail.yml ..."
+    {{container_cmd}} run --rm \
+        -v "$(pwd)/configs/promtail.yml:/etc/promtail/promtail.yml:ro" \
+        grafana/promtail:3.1.2 \
+        -config.file=/etc/promtail/promtail.yml \
+        -config.expand-env=true \
+        -check-syntax
+    @echo "promtail config OK."
 
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:
