@@ -2,6 +2,10 @@
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-v --strict-markers --cov=exporter --cov-report=term-missing --cov-report=html --cov-report=xml"
+markers = [
+  "integration: integration tests that exercise real external dependencies (slower; opt-in via -m integration)",
+  "requires_nats: integration tests that require a real `nats-server` binary on PATH (mirrors Charybdis's REQUIRES_NATS gate)",
+]
 
 [tool.coverage.run]
 source = ["exporter"]
