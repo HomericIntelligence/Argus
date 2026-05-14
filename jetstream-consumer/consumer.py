@@ -30,6 +30,14 @@ FETCH_TIMEOUT  = float(os.environ.get("FETCH_TIMEOUT", "1.0"))
 RETRY_INTERVAL = int(os.environ.get("RETRY_INTERVAL", "30"))
 DURABLE_NAME   = "argus-jetstream-consumer"
 
+# Streams the consumer requires. {stream_name: [subject_filters]}
+# If pull_subscribe raises NotFoundError because a stream does not yet exist,
+# the consumer will attempt to create it with these subject filters.
+REQUIRED_STREAMS: dict[str, list[str]] = {
+    "hi_agents": ["hi.agents.>"],
+    "hi_tasks":  ["hi.tasks.>"],
+}
+
 # ── Shared metrics state (guarded by _lock) ────────────────────────────────
 _lock = threading.Lock()
 
@@ -147,6 +155,37 @@ def _run_http_server(port: int) -> None:
 
 # ── JetStream subscription loop ────────────────────────────────────────────
 
+async def _pull_subscribe_with_auto_create(
+    js: Any,
+    subject: str,
+    stream: str,
+    durable: str,
+) -> Any:
+    """Call ``js.pull_subscribe`` and, on :class:`NotFoundError`, create the
+    expected stream and retry once.
+
+    nats-py raises ``NotFoundError`` when ``pull_subscribe`` is asked to bind to
+    a stream that does not exist on the JetStream server. The previous
+    behaviour was to surface this as a generic exception and fall back to the
+    outer retry loop, which would never make progress until an operator
+    manually created the stream. This wrapper attempts an automatic recovery
+    by creating the stream with the subject filter we are about to subscribe
+    to, then retrying ``pull_subscribe`` exactly once. If the second attempt
+    still fails, the exception propagates so the outer loop can log it.
+    """
+    try:
+        return await js.pull_subscribe(subject, durable=durable, stream=stream)
+    except NotFoundError:
+        subjects = REQUIRED_STREAMS.get(stream, [subject])
+        log.warning(
+            "JetStream stream %r not found; auto-creating with subjects %s",
+            stream,
+            subjects,
+        )
+        await js.add_stream(name=stream, subjects=subjects)
+        return await js.pull_subscribe(subject, durable=durable, stream=stream)
+
+
 async def _fetch_loop(
     sub: Any,
     stream: str,
@@ -193,15 +232,17 @@ async def subscribe_loop(stop_event: asyncio.Event) -> None:
             )
             js = nc.jetstream()
 
-            sub_agents = await js.pull_subscribe(
+            sub_agents = await _pull_subscribe_with_auto_create(
+                js,
                 "hi.agents.>",
-                durable=DURABLE_NAME,
                 stream="hi_agents",
-            )
-            sub_tasks = await js.pull_subscribe(
-                "hi.tasks.>",
                 durable=DURABLE_NAME,
+            )
+            sub_tasks = await _pull_subscribe_with_auto_create(
+                js,
+                "hi.tasks.>",
                 stream="hi_tasks",
+                durable=DURABLE_NAME,
             )
 
             with _lock:
