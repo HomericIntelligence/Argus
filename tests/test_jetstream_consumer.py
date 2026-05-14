@@ -235,11 +235,37 @@ class TestRenderMetrics:
         output = consumer._render_metrics()
         assert 'hi_jetstream_events_total{subject_prefix="hi.agents",event_type="created"} 3' in output
 
+    def test_events_total_typed_as_counter(self, consumer):
+        with consumer._lock:
+            consumer._event_counts[("hi.agents", "created")] = 3
+        output = consumer._render_metrics()
+        assert "# TYPE hi_jetstream_events_total counter" in output
+        assert "# TYPE hi_jetstream_events_total gauge" not in output
+
     def test_includes_last_seq(self, consumer):
         with consumer._lock:
             consumer._last_seq["hi_agents"] = 100
         output = consumer._render_metrics()
         assert 'hi_jetstream_consumer_last_seq{stream="hi_agents"} 100' in output
+
+    def test_last_seq_typed_as_counter(self, consumer):
+        with consumer._lock:
+            consumer._last_seq["hi_agents"] = 100
+        output = consumer._render_metrics()
+        assert "# TYPE hi_jetstream_consumer_last_seq counter" in output
+        assert "# TYPE hi_jetstream_consumer_last_seq gauge" not in output
+
+    def test_latency_remains_gauge(self, consumer):
+        with consumer._lock:
+            consumer._latency_accum["completed"] = (20.0, 2)
+        output = consumer._render_metrics()
+        assert "# TYPE hi_jetstream_task_latency_seconds gauge" in output
+
+    def test_connected_remains_gauge(self, consumer):
+        with consumer._lock:
+            consumer._connected = 1
+        output = consumer._render_metrics()
+        assert "# TYPE hi_jetstream_consumer_connected gauge" in output
 
     def test_includes_latency(self, consumer):
         with consumer._lock:

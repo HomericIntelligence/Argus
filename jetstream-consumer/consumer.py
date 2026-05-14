@@ -91,24 +91,29 @@ def _update_task_latency(payload: bytes, subject: str) -> None:
 def _render_metrics() -> str:
     lines: list[str] = []
 
-    def gauge(name: str, value: float | int, labels: dict[str, str] | None = None) -> None:
+    def _emit(name: str, mtype: str, value: float | int, labels: dict[str, str] | None = None) -> None:
+        lines.append(f"# TYPE {name} {mtype}")
         if labels:
             lstr = ",".join(f'{k}="{v}"' for k, v in labels.items())
-            lines.append(f"# TYPE {name} gauge")
             lines.append(f"{name}{{{lstr}}} {value}")
         else:
-            lines.append(f"# TYPE {name} gauge")
             lines.append(f"{name} {value}")
+
+    def gauge(name: str, value: float | int, labels: dict[str, str] | None = None) -> None:
+        _emit(name, "gauge", value, labels)
+
+    def counter(name: str, value: float | int, labels: dict[str, str] | None = None) -> None:
+        _emit(name, "counter", value, labels)
 
     with _lock:
         for (prefix, etype), count in _event_counts.items():
-            gauge(
+            counter(
                 "hi_jetstream_events_total",
                 count,
                 {"subject_prefix": prefix, "event_type": etype},
             )
         for stream, seq in _last_seq.items():
-            gauge("hi_jetstream_consumer_last_seq", seq, {"stream": stream})
+            counter("hi_jetstream_consumer_last_seq", seq, {"stream": stream})
         for status, (total_lat, count) in _latency_accum.items():
             mean = total_lat / count if count > 0 else 0.0
             gauge("hi_jetstream_task_latency_seconds", mean, {"status": status})
