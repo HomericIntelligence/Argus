@@ -1,0 +1,4 @@
+# Pinned runtime dependencies for jetstream-consumer.
+# Update with intent: bumping these requires rebuilding the image and
+# re-publishing via .github/workflows/publish-jetstream-consumer-image.yml.
+nats-py==2.9.0

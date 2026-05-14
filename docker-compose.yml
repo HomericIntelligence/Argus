@@ -332,14 +332,26 @@ services:
       - argus
 
   jetstream-consumer:
-    image: python:3.11-slim
+    # Built from ./jetstream-consumer (Dockerfile bakes nats-py at build
+    # time — closes #171). consumer.py is COPYed into the image rather
+    # than bind-mounted so the published artifact is reproducible and
+    # air-gap deployable.
+    build:
+      context: ./jetstream-consumer
+      dockerfile: Dockerfile
+    image: ${JETSTREAM_CONSUMER_IMAGE:-argus-jetstream-consumer:local}
     container_name: argus-jetstream-consumer
     restart: unless-stopped
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     ports:
       - "127.0.0.1:9101:9101"
-    volumes:
-      - ./jetstream-consumer/consumer.py:/consumer.py:ro
-    command: sh -c "pip install nats-py -q && python /consumer.py"
     environment:
       NATS_URL: "nats://172.24.0.1:4222"
       EXPORTER_PORT: "9101"
