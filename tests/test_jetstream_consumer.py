@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 import types
 import urllib.request
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -257,6 +257,112 @@ class TestRenderMetrics:
             consumer._latency_accum["failed"] = (0.0, 0)
         output = consumer._render_metrics()
         assert 'hi_jetstream_task_latency_seconds{status="failed"} 0.0' in output
+
+
+# ---------------------------------------------------------------------------
+# _pull_subscribe_with_auto_create
+# ---------------------------------------------------------------------------
+
+class TestPullSubscribeWithAutoCreate:
+    """Verify the auto-create-on-NotFoundError fallback."""
+
+    def _run(self, coro):
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def test_returns_subscription_when_stream_exists(self, consumer):
+        js = MagicMock()
+        expected_sub = object()
+        js.pull_subscribe = AsyncMock(return_value=expected_sub)
+        js.add_stream = AsyncMock()
+
+        result = self._run(
+            consumer._pull_subscribe_with_auto_create(
+                js, "hi.agents.>", stream="hi_agents", durable="d",
+            )
+        )
+
+        assert result is expected_sub
+        js.pull_subscribe.assert_awaited_once_with(
+            "hi.agents.>", durable="d", stream="hi_agents",
+        )
+        js.add_stream.assert_not_called()
+
+    def test_creates_stream_and_retries_on_not_found(self, consumer):
+        from nats.js.errors import NotFoundError
+
+        expected_sub = object()
+        js = MagicMock()
+        js.pull_subscribe = AsyncMock(side_effect=[NotFoundError(), expected_sub])
+        js.add_stream = AsyncMock()
+
+        result = self._run(
+            consumer._pull_subscribe_with_auto_create(
+                js, "hi.agents.>", stream="hi_agents", durable="d",
+            )
+        )
+
+        assert result is expected_sub
+        assert js.pull_subscribe.await_count == 2
+        js.add_stream.assert_awaited_once_with(
+            name="hi_agents", subjects=["hi.agents.>"],
+        )
+
+    def test_uses_subject_when_stream_not_in_registry(self, consumer):
+        from nats.js.errors import NotFoundError
+
+        expected_sub = object()
+        js = MagicMock()
+        js.pull_subscribe = AsyncMock(side_effect=[NotFoundError(), expected_sub])
+        js.add_stream = AsyncMock()
+
+        result = self._run(
+            consumer._pull_subscribe_with_auto_create(
+                js, "hi.custom.>", stream="hi_custom", durable="d",
+            )
+        )
+
+        assert result is expected_sub
+        js.add_stream.assert_awaited_once_with(
+            name="hi_custom", subjects=["hi.custom.>"],
+        )
+
+    def test_propagates_second_failure(self, consumer):
+        from nats.js.errors import NotFoundError
+
+        js = MagicMock()
+        js.pull_subscribe = AsyncMock(side_effect=[NotFoundError(), NotFoundError()])
+        js.add_stream = AsyncMock()
+
+        with pytest.raises(NotFoundError):
+            self._run(
+                consumer._pull_subscribe_with_auto_create(
+                    js, "hi.agents.>", stream="hi_agents", durable="d",
+                )
+            )
+        assert js.pull_subscribe.await_count == 2
+        js.add_stream.assert_awaited_once()
+
+    def test_propagates_add_stream_failure(self, consumer):
+        from nats.js.errors import NotFoundError
+
+        js = MagicMock()
+        js.pull_subscribe = AsyncMock(side_effect=NotFoundError())
+        js.add_stream = AsyncMock(side_effect=RuntimeError("permission denied"))
+
+        with pytest.raises(RuntimeError, match="permission denied"):
+            self._run(
+                consumer._pull_subscribe_with_auto_create(
+                    js, "hi.agents.>", stream="hi_agents", durable="d",
+                )
+            )
+        # pull_subscribe should only have been called once before add_stream blew up.
+        assert js.pull_subscribe.await_count == 1
 
 
 # ---------------------------------------------------------------------------
