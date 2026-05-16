@@ -310,10 +310,23 @@ def _make_handler(path: str) -> tuple:
     return handler, mock_server
 
 
+class _SilentHandler(exporter_mod.Handler):
+    """Test-only Handler subclass that suppresses access log output (#286).
+
+    The production Handler routes log_message to log.debug, which is silent at
+    the default INFO level but spams stderr if a developer flips LOG_LEVEL to
+    DEBUG while running the test suite. Override with a no-op so the in-process
+    fixture stays quiet regardless of the surrounding log config.
+    """
+
+    def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
+        return
+
+
 @contextlib.contextmanager
 def _live_server():
     """Spin up a real ThreadingHTTPServer on an ephemeral port; yield the port."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), exporter_mod.Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SilentHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
