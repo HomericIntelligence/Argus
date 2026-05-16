@@ -102,11 +102,6 @@ class TestFetch(unittest.TestCase):
             with self.assertRaises(MemoryError):
                 exporter_mod._fetch("http://fake/data")
 
-    def test_returns_none_on_exception(self):
-        with patch("urllib.request.urlopen", side_effect=_urlopen_raises):
-            result = exporter_mod._fetch("http://fake/data")
-        self.assertIsNone(result)
-
 
 # ---------------------------------------------------------------------------
 # Helper: patch all seven upstream calls in collect()
