@@ -15,3 +15,5 @@ secrets/
 __pycache__/
 *.pyc
 *.pyo
+.worktrees/*
+!.worktrees/.gitkeep

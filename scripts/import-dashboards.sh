@@ -27,7 +27,8 @@ fi
 for f in "${files[@]}"; do
     echo "Importing $(basename "$f") ..."
     payload=$(jq -n --slurpfile dash "$f" '{"dashboard": $dash[0], "overwrite": true, "folderId": 0}')
-    http_code=$(curl -s -o /tmp/grafana_import_resp.json -w "%{http_code}" \
+    http_code=$(curl -s --connect-timeout 5 -m 10 \
+        -o /tmp/grafana_import_resp.json -w "%{http_code}" \
         -u "$GRAFANA_AUTH" \
         -H "Content-Type: application/json" \
         -d "$payload" \
