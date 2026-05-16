@@ -70,6 +70,13 @@ Optional overrides (not required by `just start`):
 
 - `PROMTAIL_HOST_LABEL` — overrides the `host` label Promtail attaches to log
   streams. Defaults to the container's `$HOSTNAME`.
+- `HOSTNAME` — Promtail's `promtail.yml` substitutes `${HOSTNAME:-hermes}` into
+  the Loki `host` label. The Promtail container inherits `HOSTNAME` from the
+  `hostname:` field set on the `promtail` service in `docker-compose.yml`. When
+  deploying on a new host, set `hostname:` in `docker-compose.yml` (or set the
+  `HOSTNAME` env var explicitly) so each host's logs are distinguishable in
+  Loki. If unset, Promtail falls back to the container's runtime ID, which
+  changes on every restart and is not human-readable.
 - `CONTAINER_CMD` — runtime used by `scripts/backup.sh` and `scripts/restore.sh`.
   Defaults to `docker` (auto-promoted to `podman` if `podman-compose` is on
   `$PATH`). Justfile recipes pass `CONTAINER_CMD={{container_cmd}}`
