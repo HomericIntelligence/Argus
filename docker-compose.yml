@@ -274,8 +274,15 @@ services:
       NATS_TLS_CA: ""
     healthcheck:
       # The python:3.11-slim image does not ship wget; use python stdlib instead.
-      test: ["CMD", "python", "-c",
-             "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9100/health',timeout=5).status==200 else 1)"]
+      # Probe split across imports + check to satisfy yamllint line-length:120.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - >-
+          import urllib.request, sys;
+          r = urllib.request.urlopen('http://localhost:9100/health', timeout=5);
+          sys.exit(0 if r.status == 200 else 1)
       interval: 30s
       timeout: 10s
       retries: 3
