@@ -266,6 +266,10 @@ class TestCollectMetricNames(unittest.TestCase):
         self.assertIn("homeric_exporter_fetch_errors", self.output)
         # Must not carry the _total counter suffix (gauge, not counter)
         self.assertNotIn("homeric_exporter_fetch_errors_total", self.output)
+        # Regression guard: the old (un-suffixed) name must not coexist with
+        # the canonical _seconds-suffixed metric (#425). Match on the trailing
+        # `{` to distinguish the bare name from `_seconds`.
+        self.assertNotIn("homeric_exporter_scrape_timestamp{", self.output)
 
     def test_nats_msg_metrics_use_gauge_names_not_total(self):
         """nats_in_msgs and nats_out_msgs must not carry the _total counter suffix."""
