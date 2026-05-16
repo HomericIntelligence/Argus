@@ -71,7 +71,10 @@ def _health_check(url: str, ca_file: Optional[str] = None) -> int:
         ctx = _build_ssl_context(ca_file)
         r = urllib.request.urlopen(url, timeout=5, context=ctx)
         return 1 if r.status == 200 else 0
-    except Exception:  # broad catch: probe must never propagate
+    except Exception as e:  # broad catch: probe must never propagate
+        # Log at DEBUG so operators can distinguish a misconfigured URL from
+        # a genuine upstream outage without changing the return-value contract.
+        log.debug("health_check %s failed: %s", url, e)
         return 0
 
 
