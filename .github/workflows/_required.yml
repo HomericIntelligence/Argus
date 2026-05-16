@@ -281,11 +281,23 @@ jobs:
           )
           lines = result.stdout.strip().splitlines()
 
+          # Resolve docker-compose env-var interpolations of the form
+          # ${VAR:-default} or ${VAR-default} to their default value so the
+          # resulting image reference can be validated. Bare ${VAR} (no
+          # default) is skipped since we cannot know the runtime value.
+          interp_with_default = re.compile(r'\$\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]+)\}')
+          bare_interp = re.compile(r'\$\{[A-Za-z_][A-Za-z0-9_]*\}')
+
           images = []
           for line in lines:
               parts = line.strip().split()
               if len(parts) >= 2:
-                  images.append(parts[-1])
+                  img = parts[-1]
+                  img = interp_with_default.sub(lambda m: m.group(1), img)
+                  if bare_interp.search(img):
+                      # Cannot validate without a default; skip.
+                      continue
+                  images.append(img)
 
           if not images:
               print("No docker-compose image references found — skipping format validation")
