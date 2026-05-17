@@ -16,6 +16,11 @@ if [[ ! -d "$DASHBOARDS_DIR" ]]; then
     exit 1
 fi
 
+# Use a per-run mktemp file instead of a predictable /tmp path (avoids a
+# race condition and minor info-leak on shared machines). Cleaned up on exit.
+resp_file=$(mktemp)
+trap 'rm -f "$resp_file"' EXIT
+
 shopt -s nullglob
 files=("$DASHBOARDS_DIR"/*.json)
 
@@ -28,17 +33,17 @@ for f in "${files[@]}"; do
     echo "Importing $(basename "$f") ..."
     payload=$(jq -n --slurpfile dash "$f" '{"dashboard": $dash[0], "overwrite": true, "folderId": 0}')
     http_code=$(curl -s --connect-timeout 5 -m 10 \
-        -o /tmp/grafana_import_resp.json -w "%{http_code}" \
+        -o "$resp_file" -w "%{http_code}" \
         -u "$GRAFANA_AUTH" \
         -H "Content-Type: application/json" \
         -d "$payload" \
         "${GRAFANA_URL}/api/dashboards/db")
     if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
         echo "  -> ERROR: HTTP $http_code from Grafana API" >&2
-        cat /tmp/grafana_import_resp.json >&2
+        cat "$resp_file" >&2
         exit 1
     fi
-    status=$(jq -r '.status // "unknown"' /tmp/grafana_import_resp.json)
+    status=$(jq -r '.status // "unknown"' "$resp_file")
     echo "  -> status: $status"
 done
 

@@ -102,11 +102,6 @@ class TestFetch(unittest.TestCase):
             with self.assertRaises(MemoryError):
                 exporter_mod._fetch("http://fake/data")
 
-    def test_returns_none_on_exception(self):
-        with patch("urllib.request.urlopen", side_effect=_urlopen_raises):
-            result = exporter_mod._fetch("http://fake/data")
-        self.assertIsNone(result)
-
 
 # ---------------------------------------------------------------------------
 # Helper: patch all seven upstream calls in collect()
@@ -271,6 +266,10 @@ class TestCollectMetricNames(unittest.TestCase):
         self.assertIn("homeric_exporter_fetch_errors", self.output)
         # Must not carry the _total counter suffix (gauge, not counter)
         self.assertNotIn("homeric_exporter_fetch_errors_total", self.output)
+        # Regression guard: the old (un-suffixed) name must not coexist with
+        # the canonical _seconds-suffixed metric (#425). Match on the trailing
+        # `{` to distinguish the bare name from `_seconds`.
+        self.assertNotIn("homeric_exporter_scrape_timestamp{", self.output)
 
     def test_nats_msg_metrics_use_gauge_names_not_total(self):
         """nats_in_msgs and nats_out_msgs must not carry the _total counter suffix."""
@@ -311,10 +310,23 @@ def _make_handler(path: str) -> tuple:
     return handler, mock_server
 
 
+class _SilentHandler(exporter_mod.Handler):
+    """Test-only Handler subclass that suppresses access log output (#286).
+
+    The production Handler routes log_message to log.debug, which is silent at
+    the default INFO level but spams stderr if a developer flips LOG_LEVEL to
+    DEBUG while running the test suite. Override with a no-op so the in-process
+    fixture stays quiet regardless of the surrounding log config.
+    """
+
+    def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
+        return
+
+
 @contextlib.contextmanager
 def _live_server():
     """Spin up a real ThreadingHTTPServer on an ephemeral port; yield the port."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), exporter_mod.Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SilentHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

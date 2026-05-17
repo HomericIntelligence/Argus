@@ -16,7 +16,11 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# LOG_LEVEL env var (default INFO) controls log verbosity at runtime so
+# operators can flip to DEBUG (e.g. for HTTP access logs) without a redeploy.
+# Accepts standard logging level names: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=_LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("homeric-exporter")
 
 AGAMEMNON_URL     = os.environ.get("AGAMEMNON_URL",     "http://172.20.0.1:8080")
@@ -67,7 +71,10 @@ def _health_check(url: str, ca_file: Optional[str] = None) -> int:
         ctx = _build_ssl_context(ca_file)
         r = urllib.request.urlopen(url, timeout=5, context=ctx)
         return 1 if r.status == 200 else 0
-    except Exception:  # broad catch: probe must never propagate
+    except Exception as e:  # broad catch: probe must never propagate
+        # Log at DEBUG so operators can distinguish a misconfigured URL from
+        # a genuine upstream outage without changing the return-value contract.
+        log.debug("health_check %s failed: %s", url, e)
         return 0
 
 
