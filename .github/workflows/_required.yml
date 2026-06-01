@@ -241,7 +241,7 @@ jobs:
           # Validate all YAML files with yamllint (the canonical config-repo unit test)
           find . -path './.git' -prune -o \( -name "*.yml" -o -name "*.yaml" \) -print | xargs yamllint -c .yamllint.yaml
       - name: Cache pixi environment
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.pixi
           key: pixi-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
