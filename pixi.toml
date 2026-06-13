@@ -36,6 +36,8 @@ python = ">=3.11"
 
 [feature.lint.pypi-dependencies]
 pip-audit = ">=2.8"
+idna = ">=3.15"
+pip = ">=26.1.2"
 
 [feature.lint.tasks]
 pip-audit = "pip-audit"
