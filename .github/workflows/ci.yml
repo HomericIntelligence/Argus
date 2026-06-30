@@ -242,3 +242,192 @@ jobs:
 
       - name: Run bandit
         run: bandit -ll --skip B310,B202 -r exporter/
+
+  # ---------------------------------------------------------------------------
+  # Canonical 8-category CI naming (Odysseus ecosystem board).
+  # See HomericIntelligence/Odysseus docs/ci-naming-convention.md. Each job
+  # below emits a canonical check-run `name:` so the board can target it.
+  # Argus is bilingual (Python exporter/consumer + Go `atlas` dashboard);
+  # build/package/install cover both languages where a distributable exists.
+  # ---------------------------------------------------------------------------
+
+  # build — compiles all project artifacts (Go dashboard + Python sources).
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+        with:
+          go-version-file: dashboard/go.mod
+          cache-dependency-path: dashboard/go.sum
+
+      - name: Build Go dashboard (atlas)
+        working-directory: dashboard
+        run: go build ./...
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.11"
+
+      - name: Byte-compile Python sources (exporter + jetstream-consumer)
+        run: |
+          set -euo pipefail
+          python -m py_compile exporter/exporter.py jetstream-consumer/consumer.py
+          echo "OK: Python sources compile"
+
+  # test (aggregate) — gate that succeeds only when the test suites pass.
+  # Sub-checks (Python unit tests + coverage, Test exporter, Atlas dashboard
+  # (Go), integration-tests in _required.yml) are kept as their own checks.
+  test-aggregate:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [unit-tests, test, atlas-dashboard]
+
+    steps:
+      - name: Aggregate test result
+        run: |
+          echo "OK: in-workflow test suites passed (unit-tests, Test exporter, Atlas dashboard (Go))"
+
+  # package — builds the distributable. Argus's clean distributable is the Go
+  # `atlas` binary (built with the release-injected version). The Python
+  # exporter/consumer ship as container images (see publish-*-image.yml) and
+  # have no wheel/sdist target — tracked as a gap issue.
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+        with:
+          go-version-file: dashboard/go.mod
+          cache-dependency-path: dashboard/go.sum
+
+      - name: Build atlas binary (release-style, version-injected)
+        working-directory: dashboard
+        run: |
+          set -euo pipefail
+          VERSION="ci-$(git rev-parse --short HEAD)"
+          go build \
+            -ldflags "-X github.com/HomericIntelligence/atlas/internal/version.Version=${VERSION}" \
+            -o dist/argus-dashboard ./cmd/argus-dashboard
+          ls -l dist/argus-dashboard
+
+      - name: Package binary into release archive
+        working-directory: dashboard
+        run: |
+          set -euo pipefail
+          tar -czf argus-dashboard.tar.gz -C dist argus-dashboard
+          ls -l argus-dashboard.tar.gz
+          echo "OK: release archive built"
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: argus-dashboard-archive
+          path: dashboard/argus-dashboard.tar.gz
+          retention-days: 14
+
+  # install — verifies a clean install of the built artifact works.
+  install:
+    name: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+        with:
+          go-version-file: dashboard/go.mod
+          cache-dependency-path: dashboard/go.sum
+
+      - name: go install atlas binary
+        working-directory: dashboard
+        run: go install ./cmd/argus-dashboard
+
+      - name: Smoke-test installed binary
+        run: |
+          set -euo pipefail
+          BIN="$(go env GOPATH)/bin/argus-dashboard"
+          if [ ! -x "$BIN" ]; then
+            echo "::error::installed binary not found or not executable at $BIN"
+            exit 1
+          fi
+          # The dashboard is a long-running server with no --version/--help flag;
+          # it loads config and serves. We therefore verify the installed file is
+          # a valid Go binary with the version symbol embedded, without starting
+          # the server (which would block and need a full NATS/Agamemnon env).
+          go version -m "$BIN" | head -5
+          echo "OK: atlas binary installed and is a valid Go executable"
+
+  # release — dry-run release validation on main (NO publish). Real publishing
+  # happens on tag pushes in release.yml. This emits the canonical `release`
+  # check by validating the version + changelog are release-ready.
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Validate release readiness (dry-run, no publish)
+        run: |
+          set -euo pipefail
+
+          # 1. pixi.toml must carry a parseable workspace/project version —
+          #    this is what release.yml asserts against the git tag.
+          VERSION="$(python3 - <<'PY'
+          import tomllib, sys
+          with open("pixi.toml", "rb") as f:
+              data = tomllib.load(f)
+          section = data.get("workspace") or data.get("project")
+          if section is None:
+              print("ERROR: pixi.toml has neither [workspace] nor [project]", file=sys.stderr)
+              sys.exit(1)
+          v = section.get("version")
+          if not v:
+              print("ERROR: no version in pixi.toml", file=sys.stderr)
+              sys.exit(1)
+          print(v)
+          PY
+          )"
+          echo "OK: pixi.toml version = ${VERSION}"
+
+          # 2. CHANGELOG must exist and contain an Unreleased section so notes
+          #    can be cut at release time.
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md missing"
+            exit 1
+          fi
+          if ! grep -q '## \[Unreleased\]' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [Unreleased]' section"
+            exit 1
+          fi
+          echo "OK: CHANGELOG.md present with [Unreleased] section"
+
+          # 3. The release changelog generator must be invocable (dry-run only).
+          if [ -f scripts/generate-changelog.sh ]; then
+            bash -n scripts/generate-changelog.sh
+            echo "OK: generate-changelog.sh parses"
+          fi
+
+          echo "release dry-run OK (no artifacts published)"
