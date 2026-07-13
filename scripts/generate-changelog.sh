@@ -28,7 +28,7 @@ for key in "${section_order[@]}"; do
     sections[$key]=""
 done
 
-while IFS=$'\t' read -r hash subject author; do
+while IFS=$'\t' read -r hash subject _author; do
     [[ -z "$subject" ]] && continue
 
     # Extract conventional commit type (e.g. feat, fix, chore)
