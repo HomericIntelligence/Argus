@@ -27,7 +27,7 @@ else
     echo "[gen] Generating CA key and certificate..."
     openssl genrsa -out ca.key 4096
     openssl req -new -x509 -days "$DAYS" -key ca.key -out ca.crt \
-        -subj "/CN=argus-local-ca/O=ProjectArgus/OU=HomericIntelligence"
+        -subj "/CN=argus-local-ca/O=Argus/OU=HomericIntelligence"
     echo "[ok]  CA generated: ca.crt"
 fi
 
@@ -51,7 +51,7 @@ prompt             = no
 
 [req_distinguished_name]
 CN = ${svc}
-O  = ProjectArgus
+O  = Argus
 
 [v3_req]
 subjectAltName = ${SANS[$svc]}

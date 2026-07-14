@@ -84,7 +84,7 @@ nats pub hi.agents.demo '{"id":"demo","status":"ok"}'
 The `event: agent` frame should appear immediately on `/events`.
 
 For full-stack development against the rest of the Argus services, see the parent
-[`ProjectArgus` README](../README.md) and `just start`.
+[`Argus` README](../README.md) and `just start`.
 
 ## Configuration
 

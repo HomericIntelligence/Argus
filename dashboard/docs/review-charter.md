@@ -2,7 +2,7 @@
 
 > **Status:** Active. Referenced by every Atlas milestone PR template
 > (`atlas-M1.md` … `atlas-M6.md` and any future `atlas-M*` template).
-> **Owner:** Atlas team (HomericIntelligence/ProjectArgus).
+> **Owner:** Atlas team (HomericIntelligence/Argus).
 > **Last updated:** 2026-05-05.
 
 This document is the normative specification for the Atlas milestone review-wave

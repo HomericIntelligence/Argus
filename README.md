@@ -1,8 +1,8 @@
-# ProjectArgus
+# Argus
 
-[![CI](https://github.com/HomericIntelligence/ProjectArgus/actions/workflows/ci.yml/badge.svg)](https://github.com/HomericIntelligence/ProjectArgus/actions/workflows/ci.yml)
+[![CI](https://github.com/HomericIntelligence/Argus/actions/workflows/ci.yml/badge.svg)](https://github.com/HomericIntelligence/Argus/actions/workflows/ci.yml)
 
-Observability stack for the HomericIntelligence mesh. ProjectArgus provides
+Observability stack for the HomericIntelligence mesh. Argus provides
 centralized metrics collection, log aggregation, and dashboards for all
 components of the HomericIntelligence ecosystem.
 

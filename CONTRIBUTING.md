@@ -1,6 +1,6 @@
-# Contributing to ProjectArgus
+# Contributing to Argus
 
-Thank you for your interest in contributing to ProjectArgus! This is the observability stack
+Thank you for your interest in contributing to Argus! This is the observability stack
 (Prometheus, Grafana, Loki) for the
 [HomericIntelligence](https://github.com/HomericIntelligence) distributed agent mesh, with a
 custom Python exporter for Agamemnon/Nestor/NATS metrics.
@@ -34,8 +34,8 @@ One command bootstraps everything (prerequisites check, pixi install,
 
 ```bash
 # Clone the repository
-git clone https://github.com/HomericIntelligence/ProjectArgus.git
-cd ProjectArgus
+git clone https://github.com/HomericIntelligence/Argus.git
+cd Argus
 
 # One-command bootstrap
 ./scripts/setup.sh
@@ -109,7 +109,7 @@ external dependencies. When contributing to the exporter, maintain this constrai
 
 Before starting work:
 
-- Browse [existing issues](https://github.com/HomericIntelligence/ProjectArgus/issues)
+- Browse [existing issues](https://github.com/HomericIntelligence/Argus/issues)
 - Comment on an issue to claim it before starting work
 - Create a new issue if one doesn't exist for your contribution
 
@@ -251,10 +251,10 @@ All documentation files must follow these standards:
 Dependency-update automation is configured via `renovate.json` in the repo root,
 but the config is **inert until the Renovate GitHub App is installed at the
 org or repo level** (<https://github.com/apps/renovate>). If you are not seeing
-Renovate PRs against ProjectArgus, that almost certainly means the App is not
+Renovate PRs against Argus, that almost certainly means the App is not
 installed — check the GitHub App settings on the
 [HomericIntelligence org](https://github.com/HomericIntelligence) and grant it
-access to ProjectArgus. Once installed, Renovate will pick up the existing
+access to Argus. Once installed, Renovate will pick up the existing
 `renovate.json` automatically; no further repo-side action is needed.
 
 ## Reporting Issues
@@ -274,4 +274,4 @@ Please review our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing.
 
 ---
 
-Thank you for contributing to ProjectArgus!
+Thank you for contributing to Argus!

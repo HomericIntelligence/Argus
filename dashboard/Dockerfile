@@ -65,7 +65,7 @@ ARG VERSION=dev
 
 LABEL org.opencontainers.image.title="atlas"
 LABEL org.opencontainers.image.description="Unified status dashboard for the HomericIntelligence ecosystem."
-LABEL org.opencontainers.image.source="https://github.com/HomericIntelligence/ProjectArgus"
+LABEL org.opencontainers.image.source="https://github.com/HomericIntelligence/Argus"
 LABEL org.opencontainers.image.licenses="BSD-3-Clause"
 LABEL org.opencontainers.image.version="${VERSION}"
 

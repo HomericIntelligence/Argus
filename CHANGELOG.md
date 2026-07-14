@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ProjectArgus will be documented in this file.
+All notable changes to Argus will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
@@ -234,6 +234,6 @@ multi-arch image at `ghcr.io/homericintelligence/atlas:v0.2.0`.
 - `.gitignore` covering `.pixi/`, IDE files, OS files, and secrets
 - `pixi.toml` with locked dependencies (`just`, `jq`)
 
-[Unreleased]: https://github.com/HomericIntelligence/ProjectArgus/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/HomericIntelligence/ProjectArgus/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/HomericIntelligence/ProjectArgus/releases/tag/v0.1.0
+[Unreleased]: https://github.com/HomericIntelligence/Argus/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/HomericIntelligence/Argus/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/HomericIntelligence/Argus/releases/tag/v0.1.0

@@ -5,7 +5,7 @@
 # whenever the Grafana stack would otherwise come up with the insecure
 # fallback password baked into docker-compose.yml.
 #
-# Issue: HomericIntelligence/ProjectArgus#182
+# Issue: HomericIntelligence/Argus#182
 
 set -euo pipefail
 

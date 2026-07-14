@@ -8,7 +8,7 @@
 # referenced from the compose file and verifies each one has a corresponding
 # entry in .env.example (commented or uncommented).
 #
-# Follow-up to HomericIntelligence/ProjectArgus#53; closes #215.
+# Follow-up to HomericIntelligence/Argus#53; closes #215.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

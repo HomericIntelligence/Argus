@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# scripts/setup.sh — one-command bootstrap for ProjectArgus
+# scripts/setup.sh — one-command bootstrap for Argus
 #
 # Usage:
 #   ./scripts/setup.sh

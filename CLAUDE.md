@@ -1,13 +1,13 @@
-# ProjectArgus — CLAUDE.md
+# Argus — CLAUDE.md
 
 ## Project Overview
 
-ProjectArgus is the observability stack for the HomericIntelligence ecosystem. It
+Argus is the observability stack for the HomericIntelligence ecosystem. It
 collects metrics from ProjectAgamemnon, ProjectNestor, NATS, Nomad, and all running
 containers, aggregates logs via Promtail → Loki, and exposes everything through
 Grafana dashboards.
 
-**Important**: ProjectArgus only reads from other services via HTTP scrapes and log
+**Important**: Argus only reads from other services via HTTP scrapes and log
 tailing. It does NOT modify Agamemnon or any other HomericIntelligence service.
 
 ## Stack Components
@@ -210,7 +210,7 @@ Atlas dashboard variables use the `ATLAS_` prefix — see `dashboard/README.md` 
 ## Repository Structure
 
 ```
-ProjectArgus/
+Argus/
 ├── configs/
 │   ├── prometheus.yml        # Scrape configs
 │   ├── loki.yml              # Loki server config

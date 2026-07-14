@@ -58,7 +58,7 @@ repos:
         description: >
           Compares ${VAR} references in docker-compose.yml against keys in
           .env.example so new variables can't silently drift undocumented.
-          See HomericIntelligence/ProjectArgus#215.
+          See HomericIntelligence/Argus#215.
         entry: bash scripts/check-env-example.sh
         language: system
         files: ^(docker-compose\.ya?ml|\.env\.example|scripts/check-env-example\.sh)$

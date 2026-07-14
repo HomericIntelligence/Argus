@@ -117,7 +117,7 @@ When you report a vulnerability:
 
 ## Security Best Practices
 
-When contributing to ProjectArgus:
+When contributing to Argus:
 
 - Never embed credentials in configuration files — use environment variables
 - Restrict Grafana to authenticated access (avoid anonymous admin)
