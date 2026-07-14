@@ -28,12 +28,14 @@ for key in "${section_order[@]}"; do
     sections[$key]=""
 done
 
-while IFS=$'\t' read -r hash subject author; do
+while IFS=$'\t' read -r hash subject _author; do
     [[ -z "$subject" ]] && continue
 
     # Extract conventional commit type (e.g. feat, fix, chore)
-    # shellcheck disable=SC1073,SC1072  # shellcheck misparses [^)] inside [[ =~ ]]
-    if [[ "$subject" =~ ^([a-z]+)(\([^)]*\))?!?:\ (.*) ]]; then
+    # Assign the regex to a variable first: bash mis-parses the literal
+    # parens in `(\([^)]*\))?` when inlined directly in `[[ =~ ]]`.
+    conventional_commit_re='^([a-z]+)(\([^)]*\))?!?: (.*)$'
+    if [[ "$subject" =~ $conventional_commit_re ]]; then
         type="${BASH_REMATCH[1]}"
         scope="${BASH_REMATCH[2]}"
         desc="${BASH_REMATCH[3]}"
