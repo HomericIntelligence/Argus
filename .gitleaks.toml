@@ -1,4 +1,4 @@
-title = "ProjectArgus Gitleaks Configuration"
+title = "Argus Gitleaks Configuration"
 
 [extend]
 useDefault = true

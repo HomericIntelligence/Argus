@@ -262,9 +262,9 @@ before declaring the recovery complete.
 
 ## Escalation
 
-- Security issues: see [`SECURITY.md`](../../SECURITY.md) at the ProjectArgus root —
+- Security issues: see [`SECURITY.md`](../../SECURITY.md) at the Argus root —
   responsible disclosure with 48 h acknowledgement SLA.
 - Functional bugs: open a GitHub issue tagged `area:atlas` against
-  `HomericIntelligence/ProjectArgus`.
+  `HomericIntelligence/Argus`.
 - Architecture questions: [`docs/architecture.md`](architecture.md) is the source of
   truth for component composition, concurrency, and resource bounds.

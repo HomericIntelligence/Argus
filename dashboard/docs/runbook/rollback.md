@@ -61,7 +61,7 @@ are unaffected.
 1. **Identify the previous good tag.** GitHub releases are immutable and ordered by publish time:
 
    ```bash
-   gh release list --repo HomericIntelligence/ProjectArgus --limit 10
+   gh release list --repo HomericIntelligence/Argus --limit 10
    ```
 
    Pick the most recent tag that is **not** the bad one. Example: bad = `v0.2.1`, good = `v0.2.0`.
@@ -160,7 +160,7 @@ Once the rollback is stable, mark the bad release on GitHub so nobody re-deploys
 immutable — you are only editing the release notes:
 
 ```bash
-gh release edit v0.2.1 --repo HomericIntelligence/ProjectArgus \
+gh release edit v0.2.1 --repo HomericIntelligence/Argus \
   --notes 'KNOWN BAD — do not deploy. Rolled back $(date -u +%F). See dashboard/docs/runbook/rollback.md.'
 ```
 
@@ -171,7 +171,7 @@ release edit --latest=false` does the same thing non-interactively if your `gh` 
 Open a tracking issue immediately, even if you do not yet know the root cause:
 
 ```bash
-gh issue create --repo HomericIntelligence/ProjectArgus \
+gh issue create --repo HomericIntelligence/Argus \
   --title 'Atlas v0.2.1 rolled back — root cause TBD' \
   --label 'area:atlas,severity:high' \
   --body 'Rolled back to v0.2.0 at <time>. Bad-deploy logs in /tmp/atlas-bad-deploy-*.log on <host>. RCA pending.'
@@ -231,9 +231,9 @@ Otherwise: revert now, investigate from the captured bad-deploy logs, ship the r
 ## Escalation
 
 - **Security regression in the bad release** (auth bypass, token leak, RCE, anything CVE-shaped): follow
-  [`SECURITY.md`](../../../SECURITY.md) at the ProjectArgus root for responsible disclosure and coordinated
+  [`SECURITY.md`](../../../SECURITY.md) at the Argus root for responsible disclosure and coordinated
   disclosure timing. Do not file a public GitHub issue with reproduction details.
-- **Functional regression**: open a GitHub issue on `HomericIntelligence/ProjectArgus` tagged `area:atlas` and link
+- **Functional regression**: open a GitHub issue on `HomericIntelligence/Argus` tagged `area:atlas` and link
   the captured bad-deploy log file from the pre-rollback step.
 - **Architecture questions** (what each component is supposed to do on startup, what `/readyz` covers):
   [`../architecture.md`](../architecture.md).

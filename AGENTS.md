@@ -1,4 +1,4 @@
-# AGENTS.md — ProjectArgus Multi-Agent Coordination
+# AGENTS.md — Argus Multi-Agent Coordination
 
 This file is the coordination contract for any AI agent (interactive Claude Code session,
 Myrmidon swarm worker, or Agamemnon-orchestrated agent) that reads or modifies this
@@ -8,7 +8,7 @@ repository. Read it before touching any file.
 
 ## Repo Role in the HomericIntelligence Ecosystem
 
-ProjectArgus is a **read-only observability layer**. It scrapes metrics and tails logs from
+Argus is a **read-only observability layer**. It scrapes metrics and tails logs from
 ProjectAgamemnon, ProjectNestor, NATS, Nomad, and all running containers. It does **not**
 push data or commands back to any external service.
 
@@ -42,7 +42,7 @@ Three agent classes operate on this repo:
 
 ## Available Skills (Hephaestus Plugin)
 
-ProjectArgus delegates orchestration to the **Hephaestus plugin**. There is no `.claude/agents/`
+Argus delegates orchestration to the **Hephaestus plugin**. There is no `.claude/agents/`
 directory in this repo. Use these skills instead:
 
 | Skill | Trigger Condition | Description |
@@ -144,14 +144,14 @@ just status
 just test-scrape
 ```
 
-## AGENTS.md — Multi-Agent Coordination for ProjectArgus
+## AGENTS.md — Multi-Agent Coordination for Argus
 
 This file describes how AI agents and automated tooling should interact with this
 repository. It follows the conventions established across HomericIntelligence projects.
 
 ## Repository Role
 
-ProjectArgus is a **read-only observability consumer**. It scrapes metrics from
+Argus is a **read-only observability consumer**. It scrapes metrics from
 other HomericIntelligence services and does not write to or modify them. Agents
 working in this repository should maintain this invariant.
 

@@ -1,4 +1,4 @@
-# TLS Setup Runbook — ProjectArgus
+# TLS Setup Runbook — Argus
 
 This document describes how to enable and maintain TLS for all inter-service
 communication in the argus observability stack.
