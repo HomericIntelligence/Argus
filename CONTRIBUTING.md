@@ -221,6 +221,8 @@ gh pr create --title "[Type] Brief description" --body "Closes #<issue-number>"
 ### Never Push Directly to Main
 
 The `main` branch is protected. All changes must go through pull requests.
+The required-check contract, dedicated Argus queue ruleset, and staged operator
+procedure are documented in [Merge Queue](docs/ci/merge-queue.md).
 
 ## Code Review
 

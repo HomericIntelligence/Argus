@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}
@@ -57,7 +59,8 @@ jobs:
           fi
           if grep -nE '^[[:space:]]*continue-on-error:[[:space:]]*true[[:space:]]*$' "${files[@]}"; then
             echo ""
-            echo '::error::Found "continue-on-error: true" above. Fix the root cause per HomericIntelligence/Odysseus#280.'
+            echo \
+              '::error::Found "continue-on-error: true" above. Fix the root cause per HomericIntelligence/Odysseus#280.'
             exit 1
           fi
           echo 'OK: no "continue-on-error: true" found'
@@ -239,7 +242,9 @@ jobs:
             docker compose config --quiet
           fi
           # Validate all YAML files with yamllint (the canonical config-repo unit test)
-          find . -path './.git' -prune -o \( -name "*.yml" -o -name "*.yaml" \) -print | xargs yamllint -c .yamllint.yaml
+          find . -path './.git' -prune -o \
+            \( -name "*.yml" -o -name "*.yaml" \) -print \
+            | xargs yamllint -c .yamllint.yaml
       - name: Cache pixi environment
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
@@ -358,8 +363,9 @@ jobs:
           GITLEAKS_VERSION=8.30.1
           OS=$(uname -s | tr '[:upper:]' '[:lower:]')
           ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
+          GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
           curl -sSfL \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${OS}_${ARCH}.tar.gz" \
+            "${GITLEAKS_URL}/gitleaks_${GITLEAKS_VERSION}_${OS}_${ARCH}.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
           gitleaks version
 
@@ -380,7 +386,7 @@ jobs:
 
       - name: Upload Gitleaks SARIF
         if: always() && hashFiles('gitleaks.sarif') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: gitleaks-report
           path: gitleaks.sarif
