@@ -33,15 +33,18 @@ ruleset or any required context.
 
 ## Cross-repository automation boundary
 
-[Odysseus #416](https://github.com/HomericIntelligence/Odysseus/issues/416)
-tracks central activation automation. Until that automation is remediated and
-independently verified, generic baseline replacement must not target Argus.
-Any future central activation path must preserve Argus's two existing rulesets,
+[Odysseus #386](https://github.com/HomericIntelligence/Odysseus/issues/386) is
+the durable rollout umbrella, and
+[Odysseus PR #417](https://github.com/HomericIntelligence/Odysseus/pull/417) is
+the current central activation implementation. Until that implementation is
+merged and independently verified, generic baseline replacement must not target
+Argus. Any central activation path must preserve Argus's two existing rulesets,
 all 14 contexts, bypass actors, and unrelated protections while creating or
 updating only `homeric-main-merge-queue`.
 
-This Argus change does not resolve the cross-repository conflict. Do not mark it
-resolved until Odysseus #416 is remediated and its Argus behavior is verified.
+This Argus change does not complete the cross-repository rollout. Keep the
+umbrella issue open until Odysseus PR #417 and every repository activation have
+independent evidence, including verified Argus behavior.
 
 ## Approved queue policy
 
@@ -73,7 +76,8 @@ Do not activate the queue until all of these gates are satisfied:
    `merge_group/checks_requested` trigger.
 4. An operator is ready to observe a representative queued PR through the
    complete required-check cycle.
-5. Odysseus #416 automation is not being run against Argus.
+5. The activation path from Odysseus PR #417 has been independently verified
+   for Argus before it is run against this repository.
 
 ### 1. Look up and snapshot the exact existing rulesets
 
@@ -252,15 +256,46 @@ gh api --method PUT "repos/${REPO}/rulesets/${QUEUE_ID}" \
   -f enforcement=active \
   > /tmp/argus-merge-queue-ruleset.activated.json
 
-test "$(jq -r '.name' /tmp/argus-merge-queue-ruleset.activated.json)" \
-  = "${QUEUE_NAME}"
-test "$(jq -r '.enforcement' /tmp/argus-merge-queue-ruleset.activated.json)" \
-  = active
 ```
 
-### 5. Prove existing rules and effective contexts were preserved
+Do not trust the PUT response as final evidence. Continue directly to step 5
+and re-read the live policy before attempting a smoke PR.
+
+### 5. Re-read the exact queue policy and prove protections were preserved
 
 ```bash
+gh api "repos/${REPO}/rulesets/${QUEUE_ID}" \
+  > /tmp/argus-merge-queue-ruleset.after.json
+
+jq -e --arg id "${QUEUE_ID}" --arg name "${QUEUE_NAME}" '
+  .id == ($id | tonumber)
+  and .name == $name
+  and .source_type == "Repository"
+  and .target == "branch"
+  and .enforcement == "active"
+  and .conditions.ref_name.exclude == []
+  and .conditions.ref_name.include == ["refs/heads/main"]
+  and (.rules | length) == 1
+  and .rules[0] == {
+    "type": "merge_queue",
+    "parameters": {
+      "check_response_timeout_minutes": 60,
+      "grouping_strategy": "ALLGREEN",
+      "max_entries_to_build": 10,
+      "max_entries_to_merge": 5,
+      "merge_method": "SQUASH",
+      "min_entries_to_merge": 1,
+      "min_entries_to_merge_wait_minutes": 5
+    }
+  }' /tmp/argus-merge-queue-ruleset.after.json >/dev/null
+
+jq -S '.bypass_actors' /tmp/argus-baseline.before.json \
+  > /tmp/argus-baseline-bypass.after.json
+jq -S '.bypass_actors' /tmp/argus-merge-queue-ruleset.after.json \
+  > /tmp/argus-queue-bypass.after.json
+diff -u /tmp/argus-baseline-bypass.after.json \
+  /tmp/argus-queue-bypass.after.json
+
 gh api "repos/${REPO}/rulesets/${BASELINE_ID}" \
   > /tmp/argus-baseline.after.json
 gh api "repos/${REPO}/rulesets/${EXTRAS_ID}" \
@@ -285,10 +320,11 @@ diff -u /tmp/argus-required-contexts.expected.json \
   /tmp/argus-required-contexts.after.json
 ```
 
-Then enqueue one representative smoke PR. Record the PR URL and the verbatim
-`merge_group` workflow/check results on Argus #550. Do not claim activation
-complete until all 14 required contexts report on the merge-group SHA and the
-PR merges by squash.
+Only after every exact post-PUT assertion above succeeds may smoke testing
+begin. Then enqueue one representative smoke PR. Record the PR URL and the
+verbatim `merge_group` workflow/check results on Argus #550. Do not claim
+activation complete until all 14 required contexts report on the merge-group
+SHA and the PR merges by squash.
 
 ## Safe rollback
 
