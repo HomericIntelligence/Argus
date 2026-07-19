@@ -1,0 +1,52 @@
+# Fast merge-queue gate.
+#
+# The full required workflows (_required.yml and ci.yml) no longer trigger on
+# merge_group: they re-ran every job per queue entry, and with each job
+# waiting 8-16+ min for a runner slot the queue took 70-90 min to merge a PR
+# that was already fully green on the PR itself. This workflow is the ONLY
+# merge_group workflow in the repo: one job, one runner slot, real
+# validation, finishing in well under 5 minutes.
+#
+# PR-side CI is completely untouched; the queue is gated solely on the
+# `merge-queue-smoke` context emitted here. Because no other workflow listens
+# to merge_group and this workflow listens ONLY to merge_group, exactly one
+# `merge-queue-smoke` check run exists per event.
+name: Merge Queue Smoke
+
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mq-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge-queue-smoke:
+    name: merge-queue-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      # Borrowed from lint / unit-tests: yamllint over every YAML file is the
+      # canonical validation for this config-only repo.
+      - name: Lint all YAML files
+        run: |
+          pip install yamllint
+          yamllint -c .yamllint.yaml .
+
+      # Borrowed from schema-validation.
+      - name: Validate workflow YAML files against GitHub Actions schema
+        run: |
+          pip install check-jsonschema
+          check-jsonschema \
+            --schemafile https://json.schemastore.org/github-workflow \
+            .github/workflows/*.yml
+
+      # Borrowed from symlink-check.
+      - name: Run symlink check
+        run: bash scripts/check-symlinks.sh
