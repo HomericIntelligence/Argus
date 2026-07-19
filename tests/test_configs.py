@@ -302,7 +302,7 @@ class TestDockerComposePortBindings(unittest.TestCase):
     # Only the loopback address is permitted as a host port binding.
     # Rationale: every Argus service exposes either metrics, dashboards, or
     # log endpoints that we deliberately do NOT publish to the LAN — remote
-    # access goes via SSH tunnel or Tailscale (see CLAUDE.md "Operator
+    # access goes via SSH tunnel or Tailscale (see AGENTS.md "Operator
     # Notes"). Binding to 0.0.0.0 (or any non-loopback address) would expose
     # unauthenticated /metrics, /readyz, etc. to anyone on the same network.
     #
@@ -371,7 +371,7 @@ class TestDockerComposePorts(unittest.TestCase):
     # Only the loopback address is permitted as a host port binding.
     # Rationale: every Argus service exposes either metrics, dashboards, or
     # log endpoints that we deliberately do NOT publish to the LAN — remote
-    # access goes via SSH tunnel or Tailscale (see CLAUDE.md "Operator
+    # access goes via SSH tunnel or Tailscale (see AGENTS.md "Operator
     # Notes"). Binding to 0.0.0.0 (or any non-loopback address) would expose
     # unauthenticated /metrics, /readyz, etc. to anyone on the same network.
     #

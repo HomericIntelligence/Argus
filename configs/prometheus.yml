@@ -69,4 +69,4 @@ scrape_configs:
 # homeric-exporter and the upstreams above. If you need Promtail metrics
 # during an incident, add an ad-hoc scrape via `just debug-prometheus`
 # or stand up a sidecar Prometheus pointed at `promtail:9080`. Re-enable
-# here only after a cardinality budget is documented in CLAUDE.md.
+# here only after a cardinality budget is documented in AGENTS.md.
