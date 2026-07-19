@@ -1,12 +1,12 @@
 name: CI
 
+# merge_group is intentionally absent from `on`: the merge queue runs only the
+# fast merge-queue-smoke.yml workflow (single merge-queue-smoke job, <5 min).
 on:
   push:
     branches: ["main", "feature/**", "fix/**", "chore/**"]
   pull_request:
     branches: ["main"]
-  merge_group:
-    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}

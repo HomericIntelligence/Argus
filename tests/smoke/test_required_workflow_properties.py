@@ -12,8 +12,10 @@ EXTRAS_RULESET = RULESET_FIXTURES / "homeric-main-extras.json"
 QUEUE_DISABLED_READBACK = RULESET_FIXTURES / "homeric-main-merge-queue-disabled.json"
 QUEUE_ACTIVE_READBACK = RULESET_FIXTURES / "homeric-main-merge-queue-active.json"
 
-# Queue readiness requires every workflow that supplies a required context to
-# run against the synthetic merge-group SHA without renaming or dropping a job.
+# The merge queue runs ONLY merge-queue-smoke.yml (single merge-gate job,
+# <5 min, one runner slot). The full workflows below must keep their PR/push
+# triggers unchanged and must NOT run for merge_group.
+SMOKE_WORKFLOW = ROOT / ".github" / "workflows" / "merge-queue-smoke.yml"
 REQUIRED_WORKFLOWS = (WORKFLOW, CI_WORKFLOW)
 EXISTING_TRIGGERS = {
     WORKFLOW: {
@@ -56,7 +58,7 @@ def test_unit_tests_job_invokes_pytest() -> None:
     )
 
 
-def test_required_workflows_run_for_queue_checks_without_trigger_regressions() -> None:
+def test_required_workflows_keep_pr_triggers_and_skip_merge_group() -> None:
     for path in REQUIRED_WORKFLOWS:
         triggers = _load_workflow(path)["on"]
 
@@ -64,12 +66,22 @@ def test_required_workflows_run_for_queue_checks_without_trigger_regressions() -
             assert triggers.get(event) == expected_config, (
                 f"{path.name} changed its existing {event} behavior"
             )
-        assert triggers.get("merge_group") == {"types": ["checks_requested"]}, (
-            f"{path.name} must run for merge_group/checks_requested"
+        assert "merge_group" not in triggers, (
+            f"{path.name} must not run for merge_group — merge-queue-smoke.yml "
+            "owns that event so the queue consumes a single runner slot"
         )
 
 
-def test_all_required_contexts_have_queue_ready_supplying_jobs() -> None:
+def test_merge_group_runs_only_the_smoke_workflow() -> None:
+    """The merge queue must run exactly one fast smoke job."""
+    smoke = _load_workflow(SMOKE_WORKFLOW)
+    assert smoke["on"] == {"merge_group": {"types": ["checks_requested"]}}
+    assert list(smoke["jobs"]) == ["merge-queue-smoke"]
+    assert smoke["jobs"]["merge-queue-smoke"]["name"] == "merge-queue-smoke"
+    assert smoke["jobs"]["merge-queue-smoke"]["timeout-minutes"] == "5"
+
+
+def test_all_required_contexts_have_pr_supplying_jobs() -> None:
     baseline_contexts = _required_contexts(_load_ruleset(BASELINE_RULESET))
     extras_contexts = _required_contexts(_load_ruleset(EXTRAS_RULESET))
     required_contexts = baseline_contexts | extras_contexts
@@ -80,9 +92,6 @@ def test_all_required_contexts_have_queue_ready_supplying_jobs() -> None:
 
     for path in REQUIRED_WORKFLOWS:
         workflow = _load_workflow(path)
-        assert workflow["on"].get("merge_group") == {"types": ["checks_requested"]}, (
-            f"{path.name} cannot supply required contexts to a merge-group SHA"
-        )
 
         emitted_contexts.update(
             job.get("name", job_id) for job_id, job in workflow["jobs"].items()
