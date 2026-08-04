@@ -13,7 +13,7 @@ bandit = ">=1.7,<2"
 pyyaml = ">=6.0,<7"
 pytest = ">=8.0"
 pytest-cov = ">=5.0,<8"
-python = ">=3.11,<3.14"
+python = ">=3.13,<3.14"
 
 [target.linux-64.dependencies]
 jq = ">=1.6,<2"
@@ -32,7 +32,7 @@ test      = "python -m pytest tests/ -v"
 test-unit = "python -m pytest tests/ -v --cov=exporter --cov-report=term-missing --cov-report=xml"
 
 [feature.lint.dependencies]
-python = ">=3.11"
+python = ">=3.13,<3.14"
 
 [feature.lint.pypi-dependencies]
 pip-audit = ">=2.8"

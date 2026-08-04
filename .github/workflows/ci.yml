@@ -199,7 +199,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install test dependencies
         run: pip install pytest pytest-cov pyyaml
@@ -218,7 +218,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install ruff
         run: pip install ruff
@@ -237,7 +237,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Install bandit
         run: pip install bandit
@@ -276,7 +276,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Byte-compile Python sources (exporter + jetstream-consumer)
         run: |
