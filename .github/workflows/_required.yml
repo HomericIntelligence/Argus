@@ -70,61 +70,34 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - run: pip install yamllint && yamllint -c .yamllint.yaml .
-
-      - name: Validate JSON files
-        run: |
-          echo "::notice::Config-only repo; no source typecheck — validating JSON files instead"
-          JSON_FILES=$(find . -path './.git' -prune -o -name "*.json" -print | grep "\.json$" || true)
-          if [ -n "$JSON_FILES" ]; then
-            FAILED=0
-            while IFS= read -r f; do
-              if jq . "$f" > /dev/null 2>&1; then
-                echo "OK: $f"
-              else
-                echo "INVALID JSON: $f"
-                FAILED=1
-              fi
-            done <<< "$JSON_FILES"
-            if [ "$FAILED" -eq 1 ]; then
-              echo "FAIL: one or more JSON files are invalid"
-              exit 1
-            fi
-            echo "OK: all JSON files are valid"
-          else
-            echo "No JSON files found — nothing to validate"
-          fi
-
-      - name: Skip Go gosec if no Go module
-        id: gosec-detect
-        run: |
-          if [ ! -f dashboard/go.mod ]; then
-            echo "::notice::No dashboard/go.mod, skipping gosec"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up Go (for gosec)
-        if: steps.gosec-detect.outputs.skip == 'false'
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          go-version-file: dashboard/go.mod
-          cache-dependency-path: dashboard/go.sum
-
-      # gosec runs as a step inside the `lint` job per the org's policy of
-      # uniform required-check names. Failure of this step fails the `lint`
-      # required check; no separate `security/gosec` check name is exposed.
-      # golangci-lint also enables the `gosec` linter (see
-      # dashboard/.golangci.yml) for fast developer-loop feedback inside
-      # `Atlas dashboard (Go)`; this step is the authoritative gate.
-      - name: Run gosec
-        if: steps.gosec-detect.outputs.skip == 'false'
-        uses: securego/gosec@9e6a9843d7a4a6e3e9a8539b02612c8a4aa3f889  # v2.27.1
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
         with:
-          args: ./dashboard/...
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run lint checks (in container)
+        run: just ci-lint
 
   markdownlint:
     name: markdownlint
@@ -144,36 +117,34 @@ jobs:
   pixi-check:
     name: pixi-check
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    needs: lint
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - name: Skip if no pixi.toml
-        id: detect
-        run: |
-          if [ ! -f pixi.toml ]; then
-            echo "::notice::No pixi.toml in repo, skipping pixi-check"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Setup pixi
-        if: steps.detect.outputs.skip == 'false'
-        uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f  # v0.10.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          pixi-version: v0.70.2
-          cache: true
-      - name: pixi install (locked)
-        if: steps.detect.outputs.skip == 'false'
-        run: |
-          if [ -f pixi.lock ]; then
-            pixi install --locked
-          else
-            echo "::warning::pixi.toml present but pixi.lock missing — running unlocked"
-            pixi install
-          fi
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run pixi-check checks (in container)
+        run: just ci-pixi-check
 
   justfile-check:
     name: justfile-check
@@ -219,121 +190,66 @@ jobs:
   unit-tests:
     name: unit-tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    needs: lint
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - name: Validate all YAML config files
-        env:
-          GF_ADMIN_PASSWORD: ci-validation-only
-        run: |
-          pip install yamllint
-          # Validate Prometheus alert rules via promtool if rules/ directory exists.
-          # Only scan files under rules/ — running `promtool check rules` against
-          # non-rule YAML (workflows, compose) reports false errors.
-          if command -v promtool &>/dev/null && [ -d rules ]; then
-            mapfile -t rule_files < <(find rules -type f \( -name "*.yml" -o -name "*.yaml" \))
-            if [ "${#rule_files[@]}" -gt 0 ]; then
-              promtool check rules "${rule_files[@]}"
-            fi
-          fi
-          # Validate docker-compose YAML
-          if [ -f docker-compose.yml ]; then
-            docker compose config --quiet
-          fi
-          # Validate all YAML files with yamllint (the canonical config-repo unit test)
-          find . -path './.git' -prune -o \
-            \( -name "*.yml" -o -name "*.yaml" \) -print \
-            | xargs yamllint -c .yamllint.yaml
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
       - name: Cache pixi environment
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          path: ~/.pixi
-          key: pixi-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
-          restore-keys: pixi-${{ runner.os }}-
-      - name: Setup pixi
-        uses: prefix-dev/setup-pixi@a09b6247153796b190642a2b53fac4241043cf6f  # v0.10.0
-        with:
-          pixi-version: v0.70.2
-          cache: false
-      - name: pixi install (locked)
-        run: |
-          if [ -f pixi.lock ]; then
-            pixi install --locked
-          else
-            echo "::warning::pixi.toml present but pixi.lock missing — running unlocked"
-            pixi install
-          fi
-      - name: Run pytest
-        run: pixi run pytest tests/ -v
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run unit-tests checks (in container)
+        run: just ci-unit-tests
 
   integration-tests:
     name: integration-tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - name: Validate docker image name formats
-        run: |
-          python3 - <<'EOF'
-          import subprocess, re, sys
-
-          result = subprocess.run(
-              ["grep", "-rh", "image:", "--include=docker-compose*.yml", "--include=docker-compose*.yaml", "."],
-              capture_output=True, text=True
-          )
-          lines = result.stdout.strip().splitlines()
-
-          # Resolve docker-compose env-var interpolations of the form
-          # ${VAR:-default} or ${VAR-default} to their default value so the
-          # resulting image reference can be validated. Bare ${VAR} (no
-          # default) is skipped since we cannot know the runtime value.
-          interp_with_default = re.compile(r'\$\{[A-Za-z_][A-Za-z0-9_]*:?-([^}]+)\}')
-          bare_interp = re.compile(r'\$\{[A-Za-z_][A-Za-z0-9_]*\}')
-
-          images = []
-          for line in lines:
-              parts = line.strip().split()
-              if len(parts) >= 2:
-                  img = parts[-1]
-                  img = interp_with_default.sub(lambda m: m.group(1), img)
-                  if bare_interp.search(img):
-                      # Cannot validate without a default; skip.
-                      continue
-                  images.append(img)
-
-          if not images:
-              print("No docker-compose image references found — skipping format validation")
-              sys.exit(0)
-
-          # Valid image pattern: [registry/][org/]name[:tag][@digest]
-          # Disallow bare unqualified names without at minimum a colon-tag or slash
-          valid_pattern = re.compile(
-              r'^([a-z0-9][a-z0-9._\-]*(:[0-9]+)?/)?'   # optional registry
-              r'([a-z0-9][a-z0-9._\-]*/)*'               # optional org path
-              r'[a-z0-9][a-z0-9._\-]*'                   # image name
-              r'(:[a-zA-Z0-9][a-zA-Z0-9._\-]*)?'         # optional tag
-              r'(@sha256:[a-fA-F0-9]{64})?$'              # optional digest
-          )
-
-          failed = []
-          for img in sorted(set(images)):
-              if not valid_pattern.match(img):
-                  failed.append(img)
-                  print(f"INVALID image reference format: {img}")
-              else:
-                  print(f"OK: {img}")
-
-          if failed:
-              print(f"\nFAIL: {len(failed)} image reference(s) have invalid format")
-              sys.exit(1)
-          else:
-              print(f"\nOK: all {len(images)} image reference(s) have valid format")
-          EOF
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run integration-tests checks (in container)
+        run: just ci-integration-tests
 
   security-dependency-scan:
     name: security/dependency-scan
@@ -351,89 +267,100 @@ jobs:
           exit-code: 0
 
   security-secrets-scan:
-    name: security/secrets-scan
+    name: security-secrets-scan
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          fetch-depth: 0
-      - name: Install Gitleaks
-        run: |
-          GITLEAKS_VERSION=8.30.1
-          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-          ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
-          GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
-          curl -sSfL \
-            "${GITLEAKS_URL}/gitleaks_${GITLEAKS_VERSION}_${OS}_${ARCH}.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
-
-      - name: Run Gitleaks
-        # `--exit-code 0` already makes gitleaks always succeed when it
-        # finds leaks; the SARIF report is uploaded for review instead.
-        # No `continue-on-error` opt-out is needed — the step is wired
-        # so true command failures (e.g. gitleaks crash, missing binary)
-        # still fail the job, per HomericIntelligence/Odysseus#280.
-        run: |
-          if [ -f .gitleaks.toml ]; then
-            gitleaks detect --source . --config .gitleaks.toml \
-              --report-format sarif --report-path gitleaks.sarif --exit-code 0
-          else
-            gitleaks detect --source . \
-              --report-format sarif --report-path gitleaks.sarif --exit-code 0
-          fi
-
-      - name: Upload Gitleaks SARIF
-        if: always() && hashFiles('gitleaks.sarif') != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
         with:
-          name: gitleaks-report
-          path: gitleaks.sarif
-          retention-days: 90
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run security-secrets-scan checks (in container)
+        run: just ci-security-secrets-scan
 
   config-validate:
     name: config-validate
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - name: Validate HCL files or fall back to YAML validation
-        run: |
-          pip install yamllint
-          HCL_FILES=$(find . -path './.git' -prune -o -name "*.hcl" -print | grep "\.hcl$" || true)
-          if [ -n "$HCL_FILES" ]; then
-            if command -v nomad &>/dev/null; then
-              echo "$HCL_FILES" | xargs -I{} nomad job validate {}
-            elif command -v hclfmt &>/dev/null; then
-              echo "$HCL_FILES" | xargs -I{} hclfmt --check {}
-            else
-              echo "::notice::HCL files found but no nomad/hclfmt available; falling back to YAML validation"
-              yamllint -c .yamllint.yaml .
-            fi
-          else
-            echo "::notice::No HCL files found; validating YAML configs"
-            yamllint -c .yamllint.yaml .
-          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run config-validate checks (in container)
+        run: just ci-config-validate
 
   schema-validation:
     name: schema-validation
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - name: Validate workflow YAML files against GitHub Actions schema
-        run: |
-          pip install check-jsonschema
-          check-jsonschema \
-            --schemafile https://json.schemastore.org/github-workflow \
-            .github/workflows/*.yml
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run schema-validation checks (in container)
+        run: just ci-schema-validation
 
   deps-version-sync:
     name: deps/version-sync
@@ -456,21 +383,33 @@ jobs:
           fi
 
   atlas-dashboard:
-    name: atlas/dashboard
+    name: atlas-dashboard
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          go-version-file: dashboard/go.mod
-          cache-dependency-path: dashboard/go.sum
-      - name: go vet
-        working-directory: dashboard
-        run: go vet ./...
-      - name: go test
-        working-directory: dashboard
-        run: go test ./internal/nats/...
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+      - name: Cache podman container storage
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.local/share/containers/storage
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          restore-keys: |
+            podman-argus-${{ runner.os }}-
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Build CI image (podman)
+        run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
+      - name: Run atlas-dashboard checks (in container)
+        run: just ci-atlas-dashboard

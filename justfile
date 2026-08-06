@@ -191,3 +191,45 @@ bump TYPE:
 # Preview CHANGELOG entries since last tag without committing
 generate-changelog:
     bash scripts/generate-changelog.sh
+
+# === Containerized CI (podman by default) ===
+
+# Build the CI container image (podman first, docker fallback)
+ci-build:
+    podman build -f ci/Containerfile -t argus-ci:local . || docker build -f ci/Containerfile -t argus-ci:local .
+
+# Run CI lint (yamllint, JSON, gosec) in container
+ci-lint:
+    ./scripts/run_ci_local.sh lint
+
+# Run CI pixi lock check in container
+ci-pixi-check:
+    ./scripts/run_ci_local.sh pixi-check
+
+# Run CI unit tests in container
+ci-unit-tests:
+    ./scripts/run_ci_local.sh unit-tests
+
+# Run CI integration tests in container
+ci-integration-tests:
+    ./scripts/run_ci_local.sh integration-tests
+
+# Run CI secrets scan in container
+ci-security-secrets-scan:
+    ./scripts/run_ci_local.sh security-secrets-scan
+
+# Run CI config validation in container
+ci-config-validate:
+    ./scripts/run_ci_local.sh config-validate
+
+# Run CI schema validation in container
+ci-schema-validation:
+    ./scripts/run_ci_local.sh schema-validation
+
+# Run CI Atlas dashboard (Go) checks in container
+ci-atlas-dashboard:
+    ./scripts/run_ci_local.sh atlas-dashboard
+
+# Run all CI checks in container
+ci-all:
+    ./scripts/run_ci_local.sh all
