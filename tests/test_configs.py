@@ -3,9 +3,10 @@ Validate that all YAML config files parse correctly and have required top-level 
 Uses only stdlib: yaml, pathlib, unittest.
 """
 import unittest
-import yaml
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
+
+import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 CONFIGS_DIR = REPO_ROOT / "configs"
@@ -310,7 +311,7 @@ class TestDockerComposePortBindings(unittest.TestCase):
     # discovery), open a tracking issue, document the threat model in
     # docker-compose.yml, and extend this set in the same PR — never bypass
     # the test silently.
-    ALLOWED_BINDINGS = {"127.0.0.1"}
+    ALLOWED_BINDINGS: ClassVar[set[str]] = {"127.0.0.1"}
 
     def setUp(self) -> None:
         self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
@@ -379,7 +380,7 @@ class TestDockerComposePorts(unittest.TestCase):
     # discovery), open a tracking issue, document the threat model in
     # docker-compose.yml, and extend this set in the same PR — never bypass
     # the test silently.
-    ALLOWED_BINDINGS = {"127.0.0.1"}
+    ALLOWED_BINDINGS: ClassVar[set[str]] = {"127.0.0.1"}
 
     def setUp(self) -> None:
         self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")

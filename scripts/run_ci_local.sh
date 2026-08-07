@@ -104,7 +104,7 @@ run_in_container() {
     local engine_flags=()
 
     if [ "${CONTAINER_ENGINE}" = "podman" ]; then
-        engine_flags+=(--userns=keep-id:uid=1000,gid=1000)
+        engine_flags+=( "--userns=keep-id:uid=1000,gid=1000" )
     fi
 
     local script="set -euo pipefail"

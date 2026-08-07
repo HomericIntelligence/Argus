@@ -42,6 +42,7 @@ def test_backup_sh_syntax() -> None:
         ["bash", "-n", str(SCRIPTS_DIR / "backup.sh")],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 
@@ -70,6 +71,7 @@ def test_restore_sh_syntax() -> None:
         ["bash", "-n", str(SCRIPTS_DIR / "restore.sh")],
         capture_output=True,
         text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 

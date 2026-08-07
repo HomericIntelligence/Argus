@@ -28,6 +28,7 @@ class TestImportDashboardsScript(unittest.TestCase):
             env=env,
             capture_output=True,
             text=True,
+        check=False,
         )
         assert result.returncode != 0, "Script should exit non-zero when password is unset"
         assert "ERROR" in result.stderr, (
