@@ -4,8 +4,9 @@ and have required fields.
 Uses only stdlib: yaml, pathlib, unittest.
 """
 import unittest
-import yaml
 from pathlib import Path
+
+import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 RULES_DIR = REPO_ROOT / "rules"

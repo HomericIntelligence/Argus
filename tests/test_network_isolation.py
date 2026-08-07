@@ -4,8 +4,10 @@ Loki must only be on loki-internal; loki-proxy and promtail bridge both networks
 all other services must NOT be on loki-internal.
 """
 import unittest
-import yaml
 from pathlib import Path
+from typing import ClassVar
+
+import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
@@ -81,7 +83,7 @@ class TestPromtailNetworks(unittest.TestCase):
 class TestOtherServicesNotOnLokiInternal(unittest.TestCase):
     """Services with no need to reach Loki directly must not be on loki-internal."""
 
-    ISOLATED_SERVICES = ["prometheus", "grafana", "argus-exporter", "debug-shell"]
+    ISOLATED_SERVICES: ClassVar[list[str]] = ["prometheus", "grafana", "argus-exporter", "debug-shell"]
 
     def setUp(self):
         self.compose = load_compose()

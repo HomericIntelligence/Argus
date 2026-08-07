@@ -1,0 +1,11 @@
+# Context filter for the CI image build (ci/Containerfile).
+# The repo root .dockerignore excludes pixi.toml/pixi.lock (fine for the
+# exporter images) — this per-Containerfile ignore re-includes exactly what
+# the CI image needs and keeps heavy local dirs out of the build context.
+*
+!ci/
+!ci/Containerfile
+!pixi.toml
+!pixi.lock
+!.pre-commit-config.yaml
+!README.md

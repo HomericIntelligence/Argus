@@ -8,13 +8,12 @@ import importlib
 import json
 import sys
 import threading
-from pathlib import Path
 import types
 import urllib.request
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Stub out the `nats` package so consumer.py can be imported without
