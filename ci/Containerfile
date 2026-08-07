@@ -89,6 +89,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 COPY --from=pixi /usr/local/bin/pixi /usr/local/bin/pixi
 COPY --from=builder /usr/local/go /usr/local/go
 COPY --from=builder /usr/local/bin/gitleaks /usr/local/bin/gitleaks
+COPY --from=builder /usr/local/bin/gosec /usr/local/bin/gosec
 
 # Create non-root user for rootless Podman compatibility
 RUN groupadd -r ci && useradd -r -g ci -u 1000 -m -s /bin/bash ci \

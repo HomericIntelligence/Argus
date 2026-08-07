@@ -84,7 +84,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.local/share/containers/storage
-          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock .pre-commit-config.yaml') }}
+          key: podman-argus-${{ runner.os }}-${{ hashFiles('pixi.lock', '.pre-commit-config.yaml') }}
           restore-keys: |
             podman-argus-${{ runner.os }}-
       - name: Cache pixi environment
@@ -217,7 +217,9 @@ jobs:
       - name: Build CI image (podman)
         run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
       - name: Run unit-tests checks (in container)
-        run: just ci-unit-tests
+        # ci-unit-tests runs `pytest` (exporter/ + tests/) inside the CI
+        # container via scripts/run_ci_local.sh — see the justfile recipe.
+        run: just ci-unit-tests  # invokes pytest via run_ci_local.sh unit-tests
 
   integration-tests:
     name: integration-tests
@@ -267,7 +269,7 @@ jobs:
           exit-code: 0
 
   security-secrets-scan:
-    name: security-secrets-scan
+    name: security/secrets-scan
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
