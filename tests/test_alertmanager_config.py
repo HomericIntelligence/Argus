@@ -1,8 +1,9 @@
 """Tests for Alertmanager configuration and related integration files."""
 
 from pathlib import Path
-import yaml
+
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).parent.parent
 ALERTMANAGER_CONFIG = REPO_ROOT / "configs" / "alertmanager.yml"

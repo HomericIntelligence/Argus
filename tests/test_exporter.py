@@ -14,14 +14,13 @@ import unittest
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
-
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Make the exporter importable without running __main__ logic
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-import exporter.exporter as exporter_mod  # noqa: E402
+import exporter.exporter as exporter_mod
 
 
 def _make_response(data: dict | None = None, status: int = 200) -> MagicMock:
@@ -98,8 +97,7 @@ class TestFetch(unittest.TestCase):
 
     def test_propagates_unexpected_exception(self):
         """Exceptions outside the specific tuple must not be swallowed."""
-        with patch("urllib.request.urlopen", side_effect=MemoryError("oom")):
-            with self.assertRaises(MemoryError):
+        with patch("urllib.request.urlopen", side_effect=MemoryError("oom")), self.assertRaises(MemoryError):
                 exporter_mod._fetch("http://fake/data")
 
 
@@ -184,7 +182,7 @@ class TestCollectFormat(unittest.TestCase):
         try:
             with hc_patch, fetch_patch:
                 output = exporter_mod.collect()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - fail() turns into a clean assertion
             self.fail(f"collect() raised an exception when all upstreams are down: {exc}")
         self.assertIsInstance(output, str)
 
@@ -337,8 +335,7 @@ def _live_server():
 
 class TestHandler(unittest.TestCase):
     def _get_response(self, path: str, mock_collect_output: str = "# TYPE x gauge\nx{} 1\n") -> str:
-        with patch.object(exporter_mod, "collect", return_value=mock_collect_output):
-            with _live_server() as port:
+        with patch.object(exporter_mod, "collect", return_value=mock_collect_output), _live_server() as port:
                 url = f"http://127.0.0.1:{port}{path}"
                 try:
                     resp = urllib.request.urlopen(url, timeout=5)

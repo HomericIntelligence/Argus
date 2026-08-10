@@ -1,7 +1,8 @@
 """Ensure every pixi.toml [tasks] key has a matching recipe in justfile."""
 
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 _ROOT = Path(__file__).parent.parent
 

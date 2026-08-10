@@ -27,6 +27,7 @@ class TestHtpasswdNotCommitted(unittest.TestCase):
             ["git", "ls-files", "configs/nginx/htpasswd"],
             capture_output=True,
             text=True,
+            check=False,
             cwd=REPO_ROOT,
         )
         self.assertEqual(result.stdout.strip(), "",
@@ -116,6 +117,7 @@ class TestGenScript(unittest.TestCase):
                 [str(GEN_SCRIPT)],
                 capture_output=True,
                 text=True,
+                check=False,
                 env=env,
                 cwd=tmpdir,
             )
@@ -137,6 +139,7 @@ class TestGenScript(unittest.TestCase):
             [str(GEN_SCRIPT)],
             capture_output=True,
             text=True,
+            check=False,
             env=env,
         )
         self.assertEqual(result.returncode, 0,
@@ -156,6 +159,7 @@ class TestGenScript(unittest.TestCase):
             [str(GEN_SCRIPT)],
             capture_output=True,
             text=True,
+            check=False,
             env=env,
         )
         self.assertNotEqual(result.returncode, 0,
@@ -169,6 +173,7 @@ class TestGenScript(unittest.TestCase):
             [str(GEN_SCRIPT)],
             capture_output=True,
             text=True,
+            check=False,
             env=env,
         )
         self.assertNotEqual(result.returncode, 0,

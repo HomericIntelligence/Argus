@@ -14,7 +14,6 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Optional
 
 # LOG_LEVEL env var (default INFO) controls log verbosity at runtime so
 # operators can flip to DEBUG (e.g. for HTTP access logs) without a redeploy.
@@ -41,7 +40,7 @@ NATS_TLS_CA       = os.environ.get("NATS_TLS_CA")
 _TLS_VERIFY       = os.environ.get("TLS_VERIFY", "true").lower() != "false"
 
 
-def _build_ssl_context(ca_file: Optional[str] = None) -> Optional[ssl.SSLContext]:
+def _build_ssl_context(ca_file: str | None = None) -> ssl.SSLContext | None:
     """Return an SSLContext for HTTPS requests, or None for plain HTTP."""
     if not _TLS_VERIFY:
         ctx = ssl.create_default_context()
@@ -55,7 +54,7 @@ def _build_ssl_context(ca_file: Optional[str] = None) -> Optional[ssl.SSLContext
     return None
 
 
-def _fetch(url: str, ca_file: Optional[str] = None) -> dict | None:
+def _fetch(url: str, ca_file: str | None = None) -> dict | None:
     try:
         ctx = _build_ssl_context(ca_file)
         r = urllib.request.urlopen(url, timeout=5, context=ctx)
@@ -65,13 +64,13 @@ def _fetch(url: str, ca_file: Optional[str] = None) -> dict | None:
         return None
 
 
-def _health_check(url: str, ca_file: Optional[str] = None) -> int:
+def _health_check(url: str, ca_file: str | None = None) -> int:
     """Return 1 if the URL returns HTTP 200, 0 otherwise."""
     try:
         ctx = _build_ssl_context(ca_file)
         r = urllib.request.urlopen(url, timeout=5, context=ctx)
         return 1 if r.status == 200 else 0
-    except Exception as e:  # broad catch: probe must never propagate
+    except Exception as e:  # noqa: BLE001 - broad catch: probe must never propagate
         # Log at DEBUG so operators can distinguish a misconfigured URL from
         # a genuine upstream outage without changing the return-value contract.
         log.debug("health_check %s failed: %s", url, e)
@@ -111,7 +110,7 @@ def collect() -> str:
     lines: list[str] = []
     emitted_types: set[str] = set()
 
-    def gauge(name: str, help: str, value: float | int, labels: dict | None = None) -> None:
+    def gauge(name: str, help: str, value: float, labels: dict | None = None) -> None:
         lstr = ",".join(f'{k}="{v}"' for k, v in (labels or {}).items())
         if name not in emitted_types:
             help_text = _METRIC_HELP.get(name, "")

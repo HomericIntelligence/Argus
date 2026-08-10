@@ -193,7 +193,6 @@ class TestCollectTlsEnvWiring:
 
         def spy_fetch(url: str, ca_file=None):
             calls.append(("fetch", url, ca_file))
-            return None
 
         def spy_health(url: str, ca_file=None):
             calls.append(("health", url, ca_file))
