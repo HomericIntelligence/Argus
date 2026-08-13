@@ -1,23 +1,73 @@
+# Dependabot configuration — HomericIntelligence fleet baseline
+# Cadence: monthly. Grouping: minor+patch updates in one PR, major-version
+# bumps in their own PR for focused review. See the Dependabot options
+# reference for details.
+
 version: 2
 updates:
-  - package-ecosystem: "docker"
-    directory: "/exporter"
+  - package-ecosystem: 'docker'
+    directory: '/exporter'
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
-    target-branch: "main"
+      - "docker"
     commit-message:
-      prefix: "chore(deps)"
-
-  - package-ecosystem: "github-actions"
-    directory: "/"
+      prefix: 'chore(docker)'
+    groups:
+      minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      docker-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+  - package-ecosystem: 'pip'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "08:00"
+      interval: "monthly"
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
-    target-branch: "main"
+      - "python"
     commit-message:
-      prefix: "chore(deps)"
+      prefix: 'chore(deps)'
+    groups:
+      minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
