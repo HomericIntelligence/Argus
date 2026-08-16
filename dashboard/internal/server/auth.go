@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/HomericIntelligence/atlas/internal/logsafe"
 )
 
 // AuthMode represents the authentication scheme for the Atlas dashboard.
@@ -92,8 +94,8 @@ func logAuthFailure(r *http.Request, mode, reason string) {
 		"mode", mode,
 		"reason", reason,
 		"method", r.Method,
-		"path", r.URL.Path,
-		"remote", r.RemoteAddr,
+		"path", logsafe.Value(r.URL.Path),
+		"remote", logsafe.Value(r.RemoteAddr),
 	)
 }
 
