@@ -19,9 +19,9 @@ _MIN_VERSION = (3, 11)
 # manually verified to build the exporter image and pass the full test
 # suite. Process: bump _MAX_VERSION in the same PR that bumps the FROM
 # line in exporter/Dockerfile so the test stays a single source of truth.
-# Python 3.13 reached GA on 2024-10-07; widen the ceiling to (3, 13) so
+# Python 3.14 reached GA on 2025-10-07; widen the ceiling to (3, 14) so
 # a manual base-image bump doesn't trip the regression test.
-_MAX_VERSION = (3, 13)
+_MAX_VERSION = (3, 14)
 
 
 class TestDockerfileConstraints(unittest.TestCase):
