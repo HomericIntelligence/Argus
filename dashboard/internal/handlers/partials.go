@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/HomericIntelligence/atlas/internal/logsafe"
 	"github.com/HomericIntelligence/atlas/internal/mnemosyne"
 	"github.com/HomericIntelligence/atlas/web/templates"
 )
@@ -46,7 +47,7 @@ func (h *HostsHandler) MnemosyneSkillBody(w http.ResponseWriter, r *http.Request
 		if s.Name == name {
 			html, err := mnemosyne.RenderMarkdown(s.Body)
 			if err != nil {
-				slog.Warn("mnemosyne: render failed", "err", err, "skill", name)
+				slog.Warn("mnemosyne: render failed", "err", err, "skill", logsafe.Value(name))
 				http.Error(w, "render error", http.StatusInternalServerError)
 				return
 			}
@@ -56,7 +57,7 @@ func (h *HostsHandler) MnemosyneSkillBody(w http.ResponseWriter, r *http.Request
 			// error is explicit; client-disconnect during a partial is normal
 			// and demoted to debug.
 			if _, werr := io.WriteString(w, html); werr != nil && !isClientDisconnect(werr) {
-				slog.Warn("mnemosyne: write skill body failed", "err", werr, "skill", name)
+				slog.Warn("mnemosyne: write skill body failed", "err", werr, "skill", logsafe.Value(name))
 			}
 			return
 		}

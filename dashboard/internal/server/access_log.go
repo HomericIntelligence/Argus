@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/HomericIntelligence/atlas/internal/logsafe"
 )
 
 // accessLog is a minimal request logger that does NOT include the request's
@@ -32,11 +34,11 @@ func accessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			logger.Info(
 				"http",
 				"method", r.Method,
-				"path", r.URL.Path, // path only — never RequestURI / RawQuery
+				"path", logsafe.Value(r.URL.Path), // path only — never RequestURI / RawQuery
 				"status", ww.Status(),
 				"bytes", ww.BytesWritten(),
 				"duration_ms", time.Since(start).Milliseconds(),
-				"remote", r.RemoteAddr,
+				"remote", logsafe.Value(r.RemoteAddr),
 			)
 		})
 	}

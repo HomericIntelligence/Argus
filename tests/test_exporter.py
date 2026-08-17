@@ -179,6 +179,7 @@ class TestCollectFormat(unittest.TestCase):
             nats_varz=None,
             nats_jsz=None,
         )
+        output = ""
         try:
             with hc_patch, fetch_patch:
                 output = exporter_mod.collect()
