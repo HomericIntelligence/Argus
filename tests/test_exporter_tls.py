@@ -84,7 +84,6 @@ class TestFetchWithTls:
         with patch("urllib.request.urlopen", return_value=fake_response) as mock_open:
             result = mod._fetch("http://example.com/api", ca_file=None)
         assert result == {"key": "value"}
-        _ctx_arg = mock_open.call_args[1].get("context") or mock_open.call_args[0][1] if len(mock_open.call_args[0]) > 1 else None
         # context=None is passed for plain HTTP
         assert mock_open.call_args[1].get("context") is None
 

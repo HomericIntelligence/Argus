@@ -7,6 +7,7 @@ on port 9101.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -271,19 +272,15 @@ async def subscribe_loop(stop_event: asyncio.Event) -> None:
             with _lock:
                 _connected = 0
             if nc is not None:
-                try:
+                with contextlib.suppress(Exception):
                     await nc.close()
-                except Exception:
-                    pass
 
         if stop_event.is_set():
             break
 
         log.info("Retrying in %ds...", RETRY_INTERVAL)
-        try:
+        with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(stop_event.wait(), timeout=RETRY_INTERVAL)
-        except asyncio.TimeoutError:
-            pass
 
 
 # ── Entry point ────────────────────────────────────────────────────────────

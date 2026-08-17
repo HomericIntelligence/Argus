@@ -109,7 +109,7 @@ class TestGrafanaDatasourcePointsToProxy(unittest.TestCase):
         for ds in self.datasources["datasources"]:
             if ds.get("type") == "loki":
                 return ds
-        self.fail("No Loki datasource found in datasources.yml")
+        raise AssertionError("No Loki datasource found in datasources.yml")
 
     def test_loki_datasource_url_is_proxy(self):
         ds = self._loki_datasource()
