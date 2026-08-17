@@ -399,11 +399,6 @@ class TestHandler:
 
     @pytest.fixture(scope="class")
     def server_port(self, consumer):
-        import socketserver
-
-        class ThreadedServer(socketserver.ThreadingMixIn, urllib.request.AbstractHTTPHandler.__class__):
-            pass
-
         from http.server import HTTPServer
         server = HTTPServer(("127.0.0.1", 0), consumer.Handler)
         port = server.server_address[1]
