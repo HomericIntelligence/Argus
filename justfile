@@ -57,7 +57,10 @@ start: gen-htpasswd
         exit 1
     fi
     ./scripts/check-grafana-password.sh
-    {{compose_cmd}} up -d
+    # --build is required: `up -d` alone skips rebuilds when the image tag
+    # already exists, which would silently ship stale exporter code. On a
+    # warm layer cache a no-op rebuild is fast.
+    {{compose_cmd}} up -d --build
 
 # Stop all services
 stop:
@@ -71,7 +74,13 @@ status:
 restart: gen-htpasswd
     ./scripts/check-grafana-password.sh
     {{compose_cmd}} down
-    {{compose_cmd}} up -d
+    # --build for the same reason as `start`: pick up exporter image changes.
+    {{compose_cmd}} up -d --build
+
+# Rebuild and restart the exporter only (use after editing exporter/exporter.py)
+rebuild-exporter:
+    {{compose_cmd}} build argus-exporter
+    {{compose_cmd}} up -d argus-exporter
 
 # Remove all containers and volumes (destructive — data loss!)
 clean:
