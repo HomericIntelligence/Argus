@@ -28,20 +28,26 @@ from tests.test_exporter_tls import _import_exporter
 
 
 def _generate_cert(tmp_dir: Path) -> tuple[Path, Path]:
-    """Generate a self-signed key/cert pair valid for DNS:localhost, IP:127.0.0.1."""
+    """Generate a self-signed key/cert pair valid for DNS:localhost, IP:127.0.0.1.
+
+    Skips the calling test if ``openssl`` is unavailable or fails.
+    """
     cert = tmp_dir / "server.crt"
     key = tmp_dir / "server.key"
-    subprocess.run(
-        [
-            "openssl", "req", "-x509", "-newkey", "rsa:2048",
-            "-keyout", str(key), "-out", str(cert),
-            "-days", "1", "-nodes",
-            "-subj", "/CN=localhost",
-            "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-        ],
-        check=True,
-        capture_output=True,
-    )
+    try:
+        subprocess.run(
+            [
+                "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-keyout", str(key), "-out", str(cert),
+                "-days", "1", "-nodes",
+                "-subj", "/CN=localhost",
+                "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
+        pytest.skip(f"openssl unavailable or failed: {e}")
     return cert, key
 
 
@@ -73,13 +79,12 @@ class _StubHandler(BaseHTTPRequestHandler):
 def https_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, str]]:
     """Run a ThreadingHTTPServer wrapped in TLS; yield (base_url, ca_path)."""
     tmp_dir = tmp_path_factory.mktemp("tls")
-    try:
-        cert, key = _generate_cert(tmp_dir)
-    except (FileNotFoundError, subprocess.CalledProcessError) as e:
-        pytest.skip(f"openssl unavailable or failed: {e}")
+    cert, key = _generate_cert(tmp_dir)
 
     server: ThreadingHTTPServer = ThreadingHTTPServer(("127.0.0.1", 0), _StubHandler)
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # create_default_context(CLIENT_AUTH) pins minimum_version to TLSv1.2,
+    # avoiding the legacy-protocol surface of ssl.SSLContext(PROTOCOL_TLS_SERVER).
+    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
     server.socket = ctx.wrap_socket(server.socket, server_side=True)
 
