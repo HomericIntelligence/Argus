@@ -108,6 +108,11 @@ All scrape targets and service configs live in `configs/`. Alert rules are in
 `rules/`. Grafana dashboards (JSON) are in `dashboards/` and auto-provisioned
 on startup.
 
+Alert notifications are dropped by default (null receiver in
+`configs/alertmanager.yml`). To route alerts to Slack, email, or PagerDuty,
+see [docs/alerting.md](docs/alerting.md) and run `just reload-alertmanager`
+after editing the config.
+
 ## Common Commands
 
 ```bash
