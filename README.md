@@ -65,7 +65,6 @@ Key variables:
 | `GRAFANA_PROXY_USER` / `GRAFANA_PROXY_PASSWORD` | `grafana` / `changeme` | grafana-proxy Basic Auth credentials (issue #321) |
 | `GRAFANA_PORT` | `3001` | Host port for the Grafana auth proxy |
 | `PROMETHEUS_PORT` | `9090` | Host port for Prometheus |
-| `LOKI_PORT` | `3100` | Host port for Loki |
 | `EXPORTER_PORT` | `9100` | Host port for argus-exporter |
 
 `docker compose` and `just` both load `.env` automatically — no extra steps required.
