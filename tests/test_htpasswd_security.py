@@ -33,6 +33,27 @@ class TestHtpasswdNotCommitted(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "",
                          "configs/nginx/htpasswd must not be tracked in git")
 
+    def test_leaked_hash_absent_from_full_history(self) -> None:
+        # Issue #225: the APR1-MD5 hash leaked in configs/nginx/htpasswd must
+        # be unreachable from every ref, not merely untracked at the tip.
+        # Deterministic and offline: asserts plain `git log` output, no network,
+        # no skip path. Fails loudly until the filter-repo scrub has run
+        # (issue #225).
+        result = subprocess.run(
+            ["git", "log", "--all", "--format=%H",
+             "-S", "$apr1$IvtTVmT2$Vyef8metZTBYPpuH6byNP."],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=REPO_ROOT,
+        )
+        self.assertEqual(result.returncode, 0,
+                         f"git log failed: {result.stderr}")
+        self.assertEqual(
+            result.stdout.strip(), "",
+            "leaked htpasswd hash is still reachable in git history "
+            "(issue #225: filter-repo scrub has not been applied)")
+
     def test_htpasswd_file_not_present_on_disk(self) -> None:
         self.assertFalse(
             COMMITTED_HTPASSWD.exists(),
