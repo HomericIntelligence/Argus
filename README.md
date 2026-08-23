@@ -68,7 +68,6 @@ Key variables:
 | `GF_SECURITY_ADMIN_PASSWORD` | `admin` | Grafana admin password |
 | `GRAFANA_PORT` | `3001` | Host port for Grafana |
 | `PROMETHEUS_PORT` | `9090` | Host port for Prometheus |
-| `LOKI_PORT` | `3100` | Host port for Loki |
 | `EXPORTER_PORT` | `9100` | Host port for argus-exporter |
 
 `docker compose` and `just` both load `.env` automatically — no extra steps required.
