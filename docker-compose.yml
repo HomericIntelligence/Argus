@@ -243,7 +243,14 @@ services:
           cpus: "0.25"
 
   argus-exporter:
-    image: python:3.11-slim
+    # Built from ./exporter (stdlib-only; Dockerfile runs as non-root and
+    # declares the HEALTHCHECK). exporter.py is COPYed into the image rather
+    # than bind-mounted so the running artifact is versioned with its source
+    # and tag-pinnable (closes #212).
+    build:
+      context: ./exporter
+      dockerfile: Dockerfile
+    image: ${EXPORTER_IMAGE:-argus-exporter:local}
     container_name: ${EXPORTER_CONTAINER_NAME:-argus-exporter}
     restart: unless-stopped
     user: "1000:1000"
@@ -259,9 +266,9 @@ services:
     ports:
       - "127.0.0.1:${EXPORTER_PORT:-9100}:9100"
     volumes:
-      - ./exporter/exporter.py:/exporter.py:ro
+      # Runtime trust material only — the Dockerfile intentionally does not
+      # bake certificates into the image.
       - ./certs/ca.crt:/certs/ca.crt:ro
-    command: python /exporter.py
     environment:
       AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
       NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
@@ -272,21 +279,8 @@ services:
       AGAMEMNON_TLS_CA: ""
       NESTOR_TLS_CA: ""
       NATS_TLS_CA: ""
-    healthcheck:
-      # The python:3.11-slim image does not ship wget; use python stdlib instead.
-      # Probe split across imports + check to satisfy yamllint line-length:120.
-      test:
-        - "CMD"
-        - "python"
-        - "-c"
-        - >-
-          import urllib.request, sys;
-          r = urllib.request.urlopen('http://localhost:9100/health', timeout=5);
-          sys.exit(0 if r.status == 200 else 1)
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+    # No compose-level healthcheck override: the image's Dockerfile declares
+    # a python3-based HEALTHCHECK against /health that is inherited as-is.
     networks:
       - argus
     deploy:
