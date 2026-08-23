@@ -39,7 +39,7 @@ for f in "${files[@]}"; do
         -d "$payload" \
         "${GRAFANA_URL}/api/dashboards/db")
     if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-        echo "  -> ERROR: HTTP $http_code from Grafana API" >&2
+        echo "  -> ERROR: Grafana API returned HTTP $http_code for $(basename "$f") — check GF_ADMIN_PASSWORD and Grafana logs" >&2
         cat "$resp_file" >&2
         exit 1
     fi

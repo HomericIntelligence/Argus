@@ -19,8 +19,9 @@ class TestImportDashboardsScript(unittest.TestCase):
         assert mode & stat.S_IXUSR, f"{SCRIPT} is not executable"
 
     def test_script_fails_without_password(self) -> None:
-        """Script must exit non-zero and print ERROR when GRAFANA_ADMIN_PASSWORD is unset."""
-        env = {k: v for k, v in os.environ.items() if k != "GRAFANA_ADMIN_PASSWORD"}
+        """Script must exit non-zero and print ERROR when GF_ADMIN_PASSWORD is unset."""
+        env = {k: v for k, v in os.environ.items() if k != "GF_ADMIN_PASSWORD"}
+        env.pop("GF_ADMIN_PASSWORD", None)
         # Use an invalid port so no real network call can succeed even if the guard is missing.
         env["GRAFANA_PORT"] = "0"
         result = subprocess.run(
@@ -28,11 +29,14 @@ class TestImportDashboardsScript(unittest.TestCase):
             env=env,
             capture_output=True,
             text=True,
-        check=False,
+            check=False,
         )
         assert result.returncode != 0, "Script should exit non-zero when password is unset"
         assert "ERROR" in result.stderr, (
             f"Expected 'ERROR' in stderr, got: {result.stderr!r}"
+        )
+        assert "GF_ADMIN_PASSWORD" in result.stderr, (
+            f"Expected guard message naming GF_ADMIN_PASSWORD, got: {result.stderr!r}"
         )
 
     def test_script_exits_with_useful_message_on_401(self) -> None:
@@ -49,6 +53,9 @@ class TestImportDashboardsScript(unittest.TestCase):
         )
         assert "exit 1" in source, (
             "import-dashboards.sh should call 'exit 1' on HTTP error"
+        )
+        assert "GF_ADMIN_PASSWORD" in source, (
+            "Non-2xx error message should hint at GF_ADMIN_PASSWORD so operators know where to look"
         )
 
 
