@@ -419,6 +419,15 @@ class TestDockerComposePorts(unittest.TestCase):
             f"argus-exporter must bind to 127.0.0.1:*:9100, got: {ports}"
         )
 
+    def test_loki_has_no_host_port_bindings(self) -> None:
+        ports = self._ports("loki")
+        assert ports == [], (
+            "Loki must not publish port 3100 to the host (issue #186): it has no "
+            f"built-in authentication and only promtail/grafana/loki-proxy access it "
+            f"over loki-internal. Host access goes through loki-proxy on "
+            f"127.0.0.1:3101, got: {ports}"
+        )
+
     def test_grafana_anonymous_access_disabled(self) -> None:
         env = self.services["grafana"].get("environment", {})
         assert env.get("GF_AUTH_ANONYMOUS_ENABLED") == "false", (
