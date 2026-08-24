@@ -153,7 +153,9 @@ jobs:
         if: always()
         with:
           name: coverage-report
-          path: coverage.xml
+          path: |
+            coverage.xml
+            htmlcov
           retention-days: 30
 
   atlas-dashboard:
