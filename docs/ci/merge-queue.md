@@ -11,14 +11,30 @@ replace that approval.
 
 ## Required-check contract
 
-Argus currently has 14 required contexts across two existing active repository
-rulesets:
+The target contract encoded by this repository's fixtures and tests is 13
+required contexts across two active repository rulesets:
 
 - `homeric-main-baseline`: `lint`, `unit-tests`, `integration-tests`,
   `security/dependency-scan`, `security/secrets-scan`, `config-validate`,
   `schema-validation`, `deps/version-sync`, `test`, `package`, `install`,
-  `release`, and `build`.
+  and `release`.
 - `homeric-main-extras`: `Validate configs`.
+
+This 13-context list is the **target** state, not the current live one. As of
+2026-08-24 a read-only
+`gh api repos/HomericIntelligence/Argus/rules/branches/main` confirms the live
+`homeric-main-baseline` ruleset still requires both `build` and
+`config-validate`; until the operator PUT (with its step-5/post-PUT
+assertions) removes `build`, GitHub enforces 14 contexts on `main` while local
+fixtures and tests already assume the post-removal 13-context contract above.
+
+### Pending live-ruleset step
+
+Removing `build` from live enforcement is a mandatory operator step. It must
+follow the exact PUT and step-5/post-PUT assertion procedure documented later
+in this file; do not treat the fixtures or tests as evidence that the live
+ruleset already matches. Only after those assertions pass does the live
+repository satisfy the 13-context target contract.
 
 The `Required Checks` and `CI` workflows emit these contexts. Both workflows
 retain their existing `pull_request` and `push` behavior and also run for the
@@ -39,8 +55,8 @@ the durable rollout umbrella, and
 the current central activation implementation. Until that implementation is
 merged and independently verified, generic baseline replacement must not target
 Argus. Any central activation path must preserve Argus's two existing rulesets,
-all 14 contexts, bypass actors, and unrelated protections while creating or
-updating only `homeric-main-merge-queue`.
+the 13 target contexts, bypass actors, and unrelated protections while creating
+or updating only `homeric-main-merge-queue`.
 
 This Argus change does not complete the cross-repository rollout. Keep the
 umbrella issue open until Odysseus PR #417 and every repository activation have
@@ -149,7 +165,6 @@ gh api "repos/${REPO}/rules/branches/main" \
 
 jq -n '$ARGS.positional | unique | sort' --args \
   "Validate configs" \
-  build \
   config-validate \
   deps/version-sync \
   install \
@@ -169,7 +184,7 @@ jq '[.[] | select(.type == "required_status_checks")
   /tmp/argus-main-effective-rules.before.json \
   > /tmp/argus-required-contexts.before.json
 
-jq -e 'length == 14' /tmp/argus-required-contexts.before.json >/dev/null
+jq -e 'length == 13' /tmp/argus-required-contexts.before.json >/dev/null
 diff -u /tmp/argus-required-contexts.expected.json \
   /tmp/argus-required-contexts.before.json
 ```
@@ -315,7 +330,7 @@ jq '[.[] | select(.type == "required_status_checks")
   /tmp/argus-main-effective-rules.after.json \
   > /tmp/argus-required-contexts.after.json
 
-jq -e 'length == 14' /tmp/argus-required-contexts.after.json >/dev/null
+jq -e 'length == 13' /tmp/argus-required-contexts.after.json >/dev/null
 diff -u /tmp/argus-required-contexts.expected.json \
   /tmp/argus-required-contexts.after.json
 ```
@@ -323,7 +338,7 @@ diff -u /tmp/argus-required-contexts.expected.json \
 Only after every exact post-PUT assertion above succeeds may smoke testing
 begin. Then enqueue one representative smoke PR. Record the PR URL and the
 verbatim `merge_group` workflow/check results on Argus #550. Do not claim
-activation complete until all 14 required contexts report on the merge-group
+activation complete until all 13 required contexts report on the merge-group
 SHA and the PR merges by squash.
 
 ## Safe rollback
@@ -357,7 +372,7 @@ test "$(jq -r '.enforcement' /tmp/argus-merge-queue-ruleset.disabled.json)" \
   = disabled
 ```
 
-Re-run the effective-context verification in step 5. All 14 contexts must
+Re-run the effective-context verification in step 5. All 13 contexts must
 remain present after rollback.
 
 ### Optionally delete the disabled dedicated ruleset
