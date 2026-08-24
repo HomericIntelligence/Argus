@@ -33,7 +33,7 @@ groups:
           (
             hi_tasks_by_status{status="failed"}
             /
-            (hi_tasks_total + 1e-9)
+            (hi_tasks_count + 1e-9)
           ) > 0.20
         for: 10m
         labels:
@@ -61,7 +61,7 @@ groups:
           description: "Exporter {{ $labels.instance }} unreachable for 2 minutes."
 
       - alert: AllAgentsOffline
-        expr: hi_agents_online == 0 and hi_agents_total > 0
+        expr: hi_agents_online == 0 and hi_agents_count > 0
         for: 1m
         labels:
           severity: critical

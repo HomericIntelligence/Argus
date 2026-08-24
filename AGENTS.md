@@ -218,7 +218,7 @@ All metrics include `# HELP` and `# TYPE` lines.
 
 ## Dashboard Descriptions
 
-- **agent-health.json** (`uid: agent-health`): Total agent count (`hi_agents_total`),
+- **agent-health.json** (`uid: agent-health`): Total agent count (`hi_agents_count`),
   online vs. offline agents (`hi_agents_online`, `hi_agents_offline`), Agamemnon
   health status. Stat and timeseries panels backed by Prometheus.
 - **nats-events.json** (`uid: nats-events`): NATS message throughput, JetStream

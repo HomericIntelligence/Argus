@@ -3,22 +3,22 @@ groups:
     interval: 15s
     rules:
       - record: hi:agents_online_ratio:avg
-        expr: (hi_agents_online / (hi_agents_total + 1e-9))
+        expr: (hi_agents_online / (hi_agents_count + 1e-9))
 
       - record: hi:agents_offline_ratio:avg
-        expr: (hi_agents_offline / (hi_agents_total + 1e-9))
+        expr: (hi_agents_offline / (hi_agents_count + 1e-9))
 
       - record: hi:tasks_failure_rate:avg
-        expr: (hi_tasks_by_status{status="failed"} / (hi_tasks_total + 1e-9))
+        expr: (hi_tasks_by_status{status="failed"} / (hi_tasks_count + 1e-9))
 
       - record: hi:tasks_completion_rate:avg
-        expr: (hi_tasks_by_status{status="completed"} / (hi_tasks_total + 1e-9))
+        expr: (hi_tasks_by_status{status="completed"} / (hi_tasks_count + 1e-9))
 
       - record: hi:nats_in_msgs:rate5m
-        expr: rate(nats_in_msgs[5m])
+        expr: avg_over_time(nats_in_msgs[5m])
 
       - record: hi:nats_out_msgs:rate5m
-        expr: rate(nats_out_msgs[5m])
+        expr: avg_over_time(nats_out_msgs[5m])
 
       - record: hi:nats_msgs_total:rate5m
-        expr: (rate(nats_in_msgs[5m]) + rate(nats_out_msgs[5m]))
+        expr: (avg_over_time(nats_in_msgs[5m]) + avg_over_time(nats_out_msgs[5m]))

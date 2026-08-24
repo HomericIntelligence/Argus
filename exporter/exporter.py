@@ -79,11 +79,16 @@ def _health_check(url: str, ca_file: str | None = None) -> int:
 
 _METRIC_HELP: dict[str, str] = {
     "hi_agamemnon_health":                    "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise",
-    "hi_agents_total":                        "Total number of agents registered in Agamemnon",
+    "hi_agents_count":                        "Number of agents registered in Agamemnon",
     "hi_agents_online":                       "Number of agents with status=online",
     "hi_agents_offline":                      "Number of agents with status!=online",
     "hi_agent_online":                        "1 if this individual agent is online, 0 otherwise",
-    "hi_tasks_total":                         "Total number of tasks known to Agamemnon",
+    "hi_tasks_count":                         "Number of tasks known to Agamemnon",
+    # Deprecated aliases (#426): gauges must not carry the counter-reserved
+    # _total suffix. Kept for one scrape-retention window so live Prometheus
+    # data survives the rename; removal tracked as a follow-up.
+    "hi_agents_total":                        "(deprecated, use hi_agents_count) Number of agents registered in Agamemnon",
+    "hi_tasks_total":                         "(deprecated, use hi_tasks_count) Number of tasks known to Agamemnon",
     "hi_tasks_by_status":                     "Task count grouped by status label",
     "hi_nestor_health":                       "1 if Nestor /v1/health returned HTTP 200, 0 otherwise",
     "hi_nestor_research_active":              "Number of active research jobs in Nestor",
@@ -155,7 +160,9 @@ def collect() -> str:
         total   = len(agents)
         online  = sum(1 for a in agents if a.get("status") == "online")
         offline = total - online
-        gauge("hi_agents_total",   "Total number of agents registered in Agamemnon", total)
+        gauge("hi_agents_count",   "Number of agents registered in Agamemnon", total)
+        gauge("hi_agents_total",
+              "(deprecated, use hi_agents_count) Number of agents registered in Agamemnon", total)
         gauge("hi_agents_online",  "Number of agents with status=online", online)
         gauge("hi_agents_offline", "Number of agents with status!=online", offline)
         for ag in agents:
@@ -169,7 +176,9 @@ def collect() -> str:
     # ── Agamemnon tasks ────────────────────────────────────────────────────
     if tasks_data:
         tasks = tasks_data.get("tasks", [])
-        gauge("hi_tasks_total", "Total number of tasks known to Agamemnon", len(tasks))
+        gauge("hi_tasks_count", "Number of tasks known to Agamemnon", len(tasks))
+        gauge("hi_tasks_total",
+              "(deprecated, use hi_tasks_count) Number of tasks known to Agamemnon", len(tasks))
         status_counts: dict[str, int] = {}
         for task in tasks:
             s = task.get("status", "unknown")
