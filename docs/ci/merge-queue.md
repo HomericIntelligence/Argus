@@ -26,8 +26,16 @@ behavior only — neither declares a `merge_group` trigger
 (`.github/workflows/_required.yml`, `.github/workflows/ci.yml`). The dedicated
 `.github/workflows/merge-queue-smoke.yml` is the sole `merge_group`
 (`checks_requested`) workflow in the repository: one job emitting exactly the
-`merge-queue-smoke` context, which is the only context GitHub evaluates on the
-synthetic merge-group SHA, so the queue cannot advance unless it succeeds.
+`merge-queue-smoke` context.
+
+GitHub evaluates **every** required status check on the synthetic merge-group
+SHA (`gh-readonly-queue/*`), not only contexts from `merge_group`-triggered
+workflows. Because `_required.yml` and `ci.yml` do not trigger on
+`merge_group`, their 14 required contexts never report on the merge-group SHA.
+Activating the queue while those contexts remain required will therefore eject
+every queued PR with `checks_timed_out`: the queue waits for 15 required
+contexts (the 14 existing ones plus `merge-queue-smoke`) but only
+`merge-queue-smoke` can ever report.
 
 The dedicated repository ruleset `homeric-main-merge-queue` is the sole
 authority for Argus queue policy. It layers a `merge_queue` rule on top of the
@@ -78,9 +86,14 @@ Do not activate the queue until all of these gates are satisfied:
 3. `.github/workflows/merge-queue-smoke.yml` exists on `main` with the
    `merge_group/checks_requested` trigger, and neither `_required.yml` nor
    `ci.yml` declares a `merge_group` trigger.
-4. An operator is ready to observe a representative queued PR through the
+4. The live effective required-context set on `main` (checked via
+   `gh api repos/HomericIntelligence/Argus/rules/branches/main`) exactly
+   equals the set of contexts the merge-group SHA can emit — currently only
+   `merge-queue-smoke`. Reducing the required set is a separately reviewed
+   operator decision and is out of scope for this repository change.
+5. An operator is ready to observe a representative queued PR through the
    complete required-check cycle.
-5. The activation path from Odysseus PR #417 has been independently verified
+6. The activation path from Odysseus PR #417 has been independently verified
    for Argus before it is run against this repository.
 
 ### 1. Look up and snapshot the exact existing rulesets
@@ -325,12 +338,22 @@ diff -u /tmp/argus-required-contexts.expected.json \
 ```
 
 Only after every exact post-PUT assertion above succeeds may smoke testing
-begin. Then enqueue one representative smoke PR. Record the PR URL and the
-verbatim check results on Argus #550. Do not claim activation complete until:
+begin. While the live effective required set still includes any of the 14
+pinned contexts (which cannot report on the merge-group SHA — see
+"Required-check contract"), the queue cannot pass and activation is blocked;
+do not enqueue a smoke PR until gate 4 holds and the required set equals what
+the merge-group SHA can emit. Once that precondition holds, enqueue one
+representative smoke PR. Record the PR URL and the verbatim check results on
+Argus #550. Do not claim activation complete until:
 
-- the PR-head run shows all 14 required contexts green;
-- the merge-group SHA reports the `merge-queue-smoke` context green; and
+- **every** context in the live effective required set reports success on the
+  synthetic merge-group SHA — not merely `merge-queue-smoke`;
+- the same complete live-required set is also green on the PR-head run; and
 - the PR merges by squash.
+
+A single green `merge-queue-smoke` context on the queue SHA is not sufficient
+evidence: if any live-required context is missing there, GitHub ejects the
+queued PR with `checks_timed_out` instead of merging it.
 
 ## Safe rollback
 
