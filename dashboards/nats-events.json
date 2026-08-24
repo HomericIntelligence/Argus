@@ -16,7 +16,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "nats_in_msgs",
+          "expr": "hi:nats_in_msgs:rate5m",
           "legendFormat": "msgs/s in",
           "refId": "A"
         }
@@ -37,7 +37,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "nats_out_msgs",
+          "expr": "hi:nats_out_msgs:rate5m",
           "legendFormat": "msgs/s out",
           "refId": "A"
         }
@@ -97,12 +97,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "nats_in_msgs",
+          "expr": "hi:nats_in_msgs:rate5m",
           "legendFormat": "In msg/s",
           "refId": "A"
         },
         {
-          "expr": "nats_out_msgs",
+          "expr": "hi:nats_out_msgs:rate5m",
           "legendFormat": "Out msg/s",
           "refId": "B"
         }
@@ -119,12 +119,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "nats_in_bytes",
+          "expr": "hi:nats_in_bytes:rate5m",
           "legendFormat": "Bytes in/s",
           "refId": "A"
         },
         {
-          "expr": "nats_out_bytes",
+          "expr": "hi:nats_out_bytes:rate5m",
           "legendFormat": "Bytes out/s",
           "refId": "B"
         }

@@ -20,5 +20,11 @@ groups:
       - record: hi:nats_out_msgs:rate5m
         expr: avg_over_time(nats_out_msgs[5m])
 
+      - record: hi:nats_in_bytes:rate5m
+        expr: avg_over_time(nats_in_bytes[5m])
+
+      - record: hi:nats_out_bytes:rate5m
+        expr: avg_over_time(nats_out_bytes[5m])
+
       - record: hi:nats_msgs_total:rate5m
         expr: (avg_over_time(nats_in_msgs[5m]) + avg_over_time(nats_out_msgs[5m]))
