@@ -37,6 +37,7 @@ def run_gate(
     compose_text: str,
     url: str,
     container_cmd: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
     """Run check-alertmanager.sh against a temp compose file and probe URL."""
     env = dict(os.environ)
@@ -49,6 +50,8 @@ def run_gate(
         env["CONTAINER_CMD"] = container_cmd
     else:
         env.pop("CONTAINER_CMD", None)
+    if extra_env is not None:
+        env.update(extra_env)
     return subprocess.run(
         [str(SCRIPT)],
         cwd=REPO_ROOT,
@@ -94,13 +97,25 @@ class TestCheckAlertmanagerScript(unittest.TestCase):
         self.assertIn("SKIP", result.stdout)
         self.assertIn("no alertmanager service", result.stdout)
 
-    def test_skips_when_container_not_running(self) -> None:
+    def test_fails_when_container_down_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             shim = make_container_cmd(Path(tmp), running=False)
             result = run_gate(COMPOSE_WITH_AM, CLOSED_PORT_URL, container_cmd=shim)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("FAIL", result.stderr)
+        self.assertIn("ALERTMANAGER_CHECK_SKIP_ON_DOWN", result.stderr)
+
+    def test_skips_when_container_down_with_opt_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            shim = make_container_cmd(Path(tmp), running=False)
+            result = run_gate(
+                COMPOSE_WITH_AM,
+                CLOSED_PORT_URL,
+                container_cmd=shim,
+                extra_env={"ALERTMANAGER_CHECK_SKIP_ON_DOWN": "1"},
+            )
         self.assertEqual(result.returncode, 0)
         self.assertIn("SKIP", result.stdout)
-        self.assertIn("not running", result.stdout)
 
     def test_arms_and_passes_when_healthy(self) -> None:
         server, url = _serve(_Healthy)
@@ -145,8 +160,6 @@ class TestCheckAlertmanagerScript(unittest.TestCase):
         else:
             self.assertEqual(result.returncode, 0)
             self.assertIn("no alertmanager service", result.stdout)
-
-
 class TestJustfileWiring(unittest.TestCase):
     """The justfile must expose the gate and call it from `validate`."""
 

@@ -78,7 +78,8 @@ clean:
     {{compose_cmd}} down -v
 
 # Validate docker-compose config, YAML files, required runtime files, and
-# health gates (skips gates whose services are not running)
+# health gates (gates fail when their containers are down unless explicitly
+# skipped via ALERTMANAGER_CHECK_SKIP_ON_DOWN=1)
 validate: check-env-example validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
@@ -173,7 +174,8 @@ test-alertmanager:
     curl -s http://localhost:9093/-/healthy && echo ""
     curl -s http://localhost:9093/api/v2/status | jq '.cluster.status'
 
-# Health-gate Alertmanager; skips when the container is not running (issue #250)
+# Health-gate Alertmanager; fails when the container is down unless
+# ALERTMANAGER_CHECK_SKIP_ON_DOWN=1 (issue #250)
 check-alertmanager:
     ./scripts/check-alertmanager.sh
 
