@@ -6,16 +6,23 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  receiver: 'null'
+  # ${ALERTMANAGER_DEFAULT_RECEIVER} is rendered at container start by the
+  # alertmanager entrypoint in docker-compose.yml: 'slack' when
+  # SLACK_WEBHOOK_URL is set in .env, else 'null' (alerts logged only).
+  receiver: '${ALERTMANAGER_DEFAULT_RECEIVER}'
 
 receivers:
   - name: 'null'
 
-  # Uncomment and configure to enable webhook notifications:
-  # - name: 'webhook'
-  #   webhook_configs:
-  #     - url: 'http://your-webhook-endpoint/alert'
-  #       send_resolved: true
+  - name: 'slack'
+    slack_configs:
+      # ${SLACK_WEBHOOK_URL} / ${SLACK_CHANNEL} are rendered at container
+      # start from .env via the alertmanager entrypoint in docker-compose.yml.
+      - api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '${SLACK_CHANNEL}'
+        send_resolved: true
+        title: '{{ .GroupLabels.alertname }} [{{ .Status }}]'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }} {{ .CommonAnnotationsString }}{{ end }}'
 
   # Uncomment and configure to enable email notifications:
   # - name: 'email'
