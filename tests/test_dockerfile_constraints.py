@@ -14,14 +14,12 @@ DOCKERFILES = [
 ]
 
 _MIN_VERSION = (3, 11)
-# Approved Python version ceiling. Advance this only after the next CPython
-# release is GA (https://devguide.python.org/versions/) AND has been
-# manually verified to build the exporter image and pass the full test
-# suite. Process: bump _MAX_VERSION in the same PR that bumps the FROM
-# line in exporter/Dockerfile so the test stays a single source of truth.
-# Python 3.14 reached GA on 2025-10-07; widen the ceiling to (3, 14) so
-# a manual base-image bump doesn't trip the regression test.
-_MAX_VERSION = (3, 14)
+# Approved Python version ceiling. Advance this only after the next minor is
+# added to the CI validation set (.github/workflows/ci.yml setup-python
+# version) AND the base image builds and passes the full test suite with it.
+# Process: bump _MAX_VERSION in the same PR that bumps the FROM line in
+# exporter/Dockerfile so the test stays a single source of truth.
+_MAX_VERSION = (3, 13)
 
 
 class TestDockerfileConstraints(unittest.TestCase):
