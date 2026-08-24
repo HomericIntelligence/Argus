@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import sys
 import threading
 import unittest
@@ -114,9 +115,13 @@ def _patch_collect(
     nats_varz: dict | None = None,
     nats_jsz: dict | None = None,
 ):
-    """Context-manager factory that patches _health_check and _fetch inside collect()."""
-    agents_data = agents_data or {}
-    tasks_data = tasks_data or {}
+    """Context-manager factory that patches _health_check and _fetch inside collect().
+
+    A ``None`` payload means "upstream fetch failed" (mirroring real
+    ``_fetch`` behaviour) and flows into the per-upstream
+    ``homeric_exporter_fetch_errors`` tally inside collect(). Empty-dict
+    payloads are falsy and skip metric emission without counting as errors.
+    """
 
     def _fake_health_check(url: str, ca_file=None) -> int:
         if "agamemnon" in url or "8080" in url:
@@ -505,6 +510,156 @@ class TestCollectHelpLines(unittest.TestCase):
                 self.assertEqual(parts[1], "HELP")
                 self.assertTrue(parts[2].replace("_", "").isalnum() or "_" in parts[2],
                                 f"Unexpected metric name format in: {line!r}")
+
+
+# ---------------------------------------------------------------------------
+# Test collect() — partial upstream failure branches
+# ---------------------------------------------------------------------------
+
+_AGENTS_DATA = {
+    "agents": [
+        {"name": "alpha", "host": "h1", "program": "prog", "status": "online"},
+        {"name": "beta",  "host": "h2", "program": "prog", "status": "offline"},
+    ]
+}
+_TASKS_DATA = {"tasks": [{"status": "completed"}, {"status": "failed"}]}
+_NESTOR_STATS = {"active": 2, "completed": 10, "pending": 1}
+_NATS_VARZ = {
+    "connections": 5, "in_msgs": 200, "out_msgs": 180,
+    "in_bytes": 2048, "out_bytes": 1024, "slow_consumers": 1,
+}
+_NATS_JSZ = {"streams": 1, "consumers": 2, "messages": 10, "bytes": 1024}
+
+
+def _sample_values(output: str) -> dict[str, str]:
+    """Map each non-comment exposition line's full key (name + labels) to its value."""
+    return {
+        ln.split()[0]: ln.split()[1]
+        for ln in output.splitlines()
+        if not ln.startswith("#") and ln.strip()
+    }
+
+
+def _fetch_error_tally(output: str) -> dict[str, int]:
+    """Parse homeric_exporter_fetch_errors{upstream="..."} values from output."""
+    return {
+        match.group(1): int(match.group(2))
+        for match in re.finditer(
+            r'homeric_exporter_fetch_errors\{upstream="(\w+)"\} (\d+)', output
+        )
+    }
+
+
+class TestCollectPartialFailure(unittest.TestCase):
+    """One upstream returning None while the others succeed must omit only
+    that upstream's metric families and increment its fetch_errors tally."""
+
+    def _run_collect(self, **kwargs):
+        hc_patch, fetch_patch = _patch_collect(**kwargs)
+        with hc_patch, fetch_patch:
+            return exporter_mod.collect()
+
+    def _all_success(self) -> dict:
+        return {
+            "agamemnon_health": 1,
+            "agents_data": _AGENTS_DATA,
+            "tasks_data": _TASKS_DATA,
+            "nestor_health": 1,
+            "nestor_stats": _NESTOR_STATS,
+            "nats_varz": _NATS_VARZ,
+            "nats_jsz": _NATS_JSZ,
+        }
+
+    def test_agents_fetch_fails_others_succeed(self):
+        overrides = self._all_success() | {"agents_data": None}
+        output = self._run_collect(**overrides)
+        samples = _sample_values(output)
+        # Agent family entirely absent (including per-agent samples)
+        for name in ("hi_agents_total{}", "hi_agents_online{}", "hi_agents_offline{}"):
+            self.assertNotIn(name, samples)
+        self.assertNotIn("hi_agent_online{name=\"alpha\",host=\"h1\",program=\"prog\"}", samples)
+        # Unrelated families still emitted
+        self.assertIn("hi_tasks_total{}", samples)
+        self.assertEqual(samples["hi_tasks_total{}"], "2")
+        tally = _fetch_error_tally(output)
+        self.assertEqual(tally["agamemnon"], 1)
+        self.assertEqual(tally["nestor"], 0)
+        self.assertEqual(tally["nats"], 0)
+
+    def test_tasks_fetch_fails_others_succeed(self):
+        overrides = self._all_success() | {"tasks_data": None}
+        output = self._run_collect(**overrides)
+        samples = _sample_values(output)
+        self.assertNotIn("hi_tasks_total{}", samples)
+        self.assertFalse(
+            [key for key in samples if key.startswith("hi_tasks_by_status")]
+        )
+        # Agent gauges unaffected
+        self.assertEqual(samples["hi_agents_total{}"], "2")
+        self.assertEqual(_fetch_error_tally(output)["agamemnon"], 1)
+
+    def test_both_agamemnon_endpoints_fail_health_still_emitted(self):
+        overrides = self._all_success() | {"agents_data": None, "tasks_data": None}
+        output = self._run_collect(**overrides)
+        samples = _sample_values(output)
+        self.assertNotIn("hi_agents_total{}", samples)
+        self.assertNotIn("hi_tasks_total{}", samples)
+        self.assertIn("hi_agamemnon_health{}", samples)
+        self.assertEqual(samples["hi_agamemnon_health{}"], "1")
+        self.assertEqual(_fetch_error_tally(output)["agamemnon"], 2)
+
+    def test_nestor_stats_fail_health_still_emitted(self):
+        overrides = self._all_success() | {"nestor_stats": None}
+        output = self._run_collect(**overrides)
+        samples = _sample_values(output)
+        for name in (
+            "hi_nestor_research_active{}",
+            "hi_nestor_research_completed{}",
+            "hi_nestor_research_pending{}",
+        ):
+            self.assertNotIn(name, samples)
+        self.assertIn("hi_nestor_health{}", samples)
+        self.assertEqual(samples["hi_nestor_health{}"], "1")
+        tally = _fetch_error_tally(output)
+        self.assertEqual(tally["nestor"], 1)
+        self.assertEqual(tally["agamemnon"], 0)
+
+    def test_nats_varz_fail_jsz_succeeds(self):
+        overrides = self._all_success() | {"nats_varz": None}
+        output = self._run_collect(**overrides)
+        samples = _sample_values(output)
+        for name in ("nats_connections{}", "nats_in_msgs{}", "nats_out_msgs{}",
+                     "nats_in_bytes{}", "nats_out_bytes{}", "nats_slow_consumers{}"):
+            self.assertNotIn(name, samples)
+        self.assertIn("nats_jetstream_streams{}", samples)
+        self.assertEqual(_fetch_error_tally(output)["nats"], 1)
+
+    def test_nats_jsz_fail_varz_succeeds(self):
+        overrides = self._all_success() | {"nats_jsz": None}
+        output = self._run_collect(**overrides)
+        samples = _sample_values(output)
+        self.assertFalse(
+            [key for key in samples if key.startswith("nats_jetstream_")]
+        )
+        self.assertIn("nats_connections{}", samples)
+        self.assertEqual(_fetch_error_tally(output)["nats"], 1)
+
+    def test_all_upstreams_down_tally_counts_every_endpoint(self):
+        """The tally counts failed endpoints per upstream: agamemnon 2, nestor 1, nats 2."""
+        output = self._run_collect(
+            agamemnon_health=0,
+            agents_data=None,
+            tasks_data=None,
+            nestor_health=0,
+            nestor_stats=None,
+            nats_varz=None,
+            nats_jsz=None,
+        )
+        tally = _fetch_error_tally(output)
+        self.assertEqual(tally, {"agamemnon": 2, "nestor": 1, "nats": 2})
+        samples = _sample_values(output)
+        self.assertEqual(samples["hi_agamemnon_health{}"], "0")
+        self.assertEqual(samples["hi_nestor_health{}"], "0")
 
 
 if __name__ == "__main__":
