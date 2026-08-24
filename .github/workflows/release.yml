@@ -56,7 +56,24 @@ jobs:
           print(f"OK: tag {tag} matches pixi.toml version {actual_version}")
           EOF
 
-      - name: Create GitHub Release
+      # Package the deployable exporter source (stdlib-only single-file code +
+      # its container build recipe) into a versioned tarball with a checksum.
+      # Staging under a versioned top-level directory keeps extraction tidy.
+      - name: Package exporter artifact
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p "dist/argus-exporter-$TAG"
+          cp exporter/exporter.py exporter/Dockerfile "dist/argus-exporter-$TAG/"
+          tar -czf "dist/argus-exporter-$TAG.tar.gz" -C dist "argus-exporter-$TAG"
+          # Generate the checksum from inside dist/ so the file records bare
+          # filenames — `sha256sum -c` works in any flat download directory.
+          (
+            cd dist
+            sha256sum "argus-exporter-$TAG.tar.gz" > "argus-exporter-$TAG.tar.gz.sha256"
+          )
+
+      - name: Create GitHub Release & upload artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -64,6 +81,10 @@ jobs:
           gh release create "$TAG" \
             --generate-notes \
             --title "Release $TAG"
+          gh release upload "$TAG" \
+            "dist/argus-exporter-$TAG.tar.gz" \
+            "dist/argus-exporter-$TAG.tar.gz.sha256" \
+            --clobber
 
   publish-atlas-image:
     name: Build & push Atlas image to GHCR
