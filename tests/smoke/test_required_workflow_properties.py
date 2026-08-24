@@ -58,6 +58,31 @@ def test_unit_tests_job_invokes_pytest() -> None:
     )
 
 
+def test_coverage_artifact_includes_xml_and_html_reports() -> None:
+    workflow = _load_workflow(CI_WORKFLOW)
+    steps = workflow["jobs"]["unit-tests"]["steps"]
+    upload_steps = [s for s in steps if "upload-artifact" in s.get("uses", "")]
+    assert upload_steps, (
+        "unit-tests job in ci.yml no longer uploads a coverage artifact"
+    )
+    paths = [
+        path
+        for step in upload_steps
+        for path in _artifact_paths(step["with"]["path"])
+    ]
+    assert "coverage.xml" in paths, (
+        "coverage-report artifact must include coverage.xml"
+    )
+    assert "htmlcov" in paths, (
+        "coverage-report artifact must include htmlcov/ so PR reviewers "
+        "can browse the HTML coverage report"
+    )
+
+
+def _artifact_paths(path_field: str) -> list[str]:
+    return [line.strip() for line in path_field.splitlines() if line.strip()]
+
+
 def test_required_workflows_keep_pr_triggers_and_skip_merge_group() -> None:
     for path in REQUIRED_WORKFLOWS:
         triggers = _load_workflow(path)["on"]
