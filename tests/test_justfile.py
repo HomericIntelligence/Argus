@@ -52,6 +52,36 @@ class TestJustfileNoHardcodedCredentials(unittest.TestCase):
             "Credential extraction via 'cut -d:' still present in justfile",
         )
 
+    def test_agamemnon_url_overridable(self) -> None:
+        """AGAMEMNON_URL must accept .env overrides via env_var_or_default."""
+        self.assertIn(
+            'AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL"',
+            self.content,
+            "AGAMEMNON_URL is hardcoded; must use env_var_or_default to honor .env",
+        )
+
+    def test_grafana_port_overridable(self) -> None:
+        """GRAFANA_PORT must accept .env overrides via env_var_or_default."""
+        self.assertIn(
+            'GRAFANA_PORT := env_var_or_default("GRAFANA_PORT"',
+            self.content,
+            "GRAFANA_PORT is hardcoded; must use env_var_or_default to honor .env",
+        )
+
+
+class TestEnvExampleNoDuplicateKeys(unittest.TestCase):
+    def test_env_example_has_no_duplicate_keys(self) -> None:
+        """.env.example must define each key at most once."""
+        env_example = REPO_ROOT / ".env.example"
+        keys = []
+        for line in env_example.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            keys.append(line.split("=", 1)[0])
+        duplicates = {k for k in keys if keys.count(k) > 1}
+        self.assertFalse(duplicates, f"Duplicate keys in .env.example: {duplicates}")
+
 
 if __name__ == "__main__":
     unittest.main()
