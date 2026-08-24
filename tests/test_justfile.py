@@ -51,6 +51,33 @@ class TestJustfileNoHardcodedCredentials(unittest.TestCase):
             self.content,
             "Credential extraction via 'cut -d:' still present in justfile",
         )
+class TestWgetPortability(unittest.TestCase):
+    """Issue #198: combined `-qO-` wget flag is not portable across
+    GNU vs BusyBox wget; recipes must use space-separated `-q -O /dev/stdout`."""
+
+    def setUp(self) -> None:
+        self.content = JUSTFILE.read_text()
+
+    def test_no_combined_qO_flag_in_justfile(self) -> None:
+        """The combined `-qO-` flag must not appear in the justfile."""
+        self.assertNotIn(
+            "-qO-",
+            self.content,
+            "Non-portable combined '-qO-' wget flag found in justfile",
+        )
+
+    def test_reload_prometheus_uses_post_data(self) -> None:
+        """reload-prometheus recipe must POST to /-/reload with --post-data=''."""
+        self.assertIn(
+            "--post-data=''",
+            self.content,
+            "reload-prometheus recipe missing --post-data='' for HTTP POST",
+        )
+        self.assertIn(
+            "http://localhost:9090/-/reload",
+            self.content,
+            "reload-prometheus recipe missing /-/reload endpoint",
+        )
 
 
 if __name__ == "__main__":

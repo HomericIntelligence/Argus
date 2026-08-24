@@ -129,12 +129,12 @@ logs SERVICE:
 reload-prometheus:
     {{compose_cmd}} restart prometheus
 
-    {{compose_cmd}} exec prometheus wget -qO- http://localhost:9090/-/reload --post-data='' && echo "Prometheus config reloaded."
+    {{compose_cmd}} exec prometheus wget -q -O /dev/stdout --post-data='' http://localhost:9090/-/reload && echo "Prometheus config reloaded."
 
 # Query Prometheus to verify all scrape targets are up (Prometheus is internal-only)
 test-scrape:
     @echo "Querying Prometheus for 'up' metric..."
-    {{compose_cmd}} exec prometheus wget -qO- "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
+    {{compose_cmd}} exec prometheus wget -q -O /dev/stdout "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
 
 
 # Debug Prometheus from inside its container (port not exposed to host)

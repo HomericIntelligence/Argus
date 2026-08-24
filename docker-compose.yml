@@ -61,8 +61,13 @@ services:
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.config.file=/run/prometheus/prometheus.yml"
+      # Enables POST /-/reload and POST /-/quit on :9090. Reachable by any
+      # container on the `argus` bridge; acceptable given the trusted internal topology.
+      - "--web.enable-lifecycle"
+    # String-form (CMD-SHELL) with space-separated wget flags — BusyBox-safe
+    # (`-qO-` is not portable across GNU vs BusyBox wget). Closes #198.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      test: "wget -q -O /dev/stdout http://localhost:9090/-/ready || exit 1"
       interval: 30s
       timeout: 10s
       retries: 3
