@@ -236,6 +236,7 @@ services:
     depends_on:
       - prometheus
       - loki-proxy
+      - alertmanager
     deploy:
       resources:
         limits:

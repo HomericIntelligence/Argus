@@ -263,6 +263,42 @@ class TestGrafanaDatasourcesConfig(unittest.TestCase):
             for field in required_fields:
                 assert field in ds, f"Datasource missing field '{field}': {ds}"
 
+    def _alertmanager_datasource(self) -> dict:
+        ds = next(
+            (d for d in self.config["datasources"] if d["type"] == "alertmanager"),
+            None,
+        )
+        assert ds is not None, "Alertmanager datasource not found (issue #345)"
+        return ds
+
+    def test_alertmanager_datasource_present(self) -> None:
+        assert self._alertmanager_datasource()["name"] == "Alertmanager"
+
+    def test_alertmanager_datasource_url(self) -> None:
+        assert (
+            self._alertmanager_datasource()["url"] == "http://alertmanager:9093"
+        )
+
+    def test_alertmanager_datasource_uid_stable(self) -> None:
+        assert self._alertmanager_datasource()["uid"] == "alertmanager"
+
+    def test_alertmanager_datasource_implementation(self) -> None:
+        assert (
+            self._alertmanager_datasource()["jsonData"]["implementation"]
+            == "prometheus"
+        )
+
+    def test_alertmanager_datasource_not_default(self) -> None:
+        assert self._alertmanager_datasource().get("isDefault") is not True
+
+    def test_alertmanager_datasource_handle_grafana_managed_alerts_disabled(
+        self,
+    ) -> None:
+        assert (
+            self._alertmanager_datasource()["jsonData"]["handleGrafanaManagedAlerts"]
+            is False
+        )
+
 
 class TestGrafanaDashboardsConfig(unittest.TestCase):
     def setUp(self):
@@ -359,6 +395,17 @@ class TestDockerComposePortBindings(unittest.TestCase):
             dep_names = list(deps)
         assert "loki-proxy" in dep_names
         assert "loki" not in dep_names, "grafana should depend on loki-proxy, not loki directly"
+
+    def test_grafana_depends_on_alertmanager(self) -> None:
+        deps: Any = self.compose["services"]["grafana"].get("depends_on", [])
+        if isinstance(deps, dict):
+            dep_names = list(deps.keys())
+        else:
+            dep_names = list(deps)
+        assert "alertmanager" in dep_names, (
+            "grafana must depend on alertmanager so the provisioned "
+            "Alertmanager datasource does not race a cold start (issue #345)"
+        )
 
     def test_loki_datasource_url_uses_proxy(self) -> None:
         datasources = load_yaml(CONFIGS_DIR / "grafana" / "datasources.yml")["datasources"]

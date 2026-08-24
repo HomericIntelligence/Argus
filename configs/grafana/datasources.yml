@@ -33,3 +33,14 @@ datasources:
       tlsCACert: |
         # Mount the CA cert content here, or use Grafana's provisioning
         # secret injection. See docs/tls-setup.md for options.
+
+  - name: Alertmanager
+    type: alertmanager
+    uid: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    isDefault: false
+    editable: false
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: false
