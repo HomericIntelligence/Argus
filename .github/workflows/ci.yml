@@ -81,6 +81,11 @@ jobs:
       - name: Check .env.example documents every compose variable
         run: bash scripts/check-env-example.sh
 
+      # Stdlib-only; keeps exporter/VERSION, the compose pin, and the
+      # publish workflow's semver tag in lockstep (Refs #393).
+      - name: Check exporter image version consistency
+        run: python3 scripts/check-exporter-image-version.py
+
       - name: Lint exporter Python
         run: pixi run ruff check exporter/exporter.py
 

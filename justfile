@@ -188,6 +188,11 @@ import-dashboards:
 bump TYPE:
     bash scripts/bump-version.sh {{TYPE}}
 
+# Bump exporter image version (patch|minor|major) across exporter/VERSION and
+# docker-compose.yml atomically; pass --dry-run to preview. Refs #393.
+bump-exporter-version TYPE *FLAGS:
+    bash scripts/bump-exporter-version.sh {{TYPE}} {{FLAGS}}
+
 # Preview CHANGELOG entries since last tag without committing
 generate-changelog:
     bash scripts/generate-changelog.sh

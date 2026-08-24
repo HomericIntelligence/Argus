@@ -2,7 +2,8 @@ name: Publish Exporter Image
 
 # Builds and pushes the argus-exporter container to GHCR so deployments can
 # reference a versioned image instead of building from local source on every
-# `docker compose up`. Refs #149.
+# `docker compose up`. Publishes :latest, :sha-<sha>, and the semver tag from
+# exporter/VERSION (Refs #149, #393).
 
 on:
   push:
@@ -42,6 +43,31 @@ jobs:
         id: image
         run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/argus-exporter" >> "$GITHUB_OUTPUT"
 
+      # exporter/VERSION is the single source of truth for the semver tag;
+      # scripts/check-exporter-image-version.py keeps it in sync with the
+      # docker-compose.yml pin (Refs #393).
+      - name: Read exporter version
+        id: version
+        run: |
+          VERSION="$(tr -d '[:space:]' < exporter/VERSION)"
+          echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::exporter/VERSION is not strict semver: '${VERSION}'"
+            exit 1
+          }
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Fail closed when the semver tag already exists — a stale
+      # exporter/VERSION would otherwise silently overwrite a published tag.
+      - name: Guard against duplicate version tag
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          EXPORTER_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if docker manifest inspect "${IMAGE_NAME}:v${EXPORTER_VERSION}" > /dev/null 2>&1; then
+            echo "::error::tag v${EXPORTER_VERSION} already exists on GHCR — bump exporter/VERSION first"
+            exit 1
+          fi
+
       - name: Build & push multi-arch image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         with:
@@ -52,6 +78,7 @@ jobs:
           tags: |
             ${{ steps.image.outputs.name }}:latest
             ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+            ${{ steps.image.outputs.name }}:v${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
