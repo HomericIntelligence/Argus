@@ -11,14 +11,30 @@ replace that approval.
 
 ## Required-check contract
 
-Argus currently has 13 required contexts across two existing active repository
-rulesets:
+The target contract encoded by this repository's fixtures and tests is 13
+required contexts across two active repository rulesets:
 
 - `homeric-main-baseline`: `lint`, `unit-tests`, `integration-tests`,
   `security/dependency-scan`, `security/secrets-scan`, `config-validate`,
   `schema-validation`, `deps/version-sync`, `test`, `package`, `install`,
   and `release`.
 - `homeric-main-extras`: `Validate configs`.
+
+This 13-context list is the **target** state, not the current live one. As of
+2026-08-24 a read-only
+`gh api repos/HomericIntelligence/Argus/rules/branches/main` confirms the live
+`homeric-main-baseline` ruleset still requires both `build` and
+`config-validate`; until the operator PUT (with its step-5/post-PUT
+assertions) removes `build`, GitHub enforces 14 contexts on `main` while local
+fixtures and tests already assume the post-removal 13-context contract above.
+
+### Pending live-ruleset step
+
+Removing `build` from live enforcement is a mandatory operator step. It must
+follow the exact PUT and step-5/post-PUT assertion procedure documented later
+in this file; do not treat the fixtures or tests as evidence that the live
+ruleset already matches. Only after those assertions pass does the live
+repository satisfy the 13-context target contract.
 
 The `Required Checks` and `CI` workflows emit these contexts. Both workflows
 retain their existing `pull_request` and `push` behavior and also run for the
@@ -39,8 +55,8 @@ the durable rollout umbrella, and
 the current central activation implementation. Until that implementation is
 merged and independently verified, generic baseline replacement must not target
 Argus. Any central activation path must preserve Argus's two existing rulesets,
-all 13 contexts, bypass actors, and unrelated protections while creating or
-updating only `homeric-main-merge-queue`.
+the 13 target contexts, bypass actors, and unrelated protections while creating
+or updating only `homeric-main-merge-queue`.
 
 This Argus change does not complete the cross-repository rollout. Keep the
 umbrella issue open until Odysseus PR #417 and every repository activation have
