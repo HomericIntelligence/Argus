@@ -57,12 +57,9 @@
           {
             "context": "install"
           },
-          {
-            "context": "release"
-          },
-          {
-            "context": "build"
-          }
+            {
+                "context": "release"
+            }
         ]
       }
     }

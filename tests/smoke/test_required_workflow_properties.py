@@ -86,7 +86,7 @@ def test_all_required_contexts_have_pr_supplying_jobs() -> None:
     extras_contexts = _required_contexts(_load_ruleset(EXTRAS_RULESET))
     required_contexts = baseline_contexts | extras_contexts
     assert baseline_contexts.isdisjoint(extras_contexts)
-    assert len(required_contexts) == 14
+    assert len(required_contexts) == 13
 
     emitted_contexts: set[str] = set()
 
