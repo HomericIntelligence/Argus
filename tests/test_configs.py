@@ -144,6 +144,35 @@ class TestPromtailConfig(unittest.TestCase):
         raw = (CONFIGS_DIR / "promtail.yml").read_text()
         assert "HOSTNAME" in raw, "host label must reference ${HOSTNAME} for portability"
 
+    def test_nats_job_host_label_uses_env_var(self):
+        """Issue #350: nats job must carry a host label using env var
+        substitution, matching the syslog job."""
+        nats_job = next(
+            (j for j in self.config["scrape_configs"] if j.get("job_name") == "nats"),
+            None,
+        )
+        assert nats_job is not None, "nats scrape job not found"
+        labels = nats_job["static_configs"][0]["labels"]
+        assert "host" in labels, "nats job missing 'host' label"
+        assert labels["host"].startswith("${"), (
+            "nats host label must use env var substitution "
+            "(${PROMTAIL_HOST_LABEL:-${HOSTNAME}}), got hardcoded value: "
+            f"{labels['host']!r}"
+        )
+
+    def test_nats_job_host_label_has_fallback(self):
+        """Issue #350: nats host label env var must have a fallback default."""
+        nats_job = next(
+            (j for j in self.config["scrape_configs"] if j.get("job_name") == "nats"),
+            None,
+        )
+        assert nats_job is not None
+        host_val = nats_job["static_configs"][0]["labels"]["host"]
+        assert ":-" in host_val, (
+            "nats host label env var should have a fallback default "
+            f"(e.g. ${{PROMTAIL_HOST_LABEL:-${{HOSTNAME}}}}), got: {host_val!r}"
+        )
+
     def test_redaction_enabled_jobs_have_secret_patterns(self):
         """All jobs that read host/app logs containing user-supplied data must
         redact the same five secret patterns (bearer, token, key, secret,

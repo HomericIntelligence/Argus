@@ -92,6 +92,7 @@ scrape_configs:
         labels:
           job: nats
           service: nats-server
+          host: ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
           __path__: /logs/nats/nats.log
     pipeline_stages:
       - replace:
