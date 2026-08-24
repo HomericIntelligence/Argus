@@ -17,12 +17,15 @@ python = ">=3.13,<3.14"
 
 [target.linux-64.dependencies]
 jq = ">=1.6,<2"
+shellcheck = ">=0.10"
 
 [target.osx-arm64.dependencies]
 jq = ">=1.6,<2"
+shellcheck = ">=0.10"
 
 [target.osx-64.dependencies]
 jq = ">=1.6,<2"
+shellcheck = ">=0.10"
 
 [tasks]
 start     = "just start"

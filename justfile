@@ -104,6 +104,11 @@ validate-promtail:
         -check-syntax
     @echo "promtail config OK."
 
+# bash -n + shellcheck every tracked .sh file (issue #359). Delegates to
+# tests/test-shell-lint.sh so the checks match ci.yml and `just ci-lint` exactly.
+check-shell:
+    @pixi run bash tests/test-shell-lint.sh
+
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:
     @command -v templ >/dev/null 2>&1 || { echo "templ not found on PATH. Install: go install github.com/a-h/templ/cmd/templ@v0.3.1001"; exit 1; }
