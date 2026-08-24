@@ -291,6 +291,7 @@ just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
 just test                    # Run pytest unit tests
+just test-smoke              # Live-stack smoke tests (requires Docker; builds and tears down the stack incl. volumes)
 just backup                  # Back up data volumes to ./backups/
 ```
 
