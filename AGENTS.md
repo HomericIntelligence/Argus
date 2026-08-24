@@ -260,6 +260,29 @@ Argus/
 └── pixi.toml
 ```
 
+## Design Philosophy
+
+Argus inherits its design philosophy from ProjectOdyssey's agent-contract convention: state intent before rules.
+This section records that intent; the sections that follow codify it as enforceable principles and constraints.
+
+- **Observe, never act** — Argus is a read-only observability layer. It pulls from upstream services via HTTP
+  scrapes and log tailing, and never pushes data or commands back. The blast radius of any Argus defect or
+  compromise is bounded to this stack alone (see [Repo Role](#repo-role-in-the-homericintelligence-ecosystem)).
+- **Configuration as code** — dashboards, scrape targets, alert rules, and credential rotation paths live in
+  version-controlled files under `configs/`, `dashboards/`, and `rules/`. The Grafana UI is never a source of
+  truth; manual changes must be exported back to JSON or they do not exist (see [Key Principles](#key-principles)).
+- **Metric names are API** — `hi_*`, `nats_*`, and `homeric_exporter_*` names are consumed by dashboards and
+  alerts across the ecosystem. Renaming an existing metric requires a deprecation period plus a same-commit
+  update to `docs/metrics.md` (see [Coordination Protocol](#coordination-protocol)).
+- **Fail closed on exposure** — all host ports bind loopback only, and Loki sits on an internal network with no
+  egress reachable solely through the authenticated proxy. Unauthenticated metric/log endpoints are never
+  exposed to the LAN (see [Operator Notes](#operator-notes) and the two-network topology above).
+- **Hot-reload over restart** — prefer SIGHUP (`just reload-prometheus`) and `/-/reload`
+  (`just reload-alertmanager`) so fleet observability stays continuous while configuration changes land
+  (see [Development Guidelines](#development-guidelines)).
+- **One authoritative contract** — `AGENTS.md` is the single coordination contract every agent reads;
+  `CLAUDE.md` exists only to point here (see the [intro paragraph](#agentsmd--argus-multi-agent-coordination)).
+
 ## Key Principles
 
 1. Read-only access to the rest of the HomericIntelligence ecosystem — no modifications to external services.
