@@ -155,12 +155,12 @@ run_pixi_check() {
 }
 
 run_unit_tests() {
-    log_step "unit-tests — yamllint + pytest"
+    log_step "unit-tests — yamllint + pytest (coverage-gated via pixi test-unit task)"
     run_in_container "yamllint -c .yamllint.yaml . && \
         if command -v promtool &>/dev/null && [ -d rules ]; then \
         mapfile -t rule_files < <(find rules -type f \\( -name '*.yml' -o -name '*.yaml' \\)); \
         if [ \"\${#rule_files[@]}\" -gt 0 ]; then promtool check rules \"\${rule_files[@]}\"; fi; fi; \
-        pixi run pytest tests/ -v"
+        pixi run test-unit"
 }
 
 run_integration_tests() {
