@@ -112,3 +112,47 @@ def test_alias_dry_run_dispatches_to_gen_htpasswd() -> None:
     # `just -n` prints shebang recipe bodies to stderr
     combined = result.stdout + result.stderr
     assert "htpasswd -nbB loki" in combined
+
+
+# ---------------------------------------------------------------------------
+# .env presence guard (issue #214)
+# ---------------------------------------------------------------------------
+
+
+def _check_env_body() -> str:
+    """Return the body of the check-env recipe (up to the next comment block)."""
+    content = _justfile_content()
+    start = content.index("\ncheck-env:\n")
+    end = content.find("\n# ", start)
+    return content[start:] if end == -1 else content[start:end]
+
+
+def test_check_env_recipe_present() -> None:
+    """The check-env guard recipe must exist in the justfile."""
+    assert "\ncheck-env:\n" in _justfile_content(), "check-env recipe not found in justfile"
+
+
+def test_start_depends_on_check_env() -> None:
+    """start must declare the check-env dependency so the guard runs first."""
+    assert "start: check-env" in _justfile_content(), (
+        "start recipe does not depend on check-env"
+    )
+
+
+def test_restart_depends_on_check_env() -> None:
+    """restart must declare the check-env dependency so the guard runs first."""
+    assert "restart: check-env" in _justfile_content(), (
+        "restart recipe does not depend on check-env"
+    )
+
+
+def test_check_env_exits_nonzero() -> None:
+    """check-env must exit non-zero when .env is missing."""
+    assert "exit 1" in _check_env_body(), "check-env recipe does not exit non-zero"
+
+
+def test_check_env_remediation_mentions_env_example() -> None:
+    """check-env's remediation hint must point at .env.example."""
+    assert ".env.example" in _check_env_body(), (
+        "check-env remediation hint does not mention .env.example"
+    )
