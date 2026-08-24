@@ -191,6 +191,7 @@ jobs:
     name: unit-tests
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    needs: lint
     permissions:
       contents: read
     steps:

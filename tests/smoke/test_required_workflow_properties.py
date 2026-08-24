@@ -58,6 +58,16 @@ def test_unit_tests_job_invokes_pytest() -> None:
     )
 
 
+def test_unit_tests_job_gated_by_lint() -> None:
+    """The unit-tests job must declare `needs: lint` so a structural lint
+    failure skips the expensive podman build + pytest run early (#293)."""
+    jobs = _load_workflow(WORKFLOW)["jobs"]
+    assert jobs["unit-tests"].get("needs") == "lint", (
+        "unit-tests job in _required.yml must depend on lint so malformed "
+        "YAML fails fast instead of burning a 30-minute runner slot"
+    )
+
+
 def test_required_workflows_keep_pr_triggers_and_skip_merge_group() -> None:
     for path in REQUIRED_WORKFLOWS:
         triggers = _load_workflow(path)["on"]
