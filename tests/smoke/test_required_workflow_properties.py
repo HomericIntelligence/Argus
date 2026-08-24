@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import yaml
@@ -55,6 +56,62 @@ def test_unit_tests_job_invokes_pytest() -> None:
     assert "pytest" in content, (
         "unit-tests job in _required.yml does not invoke pytest — "
         "test regressions will reach main undetected"
+    )
+
+
+def test_integration_tests_job_validates_images() -> None:
+    """The integration-tests job must still run docker image validation.
+
+    Guards the full validation chain (workflow -> justfile -> runner script
+    -> validator) so the docker image format check cannot be silently
+    hollowed out at any link.
+    """
+    content = WORKFLOW.read_text()
+    job_block_re = re.compile(
+        r"^  integration-tests:.*?(?=^  [a-z][a-z0-9-]*:|\Z)",
+        re.DOTALL | re.MULTILINE,
+    )
+    match = job_block_re.search(content)
+    assert match, (
+        "integration-tests job not found in _required.yml — "
+        "the required check was removed or renamed; restore it or update "
+        "this smoke test to match the new job name"
+    )
+    assert "just ci-integration-tests" in match.group(0), (
+        "integration-tests job in _required.yml no longer invokes "
+        "`just ci-integration-tests` — the docker image validation entry "
+        "point was removed; restore the containerized check step or update "
+        "this smoke test if validation moved"
+    )
+
+    justfile = (ROOT / "justfile").read_text()
+    assert "ci-integration-tests:" in justfile, (
+        "justfile no longer defines the ci-integration-tests recipe — "
+        "the workflow's image validation step would fail or no-op; "
+        "restore the recipe or update this smoke test"
+    )
+
+    runner = (ROOT / "scripts" / "run_ci_local.sh").read_text()
+    assert "scripts/validate_compose_images.py" in runner, (
+        "run_ci_local.sh no longer runs scripts/validate_compose_images.py "
+        "for integration-tests — docker image name formats go unvalidated; "
+        "restore the invocation or update this smoke test"
+    )
+
+    validator = (ROOT / "scripts" / "validate_compose_images.py").read_text()
+    required_markers = [
+        "valid_pattern",
+        "INVALID image reference format",
+        "--include=docker-compose*.yml",
+        "--include=docker-compose*.yaml",
+    ]
+    missing = [marker for marker in required_markers if marker not in validator]
+    assert not missing, (
+        f"validate_compose_images.py is missing docker image validation "
+        f"markers: {missing}. The validation logic was hollowed out — "
+        f"restore the valid_pattern regex and the grep over "
+        f"docker-compose image: lines, or update this smoke test if the "
+        f"validation moved."
     )
 
 
