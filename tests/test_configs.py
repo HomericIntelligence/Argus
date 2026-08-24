@@ -101,48 +101,41 @@ class TestPromtailConfig(unittest.TestCase):
     def test_scrape_configs_is_list(self):
         assert isinstance(self.config["scrape_configs"], list)
 
-    def test_syslog_job_host_label_uses_env_var(self):
-        syslog_job = next(
-            (j for j in self.config["scrape_configs"] if j.get("job_name") == "syslog"),
-            None,
-        )
-        assert syslog_job is not None, "syslog scrape job not found"
-        labels = syslog_job["static_configs"][0]["labels"]
-        assert "host" in labels, "syslog job missing 'host' label"
-        assert labels["host"].startswith("${"), (
-            "host label must use env var substitution (${HOSTNAME:-...}), "
-            f"got hardcoded value: {labels['host']!r}"
-        )
-
-    def test_syslog_job_host_label_has_fallback(self):
-        syslog_job = next(
-            (j for j in self.config["scrape_configs"] if j.get("job_name") == "syslog"),
-            None,
-        )
-        assert syslog_job is not None
-        host_val = syslog_job["static_configs"][0]["labels"]["host"]
-        assert ":-" in host_val, (
-            "host label env var should have a fallback default (e.g. ${HOSTNAME:-hermes}), "
-            f"got: {host_val!r}"
-        )
-
-    def test_syslog_host_label_is_not_hardcoded(self):
-        """host label must use env var substitution, not a hardcoded hostname."""
-        syslog_job = next(
-            (j for j in self.config["scrape_configs"] if j.get("job_name") == "syslog"),
-            None,
-        )
-        assert syslog_job is not None, "syslog scrape job not found"
-        labels = syslog_job["static_configs"][0]["labels"]
-        host_val = labels.get("host", "")
-        assert host_val.startswith("${"), (
-            f"host label must use env var substitution, got hardcoded: {host_val!r}"
-        )
-
     def test_syslog_host_label_uses_env_var(self):
         """host label must reference HOSTNAME via env var expansion syntax."""
         raw = (CONFIGS_DIR / "promtail.yml").read_text()
         assert "HOSTNAME" in raw, "host label must reference ${HOSTNAME} for portability"
+
+    def test_all_jobs_have_env_var_host_label(self):
+        """Issue #254: every scrape job must carry a `host` label using env
+        var substitution (${PROMTAIL_HOST_LABEL:-${HOSTNAME}}) so Loki
+        streams are filterable by host wherever the stack is deployed.
+        Adding a new scrape job without a host label breaks consistent
+        Loki filtering — extend HOST_LABELED_JOBS below.
+        """
+        HOST_LABELED_JOBS = {"syslog", "hermes", "nats"}
+
+        jobs_by_name = {
+            j["job_name"]: j for j in self.config["scrape_configs"]
+        }
+        # The audit set must cover every configured job — a new job added
+        # to promtail.yml without updating this set fails loudly.
+        assert set(jobs_by_name) == HOST_LABELED_JOBS, (
+            f"scrape jobs {set(jobs_by_name)} != audited set {HOST_LABELED_JOBS}; "
+            "update HOST_LABELED_JOBS and give the new job a host label"
+        )
+        for job_name in HOST_LABELED_JOBS:
+            labels = jobs_by_name[job_name]["static_configs"][0]["labels"]
+            assert "host" in labels, f"{job_name!r} job missing 'host' label"
+            host_val = labels["host"]
+            assert host_val.startswith("${"), (
+                f"{job_name!r} host label must use env var substitution, "
+                f"got hardcoded: {host_val!r}"
+            )
+            assert ":-" in host_val, (
+                f"{job_name!r} host label must have a fallback "
+                f"(${{PROMTAIL_HOST_LABEL:-${{HOSTNAME}}}}), got: {host_val!r}"
+            )
 
     def test_redaction_enabled_jobs_have_secret_patterns(self):
         """All jobs that read host/app logs containing user-supplied data must
