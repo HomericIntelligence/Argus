@@ -451,5 +451,30 @@ class TestDockerComposePorts(unittest.TestCase):
                     )
 
 
+class TestComposePromtailHostname(unittest.TestCase):
+    """Regression guard for issue #352 (follow-up to #132).
+
+    Promtail must declare a stable ``hostname:`` so Loki labels logs with a
+    human-readable host instead of the container's ephemeral runtime ID
+    (see AGENTS.md "Operator Notes").
+    """
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.promtail = self.compose["services"]["promtail"]
+
+    def test_promtail_hostname_key_present(self) -> None:
+        assert "hostname" in self.promtail, (
+            "promtail service must declare a 'hostname:' key "
+            "(see AGENTS.md Operator Notes; issue #352)"
+        )
+
+    def test_promtail_hostname_non_empty(self) -> None:
+        hostname = self.promtail.get("hostname")
+        assert hostname is not None and str(hostname).strip() != "", (
+            f"promtail 'hostname:' must be non-empty, got: {hostname!r}"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
