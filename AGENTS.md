@@ -177,9 +177,12 @@ new to the stack frequently trip on:
    the respective containers).
 6. **`just backup` / `just restore` need a running compose project.** The
    restore script calls `docker compose stop` to quiesce services before
-   replacing volume data; on a cold host with no containers, the stop is a
-   no-op and the script still runs, but operators should expect to bring
-   the stack up at least once before relying on restore.
+   replacing volume data; the backup script likewise stops prometheus and
+   loki for the duration of the snapshot and restarts them afterward
+   (brief scrape gap expected). On a cold host with no containers, the
+   stop is a no-op and the scripts still run, but operators should expect
+   to bring the stack up at least once before relying on backup or
+   restore.
 7. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
