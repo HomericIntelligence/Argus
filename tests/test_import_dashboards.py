@@ -2,10 +2,14 @@
 Tests for the import-dashboards.sh script and justfile credential handling.
 """
 import os
+import shutil
 import stat
 import subprocess
+import textwrap
 import unittest
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "import-dashboards.sh"
@@ -73,6 +77,80 @@ class TestJustfileCredentials(unittest.TestCase):
         assert "GRAFANA_AUTH" not in self._justfile_text(), (
             "GRAFANA_AUTH justfile variable should have been removed in #152"
         )
+
+
+# The tests below are module-level pytest functions (not unittest.TestCase
+# methods) because they need the `tmp_path` fixture, which pytest cannot
+# inject into unittest.TestCase subclasses.
+
+JUST_BIN = shutil.which("just")
+requires_just = pytest.mark.skipif(JUST_BIN is None, reason="`just` not installed")
+
+
+def _make_stub_workspace(tmp_path: Path) -> Path:
+    """Copy the real justfile into tmp_path and write a stub
+    scripts/import-dashboards.sh that records the GF_ADMIN_PASSWORD it received."""
+    (tmp_path / ".env").write_text("")  # satisfy `set dotenv-load`
+    (tmp_path / "justfile").write_text(JUSTFILE.read_text())
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    capture = tmp_path / "captured.txt"
+    stub = scripts_dir / "import-dashboards.sh"
+    stub.write_text(textwrap.dedent(f"""\
+        #!/usr/bin/env bash
+        set -eo pipefail
+        printf '%s' "${{GF_ADMIN_PASSWORD-<UNSET>}}" > {capture}
+        exit 0
+    """))
+    stub.chmod(0o755)
+    return capture
+
+
+def _run_just(tmp_path: Path, env: dict) -> None:
+    """Run `just import-dashboards` against the stub workspace in tmp_path."""
+    subprocess.run(
+        [
+            JUST_BIN,
+            "--justfile", str(tmp_path / "justfile"),
+            "--working-directory", str(tmp_path),
+            "import-dashboards",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@requires_just
+def test_just_propagates_gf_admin_password_to_script(tmp_path: Path) -> None:
+    """Setting GF_ADMIN_PASSWORD in the environment must reach the script."""
+    capture = _make_stub_workspace(tmp_path)
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ.get("HOME", str(tmp_path)),
+        "GF_ADMIN_PASSWORD": "testpass-317",
+    }
+    _run_just(tmp_path, env)
+    assert capture.read_text() == "testpass-317", (
+        "justfile recipe failed to propagate GF_ADMIN_PASSWORD to the script — "
+        "check `env_var_or_default('GF_ADMIN_PASSWORD', ...)` at justfile:21 "
+        "and the recipe body at justfile:183"
+    )
+
+
+@requires_just
+def test_just_falls_back_to_admin_when_env_unset(tmp_path: Path) -> None:
+    """When GF_ADMIN_PASSWORD is unset, the recipe must use the documented
+    fallback value 'admin' (justfile:21). Guards against accidental removal
+    of the fallback default."""
+    capture = _make_stub_workspace(tmp_path)
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ.get("HOME", str(tmp_path)),
+    }
+    _run_just(tmp_path, env)
+    assert capture.read_text() == "admin"
 
 
 if __name__ == "__main__":
