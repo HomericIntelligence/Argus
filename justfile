@@ -78,7 +78,7 @@ clean:
     {{compose_cmd}} down -v
 
 # Validate docker-compose config, YAML files, and required runtime files
-validate: check-env-example validate-promtail
+validate: check-env-example check-env-docs validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
@@ -92,6 +92,11 @@ validate: check-env-example validate-promtail
 # .env.example. Fails on undocumented drift (issue #215).
 check-env-example:
     @bash scripts/check-env-example.sh
+
+# Verify every .env.example variable is documented in AGENTS.md (both drift
+# directions). Fails on undocumented drift (issue #147 follow-up, #385).
+check-env-docs:
+    @bash scripts/check-env-docs.sh
 
 # Validate promtail config syntax via the official image's -check-syntax
 validate-promtail:
