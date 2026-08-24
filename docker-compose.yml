@@ -136,6 +136,7 @@ services:
   promtail:
     image: grafana/promtail:3.1.2
     container_name: ${PROMTAIL_CONTAINER_NAME:-argus-promtail}
+    hostname: ${PROMTAIL_HOSTNAME:-hermes}
     restart: unless-stopped
     user: "65534:65534"
     cap_drop: [ALL]
