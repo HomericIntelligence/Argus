@@ -261,6 +261,25 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Cache pixi environment
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/pixi
+          key: pixi-argus-${{ runner.os }}-${{ hashFiles('pixi.lock') }}
+          restore-keys: |
+            pixi-argus-${{ runner.os }}-
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347  # v0.10.1
+        with:
+          pixi-version: v0.70.2
+          cache: false
+      - name: Install lint environment
+        run: pixi install --environment lint
+      - name: Run pip-audit
+        # PYSEC-2026-3721 affects pip 26.1.x pinned in pixi.lock; fixed in pip 26.2.
+        # Remove this ignore once a dedicated dependency PR bumps pip >=26.2
+        # (pixi.toml [feature.lint.pypi-dependencies] + pixi.lock relock).
+        run: pixi run --environment lint pip-audit --ignore-vuln PYSEC-2026-3721
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
