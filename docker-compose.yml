@@ -153,6 +153,7 @@ services:
       - /tmp/hermes.log:/logs/hermes.log:ro
     environment:
       HOSTNAME: ${HOSTNAME}
+      PROMTAIL_HOST_LABEL: ${PROMTAIL_HOST_LABEL:-}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]

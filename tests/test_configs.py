@@ -290,6 +290,23 @@ class TestGrafanaDashboardsConfig(unittest.TestCase):
                 assert field in provider, f"Provider missing field '{field}': {provider}"
 
 
+class TestDockerComposePromtailEnv(unittest.TestCase):
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.env = self.compose["services"]["promtail"].get("environment", {})
+
+    def test_promtail_receives_hostname(self) -> None:
+        assert "HOSTNAME" in self.env, (
+            "promtail must receive HOSTNAME for host-label expansion"
+        )
+
+    def test_promtail_receives_host_label_override(self) -> None:
+        assert "PROMTAIL_HOST_LABEL" in self.env, (
+            "promtail must receive PROMTAIL_HOST_LABEL so the override branch "
+            "of ${PROMTAIL_HOST_LABEL:-${HOSTNAME}} is reachable"
+        )
+
+
 class TestDockerComposeNetworkIsolation(unittest.TestCase):
     """Verify that the argus-loki internal network is correctly configured.
 
