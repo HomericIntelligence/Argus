@@ -221,6 +221,44 @@ jobs:
         # container via scripts/run_ci_local.sh — see the justfile recipe.
         run: just ci-unit-tests  # invokes pytest via run_ci_local.sh unit-tests
 
+  pixi-matrix:
+    name: pixi-matrix (${{ matrix.platform }})
+    needs: lint
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: osx-arm64
+          - runner: windows-latest
+            platform: win-64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      # Cross-platform lock-file validation: exercises the osx-arm64 / win-64
+      # solves declared in pixi.toml before they reach main.
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347  # v0.10.1
+        with:
+          pixi-version: v0.70.2
+          cache: true
+      - name: Install locked environment (exercises ${{ matrix.platform }} solve)
+        run: pixi install --locked
+      # pytest itself IS available on win-64 (declared unconditionally in
+      # pixi.toml [dependencies] and solved into the win-64 lock); tests are
+      # skipped on Windows because parts of the unit suite depend on POSIX
+      # shell/bash scripts (e.g. tests/test_backup_restore.py,
+      # tests/test_htpasswd_security.py). osx-64 is omitted entirely
+      # (GitHub-hosted macOS runners are Apple-silicon from macos-14 onward).
+      - name: Run unit tests
+        if: matrix.runner == 'macos-14'
+        run: pixi run pytest tests/ -v
+
   integration-tests:
     name: integration-tests
     runs-on: ubuntu-24.04
