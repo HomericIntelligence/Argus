@@ -1,5 +1,7 @@
-# Pinned to stable 3.13-slim; see tests/test_dockerfile_constraints.py for guard
-FROM python:3.14-slim AS base
+# Base-image minor must stay within the CI validation set (.github/workflows/ci.yml
+# setup-python version) and the pixi dev/test env; enforced by
+# tests/test_dockerfile_constraints.py
+FROM python:3.13-slim AS base
 
 # Install no extra packages — exporter uses stdlib only
 WORKDIR /app
