@@ -15,7 +15,7 @@ concurrency:
 jobs:
   validate:
     name: Validate configs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -158,7 +158,7 @@ jobs:
 
   atlas-dashboard:
     name: Atlas dashboard (Go)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
