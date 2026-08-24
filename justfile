@@ -161,9 +161,9 @@ restore VOLUME FILE:
 
 # === Alertmanager ===
 
-# Reload Alertmanager configuration
+# Reload Alertmanager configuration (requires --web.enable-lifecycle on the service)
 reload-alertmanager:
-    curl -s -X POST http://localhost:9093/-/reload && echo "Alertmanager config reloaded."
+    curl -sf -X POST http://localhost:9093/-/reload && echo "Alertmanager config reloaded."
 
 # Check Alertmanager health and cluster status
 test-alertmanager:
