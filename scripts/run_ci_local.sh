@@ -146,6 +146,12 @@ run_lint() {
 
     log_step "lint — gosec (Go dashboard)"
     run_in_container NO_PIXI_READY "if [ -f dashboard/go.mod ]; then gosec ./dashboard/...; else echo '::notice::No dashboard/go.mod, skipping gosec'; fi"
+
+    log_step "lint — bash -n + shellcheck (tracked *.sh)"
+    # The checker binary is baked into the image (see ci/Containerfile); the
+    # gate logic lives in tests/test-shell-lint.sh so CI, local container runs
+    # and `just check-shell` all enforce exactly the same checks.
+    run_in_container NO_PIXI_READY "bash tests/test-shell-lint.sh"
 }
 
 run_pixi_check() {
