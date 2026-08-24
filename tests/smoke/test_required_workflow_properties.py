@@ -73,12 +73,29 @@ def test_required_workflows_keep_pr_triggers_and_skip_merge_group() -> None:
 
 
 def test_merge_group_runs_only_the_smoke_workflow() -> None:
-    """The merge queue must run exactly one fast smoke job."""
+    """The merge queue must run exactly one fast smoke job with real validation."""
     smoke = _load_workflow(SMOKE_WORKFLOW)
     assert smoke["on"] == {"merge_group": {"types": ["checks_requested"]}}
     assert list(smoke["jobs"]) == ["merge-queue-smoke"]
     assert smoke["jobs"]["merge-queue-smoke"]["name"] == "merge-queue-smoke"
     assert smoke["jobs"]["merge-queue-smoke"]["timeout-minutes"] == "5"
+
+    steps_text = "\n".join(
+        step.get("run", "")
+        for step in smoke["jobs"]["merge-queue-smoke"]["steps"]
+        if isinstance(step, dict)
+    )
+    # The smoke gate must perform substantive validation (mirroring the
+    # lint / schema-validation / symlink-check jobs), not act as a no-op.
+    assert "yamllint -c .yamllint.yaml ." in steps_text, (
+        "smoke job must run yamllint over the repository YAML files"
+    )
+    assert "check-jsonschema" in steps_text and "github-workflow" in steps_text, (
+        "smoke job must validate workflow YAML against the GitHub Actions schema"
+    )
+    assert "bash scripts/check-symlinks.sh" in steps_text, (
+        "smoke job must run the symlink check"
+    )
 
 
 def test_all_required_contexts_have_pr_supplying_jobs() -> None:

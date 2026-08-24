@@ -20,11 +20,14 @@ rulesets:
   `release`, and `build`.
 - `homeric-main-extras`: `Validate configs`.
 
-The `Required Checks` and `CI` workflows emit these contexts. Both workflows
-retain their existing `pull_request` and `push` behavior and also run for the
-`merge_group` event type `checks_requested`. GitHub evaluates required contexts
-on the synthetic merge-group SHA, so the queue cannot advance unless every
-supplying workflow runs and succeeds.
+The `Required Checks` and `CI` workflows emit these contexts on pull requests
+and pushes. Both workflows retain their existing `pull_request` and `push`
+behavior only — neither declares a `merge_group` trigger
+(`.github/workflows/_required.yml`, `.github/workflows/ci.yml`). The dedicated
+`.github/workflows/merge-queue-smoke.yml` is the sole `merge_group`
+(`checks_requested`) workflow in the repository: one job emitting exactly the
+`merge-queue-smoke` context, which is the only context GitHub evaluates on the
+synthetic merge-group SHA, so the queue cannot advance unless it succeeds.
 
 The dedicated repository ruleset `homeric-main-merge-queue` is the sole
 authority for Argus queue policy. It layers a `merge_queue` rule on top of the
@@ -72,8 +75,9 @@ Do not activate the queue until all of these gates are satisfied:
 
 1. The workflow and validation changes from Argus #550 are merged to `main`.
 2. An independent human has reviewed the `.github/workflows/` changes.
-3. Both workflows exist on `main` with the
-   `merge_group/checks_requested` trigger.
+3. `.github/workflows/merge-queue-smoke.yml` exists on `main` with the
+   `merge_group/checks_requested` trigger, and neither `_required.yml` nor
+   `ci.yml` declares a `merge_group` trigger.
 4. An operator is ready to observe a representative queued PR through the
    complete required-check cycle.
 5. The activation path from Odysseus PR #417 has been independently verified
@@ -322,9 +326,11 @@ diff -u /tmp/argus-required-contexts.expected.json \
 
 Only after every exact post-PUT assertion above succeeds may smoke testing
 begin. Then enqueue one representative smoke PR. Record the PR URL and the
-verbatim `merge_group` workflow/check results on Argus #550. Do not claim
-activation complete until all 14 required contexts report on the merge-group
-SHA and the PR merges by squash.
+verbatim check results on Argus #550. Do not claim activation complete until:
+
+- the PR-head run shows all 14 required contexts green;
+- the merge-group SHA reports the `merge-queue-smoke` context green; and
+- the PR merges by squash.
 
 ## Safe rollback
 
