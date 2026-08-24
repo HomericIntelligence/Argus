@@ -183,6 +183,9 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
+      # Enables POST /-/reload (and /-/quit). Safe because 9093 is bound
+      # loopback-only; required by `just reload-alertmanager` (#177).
+      - "--web.enable-lifecycle"
     networks:
       - argus
     depends_on:
