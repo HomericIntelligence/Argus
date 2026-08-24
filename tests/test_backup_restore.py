@@ -58,15 +58,21 @@ def test_backup_sh_defines_volume_to_service_map() -> None:
 
 
 def test_backup_sh_stops_services_before_tar() -> None:
-    """backup.sh must stop services via docker compose before the tar loop."""
+    """backup.sh must stop services via compose before the tar loop."""
     content = script_content("backup.sh")
     stop_idx = content.index("compose")
     assert "stop" in content[stop_idx:], (
         "backup.sh must call docker compose stop before snapshotting"
     )
-    assert content.index("docker compose") < content.index("tar czf"), (
+    assert content.index("${CONTAINER_CMD:-docker} compose") < content.index("tar czf"), (
         "the compose stop must appear before the tar snapshot in the script"
     )
+    # All compose invocations must be runtime-agnostic (no bare `docker compose`)
+    assert "${CONTAINER_CMD:-docker} compose" in content, (
+        "backup.sh must use ${CONTAINER_CMD:-docker} compose"
+    )
+    bare = re.search(r'(?<!\{CONTAINER_CMD:-)\bdocker\s+compose\b', content)
+    assert bare is None, "backup.sh still contains a hardcoded 'docker compose'"
 
 
 def test_backup_sh_has_exit_trap_restart() -> None:

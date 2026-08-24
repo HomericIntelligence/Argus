@@ -23,7 +23,7 @@ STOPPED_SERVICES=()
 cleanup() {
     for svc in "${STOPPED_SERVICES[@]}"; do
         echo "Restarting $svc..."
-        docker compose --project-directory "$PROJECT_DIR" start "$svc"
+        ${CONTAINER_CMD:-docker} compose --project-directory "$PROJECT_DIR" start "$svc"
     done
 }
 trap cleanup EXIT
@@ -33,7 +33,7 @@ for vol in prometheus_data loki_data; do
     svc="${VOLUME_TO_SERVICE[$vol]:-}"
     if [[ -n "$svc" ]]; then
         echo "Stopping $svc before snapshot..."
-        docker compose --project-directory "$PROJECT_DIR" stop "$svc"
+        ${CONTAINER_CMD:-docker} compose --project-directory "$PROJECT_DIR" stop "$svc"
         STOPPED_SERVICES+=("$svc")
     else
         echo "Warning: unknown volume '$vol' — skipping stop/start lifecycle." >&2
@@ -48,7 +48,7 @@ trap - EXIT
 
 for svc in "${STOPPED_SERVICES[@]}"; do
     echo "Restarting $svc..."
-    docker compose --project-directory "$PROJECT_DIR" start "$svc"
+    ${CONTAINER_CMD:-docker} compose --project-directory "$PROJECT_DIR" start "$svc"
 done
 STOPPED_SERVICES=()
 
