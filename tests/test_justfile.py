@@ -23,6 +23,37 @@ def _justfile_content() -> str:
 
 
 # ---------------------------------------------------------------------------
+# .env override wiring (issue #410)
+# ---------------------------------------------------------------------------
+
+
+def test_agamemnon_url_overridable() -> None:
+    """AGAMEMNON_URL must accept .env overrides via env_var_or_default."""
+    assert 'AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL"' in _justfile_content(), (
+        "AGAMEMNON_URL is hardcoded; must use env_var_or_default to honor .env"
+    )
+
+
+def test_grafana_port_overridable() -> None:
+    """GRAFANA_PORT must accept .env overrides via env_var_or_default."""
+    assert 'GRAFANA_PORT := env_var_or_default("GRAFANA_PORT"' in _justfile_content(), (
+        "GRAFANA_PORT is hardcoded; must use env_var_or_default to honor .env"
+    )
+
+
+def test_env_example_has_no_duplicate_keys() -> None:
+    """`.env.example` must define each key at most once."""
+    keys: list[str] = []
+    for line in (REPO_ROOT / ".env.example").read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        keys.append(line.split("=", 1)[0])
+    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    assert not duplicates, f"Duplicate keys in .env.example: {duplicates}"
+
+
+# ---------------------------------------------------------------------------
 # Hardcoded-credential guards (pre-existing coverage — do not drop)
 # ---------------------------------------------------------------------------
 
