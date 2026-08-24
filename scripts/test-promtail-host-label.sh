@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # test-promtail-host-label.sh — Smoke-test that Promtail expands
-# ${PROMTAIL_HOST_LABEL:-${HOSTNAME}} in its rendered config at runtime.
+# ${PROMTAIL_HOST_LABEL:-${HOSTNAME}} in-process at load time.
 #
-# Reads the rendered (post-expansion) config from Promtail's /config
-# endpoint via `compose exec` — the mounted file on disk never changes;
-# expansion happens in-process at load time.
+# Promtail does not expose its rendered config over HTTP, so verification
+# is done end-to-end: after (re)creating promtail, the script polls Loki's
+# label-values API (GET /loki/api/v1/label/host/values) through the
+# basic-auth-protected loki-proxy service (reached from inside the promtail
+# container over the `argus` network) until the expected `host` label value
+# appears among emitted streams.
+#
+# Loki credentials are read from LOKI_AUTH_USER / LOKI_AUTH_PASSWORD,
+# falling back to a silent parse of the repo-root .env.
 #
 # Usage: COMPOSE_CMD="docker compose" ./scripts/test-promtail-host-label.sh
 
@@ -18,9 +24,39 @@ ok()   { echo -e "${GREEN}[OK]${NC}    $*"; }
 fail() { echo -e "${RED}[FAIL]${NC}  $*"; exit 1; }
 info() { echo -e "${YELLOW}[INFO]${NC}  $*"; }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "${SCRIPT_DIR}")"
+
 # bash sets HOSTNAME but does not export it; compose interpolation of
 # `HOSTNAME: ${HOSTNAME}` only sees exported vars, so export explicitly.
 export HOSTNAME="${HOSTNAME:-$(hostname)}"
+
+load_loki_auth() {
+    if [[ -z "${LOKI_AUTH_USER:-}" && -r "${REPO_ROOT}/.env" ]]; then
+        # shellcheck disable=SC1091
+        LOKI_AUTH_USER="$(sed -n 's/^LOKI_AUTH_USER=//p' "${REPO_ROOT}/.env" | head -n1 | tr -d '\r')"
+    fi
+    if [[ -z "${LOKI_AUTH_PASSWORD:-}" && -r "${REPO_ROOT}/.env" ]]; then
+        # shellcheck disable=SC1091
+        LOKI_AUTH_PASSWORD="$(sed -n 's/^LOKI_AUTH_PASSWORD=//p' "${REPO_ROOT}/.env" | head -n1 | tr -d '\r')"
+    fi
+    : "${LOKI_AUTH_USER:?LOKI_AUTH_USER must be set in environment or .env}"
+    : "${LOKI_AUTH_PASSWORD:?LOKI_AUTH_PASSWORD must be set in environment or .env}"
+}
+
+host_label_values() {
+    local auth values=""
+    auth="$(printf '%s:%s' "${LOKI_AUTH_USER}" "${LOKI_AUTH_PASSWORD}" | base64 | tr -d '\n')"
+    # Transient exec/HTTP failures are tolerated here on purpose:
+    # assert_host_label polls repeatedly and fails definitively if the
+    # expected label value never shows up.
+    if ! values="$(${COMPOSE} exec -T promtail wget -qO- \
+            --header "Authorization: Basic ${auth}" \
+            "http://loki-proxy/loki/api/v1/label/host/values" 2>/dev/null)"; then
+        values=""
+    fi
+    printf '%s' "${values}"
+}
 
 wait_ready() {
     for _ in $(seq 1 30); do
@@ -32,28 +68,31 @@ wait_ready() {
     fail "promtail did not become ready within 60s"
 }
 
-rendered_config() {
-    ${COMPOSE} exec -T promtail wget -qO- http://localhost:9080/config
-}
-
 assert_host_label() {
-    local expected="$1" rendered
-    rendered="$(rendered_config)"
-    if echo "${rendered}" | grep -Eq "^[[:space:]]*host:[[:space:]]*${expected}[[:space:]]*$"; then
-        ok "rendered host label matches '${expected}'"
-    else
-        echo "${rendered}" | grep -E "^[[:space:]]*host:" || true
-        fail "rendered host label does not match '${expected}'"
+    local expected="$1" values
+    for _ in $(seq 1 30); do
+        values="$(host_label_values)"
+        if echo "${values}" | grep -Fq "\"${expected}\""; then
+            ok "Loki reports host label '${expected}'"
+            return 0
+        fi
+        sleep 2
+    done
+    info "host label values observed after 60s: ${values:-<none>}"
+    if echo "${values}" | grep -Fq '"PROMTAIL_HOST_LABEL"'; then
+        fail "unexpanded \${PROMTAIL_HOST_LABEL} placeholder observed as host label value"
     fi
-    if echo "${rendered}" | grep -q "PROMTAIL_HOST_LABEL"; then
-        fail "unexpanded \${PROMTAIL_HOST_LABEL} placeholder found in rendered config"
-    fi
+    fail "expected host label '${expected}' never appeared in Loki within 60s"
 }
 
 restore_promtail() {
     info "Restoring promtail container without override..."
-    ${COMPOSE} up -d --force-recreate promtail >/dev/null 2>&1 || true
+    if ! ${COMPOSE} up -d --force-recreate promtail >/dev/null 2>&1; then
+        info "Could not restore promtail (stack may be down); continuing."
+    fi
 }
+
+load_loki_auth
 
 info "Phase 1: HOSTNAME fallback (expect host=${HOSTNAME})"
 ${COMPOSE} up -d promtail
