@@ -7,12 +7,15 @@ connections are made during the test suite.
 from __future__ import annotations
 
 import contextlib
+import io
 import json
+import logging
 import sys
 import threading
 import unittest
 import urllib.error
 import urllib.request
+from datetime import datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -312,13 +315,16 @@ def _make_handler(path: str) -> tuple:
 class _SilentHandler(exporter_mod.Handler):
     """Test-only Handler subclass that suppresses access log output (#286).
 
-    The production Handler routes log_message to log.debug, which is silent at
-    the default INFO level but spams stderr if a developer flips LOG_LEVEL to
-    DEBUG while running the test suite. Override with a no-op so the in-process
-    fixture stays quiet regardless of the surrounding log config.
+    The production Handler routes log_message/log_request to log.debug, which
+    is silent at the default INFO level but spams stderr if a developer flips
+    LOG_LEVEL to DEBUG while running the test suite. Override with no-ops so
+    the in-process fixture stays quiet regardless of the surrounding log config.
     """
 
     def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
+        return
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:  # type: ignore[override]
         return
 
 
@@ -397,6 +403,135 @@ class TestHandler(unittest.TestCase):
                 handler.log_message("GET /metrics HTTP/1.1 200 -")
             finally:
                 exporter_mod.log.setLevel(original_level)
+
+
+# ---------------------------------------------------------------------------
+# Test _JsonFormatter (structured JSON logging, #268)
+# ---------------------------------------------------------------------------
+
+def _make_record(msg: str, *args: object, **kwargs) -> logging.LogRecord:
+    """Build a real LogRecord so formatter tests exercise the stdlib pipeline."""
+    return logging.LogRecord(
+        name="homeric-exporter",
+        level=logging.DEBUG,
+        pathname=__file__,
+        lineno=1,
+        msg=msg,
+        args=args or None,
+        exc_info=kwargs.pop("exc_info", None),
+    )
+
+
+class TestJsonFormatter(unittest.TestCase):
+    def setUp(self):
+        self.formatter = exporter_mod._JsonFormatter()
+
+    def test_output_is_parseable_json(self):
+        line = self.formatter.format(_make_record("hello %s", "world"))
+        parsed = json.loads(line)
+        self.assertEqual(parsed["message"], "hello world")
+
+    def test_required_fields_present(self):
+        parsed = json.loads(self.formatter.format(_make_record("boot")))
+        self.assertEqual(parsed["level"], "DEBUG")
+        self.assertEqual(parsed["logger"], "homeric-exporter")
+        self.assertIn("timestamp", parsed)
+
+    def test_timestamp_is_iso8601(self):
+        parsed = json.loads(self.formatter.format(_make_record("boot")))
+        # Raises ValueError if not valid ISO-8601
+        datetime.fromisoformat(parsed["timestamp"])
+
+    def test_lazy_args_resolved_in_message(self):
+        record = _make_record("fetch %s failed: %s", "http://x", "timeout")
+        parsed = json.loads(self.formatter.format(record))
+        self.assertEqual(parsed["message"], "fetch http://x failed: timeout")
+
+    def test_extra_flattened_as_top_level_key(self):
+        record = _make_record("request done")
+        record.__dict__["path"] = "/metrics"
+        parsed = json.loads(self.formatter.format(record))
+        self.assertEqual(parsed["path"], "/metrics")
+
+    def test_reserved_collision_gets_ctx_prefix(self):
+        record = _make_record("collision test")
+        record.__dict__["level"] = "BOGUS"
+        parsed = json.loads(self.formatter.format(record))
+        self.assertEqual(parsed["ctx_level"], "BOGUS")
+        self.assertEqual(parsed["level"], "DEBUG")
+
+    def test_exc_info_rendered_into_exception_field(self):
+        try:
+            raise ValueError("boom")
+        except ValueError:
+            record = _make_record("failed", exc_info=sys.exc_info())
+        parsed = json.loads(self.formatter.format(record))
+        self.assertIn("ValueError: boom", parsed["exception"])
+
+    def test_non_serializable_extra_survives_via_default_str(self):
+        record = _make_record("odd payload")
+        record.__dict__["blob"] = object()
+        parsed = json.loads(self.formatter.format(record))
+        self.assertIsInstance(parsed["blob"], str)
+
+    def test_unicode_message_preserved(self):
+        parsed = json.loads(
+            self.formatter.format(_make_record("café 路径"))
+        )
+        self.assertEqual(parsed["message"], "café 路径")
+
+    def test_pipeline_through_handler_handle(self):
+        """Formatter must compose correctly through the full handler pipeline."""
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(exporter_mod._JsonFormatter())
+        record = _make_record("GET %s", "/metrics")
+        record.__dict__["status_code"] = "200"
+        handler.handle(record)
+        handler.flush()
+        parsed = json.loads(stream.getvalue().splitlines()[-1])
+        self.assertEqual(parsed["status_code"], "200")
+
+
+class TestLogRequest(unittest.TestCase):
+    def test_log_request_emits_structured_extras(self):
+        handler, _ = _make_handler("/metrics")
+        with patch.object(exporter_mod.log, "debug") as mock_debug:
+            handler.log_request(200)
+        mock_debug.assert_called_once()
+        call = mock_debug.call_args
+        extra = call.kwargs["extra"]
+        self.assertEqual(extra["client_ip"], "127.0.0.1")
+        self.assertEqual(extra["method"], "")
+        self.assertEqual(extra["path"], "/metrics")
+        self.assertEqual(extra["status_code"], "200")
+        self.assertEqual(extra["response_bytes"], "-")
+
+    def test_log_request_parses_method_and_strips_query(self):
+        handler, _ = _make_handler("/metrics?collect=all")
+        handler.requestline = "GET /metrics?collect=all HTTP/1.1"
+        with patch.object(exporter_mod.log, "debug") as mock_debug:
+            handler.log_request(200, "1024")
+        extra = mock_debug.call_args.kwargs["extra"]
+        self.assertEqual(extra["method"], "GET")
+        self.assertEqual(extra["path"], "/metrics")
+        self.assertEqual(extra["response_bytes"], "1024")
+
+    def test_log_request_tolerates_missing_client_address(self):
+        handler, _ = _make_handler("/metrics")
+        del handler.client_address
+        with patch.object(exporter_mod.log, "debug") as mock_debug:
+            handler.log_request()
+        self.assertEqual(mock_debug.call_args.kwargs["extra"]["client_ip"], "-")
+
+    def test_log_request_silent_at_info_level(self):
+        handler, _ = _make_handler("/metrics")
+        original_level = exporter_mod.log.level
+        exporter_mod.log.setLevel(logging.INFO)
+        try:
+            handler.log_request(200)
+        finally:
+            exporter_mod.log.setLevel(original_level)
 
 
 # ---------------------------------------------------------------------------
