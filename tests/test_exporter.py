@@ -400,6 +400,91 @@ class TestHandler(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Test _METRIC_HELP constants contract
+# ---------------------------------------------------------------------------
+
+class TestMetricHelpCoverage(unittest.TestCase):
+    """_METRIC_HELP is the single importable source of truth for HELP strings (#420)."""
+
+    def _run_collect(self, **kwargs):
+        hc_patch, fetch_patch = _patch_collect(**kwargs)
+        with hc_patch, fetch_patch:
+            return exporter_mod.collect()
+
+    def test_every_value_is_non_empty_string(self):
+        """Every dict value must be a non-empty str so the dict is reusable as-is."""
+        for name, text in exporter_mod._METRIC_HELP.items():
+            self.assertIsInstance(text, str, f"{name} help is not a str")
+            self.assertTrue(text.strip(), f"{name} help string is empty")
+
+    def test_emitted_metrics_all_have_help_entries(self):
+        """Every metric emitted by collect() must have a key in _METRIC_HELP."""
+        output = self._run_collect(
+            nats_varz={
+                "connections": 1, "in_msgs": 1, "out_msgs": 1,
+                "in_bytes": 1, "out_bytes": 1, "slow_consumers": 0,
+            },
+            nats_jsz={"streams": 1, "consumers": 1, "messages": 10, "bytes": 1024},
+            nestor_stats={"active": 1, "completed": 5, "pending": 0},
+            agents_data={
+                "agents": [
+                    {"name": "a", "host": "h1", "program": "p", "status": "online"},
+                ]
+            },
+            tasks_data={"tasks": [{"status": "completed"}]},
+        )
+        emitted = {
+            line.split()[2] for line in output.splitlines()
+            if line.startswith("# TYPE ")
+        }
+        missing = emitted - set(exporter_mod._METRIC_HELP)
+        self.assertEqual(missing, set(),
+                         f"Metrics emitted without a _METRIC_HELP entry: {sorted(missing)}")
+
+    def test_help_lines_match_dict_text(self):
+        """Each # HELP line's text must equal the canonical _METRIC_HELP value."""
+        output = self._run_collect(
+            nats_varz={
+                "connections": 1, "in_msgs": 1, "out_msgs": 1,
+                "in_bytes": 1, "out_bytes": 1, "slow_consumers": 0,
+            },
+            nestor_stats={"active": 1, "completed": 5, "pending": 0},
+        )
+        for line in output.splitlines():
+            if line.startswith("# HELP "):
+                parts = line.split(None, 3)
+                name = parts[2]
+                self.assertIn(name, exporter_mod._METRIC_HELP)
+                self.assertEqual(parts[3], exporter_mod._METRIC_HELP[name],
+                                 f"# HELP text for '{name}' drifted from _METRIC_HELP")
+
+    def test_fully_populated_collect_emits_every_dict_key(self):
+        """With all upstreams returning data, every _METRIC_HELP key must be emitted."""
+        output = self._run_collect(
+            nats_varz={
+                "connections": 1, "in_msgs": 1, "out_msgs": 1,
+                "in_bytes": 1, "out_bytes": 1, "slow_consumers": 0,
+            },
+            nats_jsz={"streams": 1, "consumers": 1, "messages": 10, "bytes": 1024},
+            nestor_stats={"active": 1, "completed": 5, "pending": 0},
+            agents_data={
+                "agents": [
+                    {"name": "a", "host": "h1", "program": "p", "status": "online"},
+                    {"name": "b", "host": "h2", "program": "p", "status": "offline"},
+                ]
+            },
+            tasks_data={"tasks": [{"status": "completed"}, {"status": "failed"}]},
+        )
+        emitted = {
+            line.split()[2] for line in output.splitlines()
+            if line.startswith("# TYPE ")
+        }
+        missing = set(exporter_mod._METRIC_HELP) - emitted
+        self.assertEqual(missing, set(),
+                         f"_METRIC_HELP keys never emitted by collect(): {sorted(missing)}")
+
+
+# ---------------------------------------------------------------------------
 # Test collect() — # HELP line presence and ordering
 # ---------------------------------------------------------------------------
 

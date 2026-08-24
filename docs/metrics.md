@@ -20,7 +20,7 @@ renamed; do not reintroduce the suffix.
 | `hi_agents_offline` | — | Number of agents with any non-online status. |
 | `hi_agent_online` | `name`, `host`, `program` | `1` if this individual agent is online, else `0`. |
 | `hi_tasks_total` | — | Total number of tasks known to Agamemnon. |
-| `hi_tasks_by_status` | `status` | Task count partitioned by status label. |
+| `hi_tasks_by_status` | `status` | Task count grouped by status label. |
 | `hi_nestor_health` | — | `1` if `GET ${NESTOR_URL}/v1/health` returned 200, else `0`. |
 | `hi_nestor_research_active` | — | Active research jobs reported by Nestor `/v1/research/stats`. |
 | `hi_nestor_research_completed` | — | Completed research jobs reported by Nestor `/v1/research/stats`. |
@@ -41,7 +41,7 @@ NATS server restart, so these are gauges (no `_total` suffix).
 | `nats_slow_consumers` | Current slow-consumer connections. |
 | `nats_jetstream_streams` | Number of JetStream streams. |
 | `nats_jetstream_consumers` | Number of JetStream consumers. |
-| `nats_jetstream_messages` | Total messages stored across all JetStream streams. |
+| `nats_jetstream_messages` | Number of messages stored in JetStream. |
 | `nats_jetstream_bytes` | Total bytes stored across all JetStream streams. |
 
 ## Exporter self-metrics (`homeric_exporter_` prefix)
