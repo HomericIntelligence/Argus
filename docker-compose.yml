@@ -188,6 +188,39 @@ services:
     depends_on:
       - prometheus
 
+  # One-shot init container: chown the grafana_data named volume to 472:472
+  # before grafana starts (grafana runs as user "472:472" and cannot fix
+  # ownership itself on a root-owned volume). Docker named volumes are created
+  # root-owned by default and the local volume driver has no uid/gid option.
+  # Closes #332; follow-up to #127.
+  grafana-init:
+    image: alpine:3.20
+    container_name: argus-grafana-init
+    restart: "no"
+    # Runs as root by design — fixing ownership requires CAP_CHOWN over files
+    # owned by another UID. Everything else is dropped; no network; read-only
+    # rootfs; exits immediately after chown/chmod.
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    network_mode: none
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        chown -R 472:472 /var/lib/grafana
+        chmod 750 /var/lib/grafana
+
   grafana:
     image: grafana/grafana:11.2.2
     container_name: ${GRAFANA_CONTAINER_NAME:-argus-grafana}
@@ -234,8 +267,13 @@ services:
     networks:
       - argus
     depends_on:
-      - prometheus
-      - loki-proxy
+      prometheus:
+        condition: service_started
+      loki-proxy:
+        condition: service_started
+      grafana-init:
+        # Grafana must not touch the volume until ownership is fixed.
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
