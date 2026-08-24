@@ -1,7 +1,8 @@
 """
 Validate that all YAML config files parse correctly and have required top-level keys.
-Uses only stdlib: yaml, pathlib, unittest.
+Uses only stdlib: re, yaml, pathlib, unittest.
 """
+import re
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar
@@ -15,6 +16,69 @@ CONFIGS_DIR = REPO_ROOT / "configs"
 def load_yaml(path: Path) -> dict:
     with path.open() as f:
         return yaml.safe_load(f)
+
+
+_IPV4_PREFIX = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3}):")
+
+
+def _normalize_port(entry: Any) -> tuple[str, str | None, str, str]:
+    """Normalize a docker-compose port entry to (host_ip, published, target, protocol).
+
+    Compose spec: omitting host_ip (short- or long-form) binds to 0.0.0.0.
+    See https://github.com/compose-spec/compose-spec/blob/main/spec.md#ports.
+
+    Short-form parsing anchors on the optional leading IPv4 address, then
+    rsplits the remainder on its last ':'. This preserves shell-variable
+    substrings like '${VAR:-default}' that contain a ':' (used in the live
+    docker-compose.yml for Grafana and exporter ports).
+    """
+    if isinstance(entry, int) and not isinstance(entry, bool):
+        return ("0.0.0.0", None, str(entry), "tcp")
+
+    if isinstance(entry, dict):
+        host_ip = str(entry.get("host_ip", "0.0.0.0"))
+        published = entry.get("published")
+        target = str(entry.get("target", ""))
+        protocol = str(entry.get("protocol", "tcp"))
+        return (
+            host_ip,
+            None if published is None else str(published),
+            target,
+            protocol,
+        )
+
+    s = str(entry)
+    if "/" in s:
+        s, protocol = s.rsplit("/", 1)
+    else:
+        protocol = "tcp"
+
+    match = _IPV4_PREFIX.match(s)
+    if match:
+        host_ip = match.group(1)
+        s = s[match.end():]
+    else:
+        host_ip = "0.0.0.0"
+
+    if ":" in s:
+        published, target = s.rsplit(":", 1)
+        return (host_ip, published, target, protocol)
+    return (host_ip, None, s, protocol)
+
+
+def _assert_no_wildcards(services: dict[str, Any], allowed: set[str]) -> None:
+    """Fail if any service port entry resolves to a host_ip outside ``allowed``."""
+    for svc_name, svc in services.items():
+        for raw in svc.get("ports", []):
+            host_ip, published, target, protocol = _normalize_port(raw)
+            if host_ip not in allowed:
+                raise AssertionError(
+                    f"Service '{svc_name}' port entry {raw!r} normalizes to "
+                    f"host_ip={host_ip!r} (target={target}, proto={protocol}), "
+                    f"which is not in allowed set {allowed}. Use "
+                    f"'127.0.0.1:{published or target}:{target}' for short-form, "
+                    f"or add 'host_ip: 127.0.0.1' for long-form."
+                )
 
 
 class TestPrometheusConfig(unittest.TestCase):
@@ -426,29 +490,85 @@ class TestDockerComposePorts(unittest.TestCase):
         )
 
     def test_no_wildcard_port_bindings(self) -> None:
-        services = self.compose.get("services", {})
-        for svc_name, svc in services.items():
-            for port_entry in svc.get("ports", []):
-                port_str = str(port_entry)
-                parts = port_str.split(":")
-                if len(parts) == 1:
-                    self.fail(
-                        f"Service '{svc_name}' has bare port binding '{port_str}' "
-                        f"(implicit 0.0.0.0). Use '127.0.0.1:{port_str}:{port_str}' instead."
-                    )
-                elif len(parts) == 2:
-                    self.fail(
-                        f"Service '{svc_name}' binds port '{port_str}' on 0.0.0.0. "
-                        f"Use '127.0.0.1:{parts[0]}:{parts[1]}' instead."
-                    )
-                else:
-                    bind_ip = parts[0]
-                    self.assertIn(
-                        bind_ip,
-                        self.ALLOWED_BINDINGS,
-                        f"Service '{svc_name}' port '{port_str}' binds to '{bind_ip}', "
-                        f"not in allowed set {self.ALLOWED_BINDINGS}.",
-                    )
+        _assert_no_wildcards(self.compose.get("services", {}), self.ALLOWED_BINDINGS)
+
+    def test_wildcard_check_catches_longform_without_host_ip(self) -> None:
+        services: dict[str, Any] = {
+            "foo": {"ports": [{"target": 9090, "published": 9090}]}
+        }
+        with self.assertRaises(AssertionError):
+            _assert_no_wildcards(services, self.ALLOWED_BINDINGS)
+
+    def test_wildcard_check_accepts_longform_with_loopback_host_ip(self) -> None:
+        services: dict[str, Any] = {
+            "foo": {
+                "ports": [
+                    {"target": 9090, "published": 9090, "host_ip": "127.0.0.1"}
+                ]
+            }
+        }
+        _assert_no_wildcards(services, self.ALLOWED_BINDINGS)
+
+    def test_wildcard_check_catches_bare_int_port(self) -> None:
+        services: dict[str, Any] = {"foo": {"ports": [9090]}}
+        with self.assertRaises(AssertionError):
+            _assert_no_wildcards(services, self.ALLOWED_BINDINGS)
+
+
+class TestPortNormalization(unittest.TestCase):
+    """Table-driven tests for the docker-compose port-entry normalizer.
+
+    Issue #322: long-form (dict) port entries must resolve host_ip correctly
+    so a missing host_ip is treated as the Compose default (0.0.0.0).
+    """
+
+    def test_short_form_ipv4_published_target(self) -> None:
+        assert _normalize_port("127.0.0.1:9090:9090") == (
+            "127.0.0.1",
+            "9090",
+            "9090",
+            "tcp",
+        )
+
+    def test_short_form_shell_variable_grafana(self) -> None:
+        assert _normalize_port("127.0.0.1:${GRAFANA_PORT:-3001}:3000") == (
+            "127.0.0.1",
+            "${GRAFANA_PORT:-3001}",
+            "3000",
+            "tcp",
+        )
+
+    def test_short_form_shell_variable_exporter(self) -> None:
+        assert _normalize_port("127.0.0.1:${EXPORTER_PORT:-9100}:9100") == (
+            "127.0.0.1",
+            "${EXPORTER_PORT:-9100}",
+            "9100",
+            "tcp",
+        )
+
+    def test_short_form_without_host_ip(self) -> None:
+        assert _normalize_port("9090:9090") == ("0.0.0.0", "9090", "9090", "tcp")
+
+    def test_short_form_single_part(self) -> None:
+        assert _normalize_port("9090") == ("0.0.0.0", None, "9090", "tcp")
+
+    def test_bare_int(self) -> None:
+        assert _normalize_port(9090) == ("0.0.0.0", None, "9090", "tcp")
+
+    def test_short_form_udp_protocol(self) -> None:
+        assert _normalize_port("9090:9090/udp") == ("0.0.0.0", "9090", "9090", "udp")
+
+    def test_long_form_with_loopback_host_ip(self) -> None:
+        entry = {"target": 9090, "published": 9090, "host_ip": "127.0.0.1"}
+        assert _normalize_port(entry) == ("127.0.0.1", "9090", "9090", "tcp")
+
+    def test_long_form_without_host_ip_defaults_to_wildcard(self) -> None:
+        entry = {"target": 9090, "published": 9090}
+        assert _normalize_port(entry) == ("0.0.0.0", "9090", "9090", "tcp")
+
+    def test_long_form_udp_protocol(self) -> None:
+        entry = {"target": 9090, "published": 9090, "protocol": "udp"}
+        assert _normalize_port(entry) == ("0.0.0.0", "9090", "9090", "udp")
 
 
 if __name__ == "__main__":
