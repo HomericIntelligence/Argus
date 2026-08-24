@@ -184,6 +184,14 @@ new to the stack frequently trip on:
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.
+8. **Grafana login lockout is fixed at 5 attempts / 5 minutes.** Five failed
+   logins within a 5-minute window lock the account for the rest of that
+   window; the threshold and window are hardcoded in Grafana OSS and cannot
+   be tuned via env var (`GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION`
+   must stay `"false"` to keep protection on). Sessions expire after 8h
+   absolute / 30m idle, and self-signup/org creation are disabled — all
+   pinned in `docker-compose.yml`. Fine-grained RBAC remains off because it
+   requires Grafana Enterprise; revisit if multi-user access is introduced.
 
 ## Metric Catalog
 

@@ -212,6 +212,24 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # --- Auth hardening (issue #200 / closes #13) ------------------------
+      # Brute-force lockout: Grafana OSS hardcodes 5 failed logins within a
+      # 5-minute window; this key must stay "false" (double negative =
+      # protection enabled). The threshold and window are NOT tunable in OSS.
+      GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION: "false"
+      # Session lifetimes ([auth] keys verified against
+      # grafana/grafana@v11.2.2/conf/defaults.ini). Absolute cap 8h; idle
+      # sessions expire after 30m.
+      GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION: "8h"
+      GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION: "30m"
+      # Registration surface reduction: no self-signup, no org creation by
+      # non-admin users (single-admin deployment).
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      # RBAC decision: Grafana fine-grained RBAC is Enterprise-only; OSS 11.2
+      # offers org/basic roles only. This deployment is single-admin and
+      # loopback-bound, so RBAC stays off. Revisit if multi-user access is
+      # introduced.
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
