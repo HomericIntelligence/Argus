@@ -336,6 +336,8 @@ services:
     image: python:3.11.10-slim
     container_name: argus-debug-shell
     profiles: [dev]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     command: sleep infinity
     networks:
       - argus
