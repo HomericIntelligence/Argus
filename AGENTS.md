@@ -184,6 +184,13 @@ new to the stack frequently trip on:
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.
+8. **`grafana_data` volume ownership is fixed by the `grafana-init` one-shot
+   container** (issue #332). Docker creates named volumes root-owned, but
+   grafana runs as UID 472 and cannot fix ownership itself. On every
+   `just start` / `docker compose up`, `grafana-init` recursively chowns the
+   volume to `472:472` before grafana starts (gated via
+   `depends_on: service_completed_successfully`) — operators never need to
+   hand-chown volumes.
 
 ## Metric Catalog
 
