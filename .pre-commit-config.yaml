@@ -63,6 +63,16 @@ repos:
         language: system
         files: ^(docker-compose\.ya?ml|\.env\.example|scripts/check-env-example\.sh)$
         pass_filenames: false
+      - id: check-port-bindings
+        name: "assert docker-compose ports are loopback-only (#327)"
+        description: >
+          Static pytest assertion that every host port binding in
+          docker-compose.yml targets 127.0.0.1/::1 so the class of exposure
+          fixed in #126 cannot silently recur.
+        entry: pixi run pytest tests/test_port_bindings.py -q --no-cov
+        language: system
+        files: ^(docker-compose\.ya?ml|tests/test_port_bindings\.py|scripts/check-ports\.sh)$
+        pass_filenames: false
       - id: require-signed-commits
         name: "require gpg/ssh-signed commits on push"
         description: >
