@@ -184,9 +184,9 @@ import-dashboards:
 
 # === Versioning ===
 
-# Bump version and promote CHANGELOG (patch|minor|major)
-bump TYPE:
-    bash scripts/bump-version.sh {{TYPE}}
+# Bump version and promote CHANGELOG (patch|minor|major) [--allow-empty]
+bump *ARGS:
+    bash scripts/bump-version.sh {{ARGS}}
 
 # Preview CHANGELOG entries since last tag without committing
 generate-changelog:
