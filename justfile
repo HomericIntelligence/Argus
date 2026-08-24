@@ -37,7 +37,7 @@ gen-certs:
 setup:
     @./scripts/setup.sh
 
-# Generate configs/nginx/htpasswd using bcrypt; set LOKI_PASSWORD env var or be prompted
+# Generate or rotate configs/nginx/htpasswd using bcrypt; set LOKI_PASSWORD env var or be prompted
 gen-htpasswd:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -47,6 +47,9 @@ gen-htpasswd:
     fi
     docker run --rm httpd:2.4-alpine htpasswd -nbB loki "$LOKI_PASSWORD" > configs/nginx/htpasswd
     echo "configs/nginx/htpasswd written (bcrypt). Keep this file out of version control."
+
+# Credential rotation entry point — discoverable via `just --list` (issue #227)
+alias rotate-htpasswd := gen-htpasswd
 
 # Start all observability services
 start: gen-htpasswd
