@@ -5,9 +5,8 @@
 # docker-compose seeing the same `.env`.
 #
 # Required env vars (set in `.env`; see `.env.example` for the canonical list):
-#   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
-#                       only so `just --list` works without `.env`; production
-#                       deployments MUST override this.
+#   GF_ADMIN_PASSWORD   Grafana admin password. Required — recipes fail fast
+#                       when it is unset (no silent fallback).
 set dotenv-load
 
 # === Variables ===
@@ -18,7 +17,7 @@ container_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "pod
 AGAMEMNON_URL := "http://172.20.0.1:8080"
 GRAFANA_PORT := "3001"
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
-GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
+GF_ADMIN_PASSWORD := env_var("GF_ADMIN_PASSWORD")
 
 # === Default ===
 
