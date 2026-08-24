@@ -230,6 +230,13 @@ All metrics include `# HELP` and `# TYPE` lines.
   backed by Prometheus.
 - **loki-explorer.json** (`uid: loki-explorer`): Syslog stream (`{job="syslog"}`),
   NATS log stream (`{job="nats"}`). Log panels backed by Loki.
+- **alertmanager.json** (`uid: alertmanager`): Alertmanager notification pipeline —
+  active firing/suppressed alerts, silences, notification rate, failures, and
+  p95 latency by integration. Stat and timeseries panels backed by Prometheus.
+- **jetstream-events.json** (`uid: jetstream-events`): JetStream consumer event
+  rates by subject prefix (agent/task), mean task completion latency, task
+  event rate by type and status, consumer connected state, and lag proxy
+  (consumer last sequence). Backed by the JetStream consumer metrics.
 
 ## Repository Structure
 

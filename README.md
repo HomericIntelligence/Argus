@@ -81,6 +81,11 @@ Key variables:
   Message rate, JetStream storage, subject counts
 - **Task Throughput** (`task-throughput.json`, uid: `task-throughput`):
   Tasks created/completed/failed per hour, dispatch latency
+- **Alertmanager Notification Pipeline** (`alertmanager.json`, uid: `alertmanager`):
+  Active firing/suppressed alerts, silences, notification rate, failures,
+  and p95 latency by integration
+- **JetStream Events** (`jetstream-events.json`, uid: `jetstream-events`):
+  Agent/task event rates, mean task completion latency, consumer status and lag
 - **Argus Stack Health** (`argus-health.json`, uid: `argus-health`):
   Prometheus scrape-target count (`up`), Homeric Exporter health, total targets.
   Stat panels backed by Prometheus.
