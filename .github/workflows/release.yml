@@ -73,18 +73,21 @@ jobs:
             sha256sum "argus-exporter-$TAG.tar.gz" > "argus-exporter-$TAG.tar.gz.sha256"
           )
 
+      # Assets are passed positionally to `gh release create` so a single
+      # call both creates the release and attaches the artifacts — there is
+      # no window where the release exists without its assets, and a
+      # successful step means the release is complete (no partial state on
+      # transient failure).
       - name: Create GitHub Release & upload artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" \
-            --generate-notes \
-            --title "Release $TAG"
-          gh release upload "$TAG" \
             "dist/argus-exporter-$TAG.tar.gz" \
             "dist/argus-exporter-$TAG.tar.gz.sha256" \
-            --clobber
+            --generate-notes \
+            --title "Release $TAG"
 
   publish-atlas-image:
     name: Build & push Atlas image to GHCR
