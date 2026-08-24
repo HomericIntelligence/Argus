@@ -425,6 +425,44 @@ class TestDockerComposePorts(unittest.TestCase):
             f"GF_AUTH_ANONYMOUS_ENABLED must be 'false', got: {env.get('GF_AUTH_ANONYMOUS_ENABLED')}"
         )
 
+    def test_grafana_brute_force_protection_enabled(self) -> None:
+        # Double negative: the key disables protection, so "false" means the
+        # built-in lockout (5 failed logins / 5-minute window, hardcoded in
+        # Grafana OSS) is active.
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION") == "false", (
+            "GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION must be 'false' "
+            "(brute-force lockout enabled), got: "
+            f"{env.get('GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION')}"
+        )
+
+    def test_grafana_session_lifetime_set(self) -> None:
+        # Both keys are valid [auth] settings in grafana/grafana@v11.2.2.
+        env = self.services["grafana"].get("environment", {})
+        max_lifetime = env.get("GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION")
+        inactive_lifetime = env.get("GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION")
+        assert max_lifetime, (
+            "GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION must be set (absolute "
+            f"session cap), got: {max_lifetime!r}"
+        )
+        assert inactive_lifetime, (
+            "GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION must be set "
+            f"(idle session timeout), got: {inactive_lifetime!r}"
+        )
+
+    def test_grafana_signup_disabled(self) -> None:
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_USERS_ALLOW_SIGN_UP") == "false", (
+            f"GF_USERS_ALLOW_SIGN_UP must be 'false', got: {env.get('GF_USERS_ALLOW_SIGN_UP')}"
+        )
+
+    def test_grafana_org_create_disabled(self) -> None:
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_USERS_ALLOW_ORG_CREATE") == "false", (
+            f"GF_USERS_ALLOW_ORG_CREATE must be 'false', got: "
+            f"{env.get('GF_USERS_ALLOW_ORG_CREATE')}"
+        )
+
     def test_no_wildcard_port_bindings(self) -> None:
         services = self.compose.get("services", {})
         for svc_name, svc in services.items():
