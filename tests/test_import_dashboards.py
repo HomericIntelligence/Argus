@@ -38,14 +38,19 @@ class TestImportDashboardsScript(unittest.TestCase):
     def test_script_exits_with_useful_message_on_401(self) -> None:
         """Script must exit non-zero and surface HTTP error code on auth failure.
 
-        Verified by inspecting the script source: the curl invocation captures the HTTP
-        status code with -w "%{http_code}" and explicitly exits non-zero for any non-2xx
-        response.  We confirm this by grepping the script text rather than making a real
-        network call (which would require a running Grafana instance).
+        Since #321 Grafana has no host port, so the script runs the API call
+        inside the grafana container with busybox wget (-S) instead of host
+        curl. We confirm error handling by inspecting the script source rather
+        than making a real network call (which would require a running stack):
+        the wget response headers are parsed for an HTTP status code, and any
+        non-2xx (or unreachable API) exits non-zero via 'exit 1'.
         """
         source = SCRIPT.read_text()
-        assert "%{http_code}" in source, (
-            "import-dashboards.sh should capture HTTP status code with -w \"%{http_code}\""
+        assert "wget" in source, (
+            "import-dashboards.sh should call the Grafana API via in-container wget"
+        )
+        assert "-S" in source, (
+            "import-dashboards.sh should use wget -S to capture response headers"
         )
         assert "exit 1" in source, (
             "import-dashboards.sh should call 'exit 1' on HTTP error"

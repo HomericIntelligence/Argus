@@ -133,6 +133,30 @@ services:
           memory: 64m
           cpus: "0.10"
 
+  grafana-proxy:
+    image: nginx:1.27-alpine
+    container_name: argus-grafana-proxy
+    restart: unless-stopped
+    user: "101:101"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:80"
+    volumes:
+      # Loaded before default.conf (conf.d/*.conf includes alphabetically)
+      - ./configs/nginx/grafana-map.conf:/etc/nginx/conf.d/00-map.conf:ro
+      - ./configs/nginx/grafana.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./secrets/htpasswd-grafana:/etc/nginx/htpasswd:ro
+    networks:
+      - argus
+    depends_on:
+      - grafana
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.10"
+
   promtail:
     image: grafana/promtail:3.1.2
     container_name: ${PROMTAIL_CONTAINER_NAME:-argus-promtail}
@@ -200,8 +224,9 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
-    ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    # No host port since #321: all browser traffic goes through grafana-proxy.
+    expose:
+      - "3000"
     volumes:
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - ./configs/grafana:/etc/grafana/provisioning:ro
@@ -219,14 +244,16 @@ services:
       GF_SERVER_CERT_FILE: /etc/grafana/tls/grafana.crt
       GF_SERVER_CERT_KEY: /etc/grafana/tls/grafana.key
       # Pin Grafana's external URL so it ignores untrusted Host headers
-      # (host-header injection mitigation). Grafana is bound to
-      # 127.0.0.1:${GRAFANA_PORT:-3001} on the host and only reachable via
-      # local browser, SSH tunnel, or VPN — so the default root URL points
-      # at loopback. Override GF_SERVER_ROOT_URL in .env if you front
-      # Grafana with a reverse proxy on a different hostname.
-      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-https://localhost:${GRAFANA_PORT:-3001}/}
+      # (host-header injection mitigation). Since #321 Grafana has no host
+      # port; browsers reach it via the nginx basic-auth proxy on
+      # 127.0.0.1:${GRAFANA_PORT:-3001} (HTTP on loopback — the proxy hop is
+      # plain HTTP by design; the threat model here is unauthenticated
+      # access, not passive eavesdropping on loopback). Override
+      # GF_SERVER_ROOT_URL in .env if you front Grafana with a TLS-capable
+      # reverse proxy on a different hostname.
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://localhost:${GRAFANA_PORT:-3001}/}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -306,7 +333,11 @@ services:
       ATLAS_AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
       ATLAS_NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
       ATLAS_NATS_MON_URL: ${NATS_URL:-http://172.24.0.1:8222}
-      ATLAS_GRAFANA_URL: "http://argus-grafana:3000"
+      # Atlas is on the argus bridge and reaches Grafana directly over its
+      # internal HTTPS endpoint, bypassing grafana-proxy by design (both
+      # sit inside the trust boundary; the proxy adds no security for
+      # server-to-server traffic inside the stack).
+      ATLAS_GRAFANA_URL: "https://argus-grafana:3000"
       ATLAS_LOKI_URL: "http://argus-loki-proxy:80"
       ATLAS_PROMETHEUS_URL: "http://argus-prometheus:9090"
       # Atlas defaults to bearer auth and refuses to start without

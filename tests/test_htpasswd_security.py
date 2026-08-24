@@ -5,7 +5,6 @@ secrets/htpasswd must be generated at runtime from environment variables.
 import os
 import stat
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -72,6 +71,12 @@ class TestEnvExample(unittest.TestCase):
     def test_loki_auth_password_present(self) -> None:
         self.assertIn("LOKI_AUTH_PASSWORD=", self.content)
 
+    def test_grafana_proxy_user_present(self) -> None:
+        self.assertIn("GRAFANA_PROXY_USER=", self.content)
+
+    def test_grafana_proxy_password_present(self) -> None:
+        self.assertIn("GRAFANA_PROXY_PASSWORD=", self.content)
+
 
 class TestDockerCompose(unittest.TestCase):
     def setUp(self) -> None:
@@ -79,6 +84,13 @@ class TestDockerCompose(unittest.TestCase):
 
     def test_volume_mount_uses_secrets_dir(self) -> None:
         self.assertIn("./secrets/htpasswd:/etc/nginx/htpasswd:ro", self.content)
+
+    def test_grafana_proxy_volume_mount_uses_secrets_dir(self) -> None:
+        """grafana-proxy must mount secrets/htpasswd-grafana (issue #321)."""
+        self.assertIn(
+            "./secrets/htpasswd-grafana:/etc/nginx/htpasswd:ro",
+            self.content,
+        )
 
     def test_old_committed_path_not_referenced(self) -> None:
         self.assertNotIn("configs/nginx/htpasswd", self.content)
@@ -99,6 +111,19 @@ class TestJustfile(unittest.TestCase):
 
 
 class TestGenScript(unittest.TestCase):
+    @staticmethod
+    def _env(**overrides: str) -> dict[str, str]:
+        """Base env for gen-htpasswd.sh runs: all four required vars set."""
+        env = {
+            **os.environ,
+            "LOKI_AUTH_USER": "testuser",
+            "LOKI_AUTH_PASSWORD": "testpass123",
+            "GRAFANA_PROXY_USER": "grafana",
+            "GRAFANA_PROXY_PASSWORD": "grafanapass456",
+        }
+        env.update(overrides)
+        return env
+
     def test_script_exists(self) -> None:
         self.assertTrue(GEN_SCRIPT.exists(), "scripts/gen-htpasswd.sh must exist")
 
@@ -107,40 +132,28 @@ class TestGenScript(unittest.TestCase):
         self.assertTrue(mode & stat.S_IXUSR, "scripts/gen-htpasswd.sh must be executable")
 
     def test_script_generates_htpasswd(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            env = {
-                **os.environ,
-                "LOKI_AUTH_USER": "testuser",
-                "LOKI_AUTH_PASSWORD": "testpass123",
-            }
-            result = subprocess.run(
-                [str(GEN_SCRIPT)],
-                capture_output=True,
-                text=True,
-                check=False,
-                env=env,
-                cwd=tmpdir,
-            )
-            # Script uses REPO_ROOT derived from its own path, so output goes to
-            # the real secrets/ dir. Run it and check the output file.
-            secrets_htpasswd = REPO_ROOT / "secrets" / "htpasswd"
-            self.assertEqual(result.returncode, 0,
-                             f"gen-htpasswd.sh failed: {result.stderr}")
-            self.assertTrue(secrets_htpasswd.exists(),
-                            "secrets/htpasswd must be created by gen-htpasswd.sh")
-
-    def test_generated_htpasswd_format(self) -> None:
-        env = {
-            **os.environ,
-            "LOKI_AUTH_USER": "myuser",
-            "LOKI_AUTH_PASSWORD": "mypassword",
-        }
         result = subprocess.run(
             [str(GEN_SCRIPT)],
             capture_output=True,
             text=True,
             check=False,
-            env=env,
+            env=self._env(),
+        )
+        # Script uses REPO_ROOT derived from its own path, so output goes to
+        # the real secrets/ dir. Run it and check the output file.
+        secrets_htpasswd = REPO_ROOT / "secrets" / "htpasswd"
+        self.assertEqual(result.returncode, 0,
+                         f"gen-htpasswd.sh failed: {result.stderr}")
+        self.assertTrue(secrets_htpasswd.exists(),
+                        "secrets/htpasswd must be created by gen-htpasswd.sh")
+
+    def test_generated_htpasswd_format(self) -> None:
+        result = subprocess.run(
+            [str(GEN_SCRIPT)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=self._env(LOKI_AUTH_USER="myuser", LOKI_AUTH_PASSWORD="mypassword"),
         )
         self.assertEqual(result.returncode, 0,
                          f"gen-htpasswd.sh failed: {result.stderr}")
@@ -153,8 +166,11 @@ class TestGenScript(unittest.TestCase):
 
     def test_script_fails_without_user_var(self) -> None:
         env = {k: v for k, v in os.environ.items()
-               if k not in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD")}
+               if k not in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD",
+                            "GRAFANA_PROXY_USER", "GRAFANA_PROXY_PASSWORD")}
         env["LOKI_AUTH_PASSWORD"] = "somepass"
+        env["GRAFANA_PROXY_USER"] = "grafana"
+        env["GRAFANA_PROXY_PASSWORD"] = "somepass2"
         result = subprocess.run(
             [str(GEN_SCRIPT)],
             capture_output=True,
@@ -167,8 +183,11 @@ class TestGenScript(unittest.TestCase):
 
     def test_script_fails_without_password_var(self) -> None:
         env = {k: v for k, v in os.environ.items()
-               if k not in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD")}
+               if k not in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD",
+                            "GRAFANA_PROXY_USER", "GRAFANA_PROXY_PASSWORD")}
         env["LOKI_AUTH_USER"] = "loki"
+        env["GRAFANA_PROXY_USER"] = "grafana"
+        env["GRAFANA_PROXY_PASSWORD"] = "somepass"
         result = subprocess.run(
             [str(GEN_SCRIPT)],
             capture_output=True,
@@ -179,18 +198,68 @@ class TestGenScript(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0,
                             "Script must exit non-zero when LOKI_AUTH_PASSWORD is unset")
 
+    def test_script_fails_without_grafana_proxy_user_var(self) -> None:
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD",
+                            "GRAFANA_PROXY_USER", "GRAFANA_PROXY_PASSWORD")}
+        env["LOKI_AUTH_USER"] = "loki"
+        env["LOKI_AUTH_PASSWORD"] = "somepass"
+        env["GRAFANA_PROXY_PASSWORD"] = "somepass2"
+        result = subprocess.run(
+            [str(GEN_SCRIPT)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        self.assertNotEqual(result.returncode, 0,
+                            "Script must exit non-zero when GRAFANA_PROXY_USER is unset")
+
+    def test_script_fails_without_grafana_proxy_password_var(self) -> None:
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD",
+                            "GRAFANA_PROXY_USER", "GRAFANA_PROXY_PASSWORD")}
+        env["LOKI_AUTH_USER"] = "loki"
+        env["LOKI_AUTH_PASSWORD"] = "somepass"
+        env["GRAFANA_PROXY_USER"] = "grafana"
+        result = subprocess.run(
+            [str(GEN_SCRIPT)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        self.assertNotEqual(result.returncode, 0,
+                            "Script must exit non-zero when GRAFANA_PROXY_PASSWORD is unset")
+
     def test_generated_file_permissions(self) -> None:
-        env = {
-            **os.environ,
-            "LOKI_AUTH_USER": "loki",
-            "LOKI_AUTH_PASSWORD": "securepassword",
-        }
-        subprocess.run([str(GEN_SCRIPT)], env=env, check=True,
+        subprocess.run([str(GEN_SCRIPT)], env=self._env(), check=True,
                        capture_output=True)
         secrets_htpasswd = REPO_ROOT / "secrets" / "htpasswd"
         mode = secrets_htpasswd.stat().st_mode & 0o777
         self.assertEqual(mode, 0o600,
                          f"secrets/htpasswd must be chmod 600, got {oct(mode)}")
+
+    def test_script_generates_grafana_htpasswd(self) -> None:
+        """Issue #321: the script must also emit secrets/htpasswd-grafana."""
+        result = subprocess.run(
+            [str(GEN_SCRIPT)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=self._env(),
+        )
+        self.assertEqual(result.returncode, 0,
+                         f"gen-htpasswd.sh failed: {result.stderr}")
+        secrets_grafana = REPO_ROOT / "secrets" / "htpasswd-grafana"
+        self.assertTrue(secrets_grafana.exists(),
+                        "secrets/htpasswd-grafana must be created by gen-htpasswd.sh")
+        mode = secrets_grafana.stat().st_mode & 0o777
+        self.assertEqual(mode, 0o600,
+                         f"secrets/htpasswd-grafana must be chmod 600, got {oct(mode)}")
+        content = secrets_grafana.read_text().strip()
+        self.assertTrue(content.startswith("grafana:$apr1$"),
+                        f"Generated grafana htpasswd has unexpected format: {content}")
 
 
 class TestGitleaksConfig(unittest.TestCase):

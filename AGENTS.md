@@ -44,6 +44,7 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 | Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
 | Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
 | loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
+| grafana-proxy   | nginx:1.27-alpine              | Basic-auth proxy in front of Grafana (issue #321)      |
 | Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
 | Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
 | argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
@@ -53,8 +54,8 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 The compose stack defines two Docker bridge networks:
 
 - **`argus`** — public-facing bridge that prometheus, alertmanager, loki-proxy,
-  promtail, grafana, and argus-exporter share. Anything that needs to talk to
-  other services in the stack lives here.
+  grafana-proxy, promtail, grafana, and argus-exporter share. Anything that needs
+  to talk to other services in the stack lives here.
 - **`loki-internal`** — `internal: true` bridge with no egress. Only `loki`,
   `loki-proxy`, and `promtail` are attached. Loki is intentionally not on
   `argus`, so the only path to reach it is via `loki-proxy` (which terminates
@@ -76,6 +77,7 @@ graph TD
     L[Loki :3100] -->|query| G
     PT[Promtail :9080] -->|push| L
     LP[loki-proxy :3101] -->|auth proxy| L
+    GP[grafana-proxy :3001] -->|auth proxy + TLS| G
     LOGS[/var/log + NATS logs] -->|tail| PT
 ```
 
@@ -87,6 +89,8 @@ to start without a `.env` file.
 | Variable            | Default in .env.example              | Required | Purpose                                            |
 |---------------------|--------------------------------------|----------|----------------------------------------------------|
 | `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password                             |
+| `GRAFANA_PROXY_USER` | `grafana`                           | **Yes**  | grafana-proxy Basic Auth user (issue #321)         |
+| `GRAFANA_PROXY_PASSWORD` | `changeme`                     | **Yes**  | grafana-proxy Basic Auth password (issue #321)     |
 | `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
 | `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
 | `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
@@ -159,22 +163,41 @@ new to the stack frequently trip on:
    bind-mounts the file. If it is missing, Docker creates an empty
    *directory* at that path, which silently breaks the mount. Run
    `touch /tmp/hermes.log` (or symlink to the real Hermes log) once per host.
-3. **Loki proxy htpasswd is generated automatically.** `just start` depends
-   on `just gen-htpasswd`, which writes `configs/nginx/htpasswd` from
-   `LOKI_AUTH_USER`/`LOKI_AUTH_PASSWORD` in `.env`. To rotate the password,
-   update `LOKI_AUTH_PASSWORD` in `.env`, then run `just gen-htpasswd && just restart`.
+3. **Proxy htpasswd files are generated automatically.** `just start` depends
+   on `just gen-htpasswd`, which writes `secrets/htpasswd` (Loki) and
+   `secrets/htpasswd-grafana` (Grafana, issue #321) from
+   `LOKI_AUTH_USER`/`LOKI_AUTH_PASSWORD` and
+   `GRAFANA_PROXY_USER`/`GRAFANA_PROXY_PASSWORD` in `.env`. To rotate either
+   password, update the value in `.env`, then run `just gen-htpasswd && just restart`.
 4. **All host ports are loopback-only.** Prometheus (`127.0.0.1:9090`),
-   Grafana (`127.0.0.1:3001`), Alertmanager (`127.0.0.1:9093`), and the
-   exporter (`127.0.0.1:9100`) only accept connections from the host. To
-   reach them from another machine use an SSH tunnel
+   the Grafana auth proxy (`127.0.0.1:3001`, plain HTTP), Alertmanager
+   (`127.0.0.1:9093`), and the exporter (`127.0.0.1:9100`) only accept
+   connections from the host. To reach them from another machine use an SSH tunnel
    (`ssh -L 3001:localhost:3001 host`) or a Tailscale-encrypted route — the
    stack intentionally does not expose unauthenticated metric/log endpoints
    to the LAN.
-5. **`just test-scrape` requires the stack to be running.** After the host
+5. **Grafana sits behind two credentials since #321.** Browsers hit the nginx
+   basic-auth proxy on `127.0.0.1:3001` first (`GRAFANA_PROXY_USER` /
+   `GRAFANA_PROXY_PASSWORD`, hard-failed by `just start` if left at an insecure
+   default), then Grafana's own login page (`GF_ADMIN_PASSWORD`). Rotate each
+   independently: proxy creds via `.env` + `just gen-htpasswd && just restart`;
+   admin password via `.env` + updating Grafana itself (or wiping
+   `grafana_data`). Grafana has **no host port**; `just import-dashboards`
+   therefore runs the API call inside the grafana container.
+6. **Grafana cookies are not `Secure`.** The proxy listener is plain HTTP on
+   loopback by design — the threat model is *unauthenticated access*, not
+   passive eavesdropping on loopback. Operators who want HTTPS to the browser
+   can override `GF_SERVER_ROOT_URL=https://...` and add a TLS listener to
+   `configs/nginx/grafana.conf` (future option).
+7. **Atlas bypasses grafana-proxy by design.** Atlas connects to Grafana
+   directly over its internal HTTPS endpoint (`https://argus-grafana:3000`);
+   both sit inside the trust boundary on the `argus` bridge, so routing
+   through the proxy would add no security.
+8. **`just test-scrape` requires the stack to be running.** After the host
    port for Prometheus was removed, `test-scrape` runs the query *inside*
-   the prometheus container via `docker exec`. Use `just debug-prometheus`
-   and `just debug-loki` for ad-hoc inspection (these wrappers exec into
-   the respective containers).
+   the prometheus container via `docker exec`. Use `just debug-prometheus`,
+   `just debug-loki`, and `just debug-grafana-proxy` for ad-hoc inspection
+   (these wrappers exec into the respective containers).
 6. **`just backup` / `just restore` need a running compose project.** The
    restore script calls `docker compose stop` to quiesce services before
    replacing volume data; on a cold host with no containers, the stop is a
@@ -241,7 +264,8 @@ Argus/
 │   ├── promtail.yml          # Log scraping config
 │   ├── nginx/
 │   │   ├── loki.conf         # Nginx proxy config for Loki auth
-│   │   └── htpasswd          # Basic auth credentials for Loki proxy
+│   │   ├── grafana.conf      # Nginx proxy config for Grafana auth (#321)
+│   │   └── grafana-map.conf  # WebSocket Connection-header map for grafana-proxy
 │   └── grafana/
 │       ├── datasources.yml   # Auto-provision Prometheus + Loki datasources
 │       └── dashboards.yml    # Auto-provision dashboards from dashboards/

@@ -19,6 +19,7 @@ HARDENED_SERVICES = {
     "prometheus": "65534:65534",
     "loki": "10001:10001",
     "loki-proxy": "101:101",
+    "grafana-proxy": "101:101",
     "promtail": "65534:65534",
     "grafana": "472:472",
     "argus-exporter": "1000:1000",
