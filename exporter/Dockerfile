@@ -1,5 +1,7 @@
-# Pinned to stable 3.13-slim; see tests/test_dockerfile_constraints.py for guard
-FROM python:3.14-slim AS base
+# Base image digest-pinned for reproducible builds (issue #313); the Python
+# version is constrained by tests/test_dockerfile_constraints.py. Rotate the
+# digest when picking up Debian security patches.
+FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS base
 
 # Install no extra packages — exporter uses stdlib only
 WORKDIR /app
