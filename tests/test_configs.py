@@ -451,5 +451,32 @@ class TestDockerComposePorts(unittest.TestCase):
                     )
 
 
+class TestDockerComposeGrafanaAdminUser(unittest.TestCase):
+    """Verify that the Grafana admin username is configurable via env var.
+
+    Issue #183: GF_SECURITY_ADMIN_USER must be wired to GRAFANA_ADMIN_USER
+    (default 'admin') instead of being left to Grafana's built-in default,
+    and import-dashboards.sh must not hardcode the 'admin' username.
+    """
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.grafana_env = self.compose["services"]["grafana"]["environment"]
+
+    def test_grafana_admin_user_is_configurable(self) -> None:
+        assert self.grafana_env.get("GF_SECURITY_ADMIN_USER") == "${GRAFANA_ADMIN_USER:-admin}", (
+            "GF_SECURITY_ADMIN_USER must be set from ${GRAFANA_ADMIN_USER:-admin}"
+        )
+
+    def test_import_script_does_not_hardcode_admin_user(self) -> None:
+        script = (REPO_ROOT / "scripts" / "import-dashboards.sh").read_text()
+        assert 'GRAFANA_AUTH="admin:' not in script, (
+            "import-dashboards.sh must not hardcode the 'admin' username in GRAFANA_AUTH"
+        )
+        assert 'GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"' in script, (
+            "import-dashboards.sh must default GRAFANA_ADMIN_USER from the environment"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

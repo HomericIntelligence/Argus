@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # import-dashboards.sh — Import all Grafana dashboard JSON files via the HTTP API.
-# Reads GF_ADMIN_PASSWORD from env (required; set GF_ADMIN_PASSWORD in .env).
+# Reads GRAFANA_ADMIN_USER and GF_ADMIN_PASSWORD from env
+# (defaults: admin / required password; set both in .env).
 set -euo pipefail
 
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
 GRAFANA_URL="http://localhost:${GRAFANA_PORT}"
+GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD:?ERROR: GF_ADMIN_PASSWORD is not set. Set GF_ADMIN_PASSWORD in .env}"
-GRAFANA_AUTH="admin:${GF_ADMIN_PASSWORD}"
+GRAFANA_AUTH="${GRAFANA_ADMIN_USER}:${GF_ADMIN_PASSWORD}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASHBOARDS_DIR="${SCRIPT_DIR}/../dashboards"
