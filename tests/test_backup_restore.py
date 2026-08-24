@@ -47,6 +47,47 @@ def test_backup_sh_syntax() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_backup_sh_defines_volume_to_service_map() -> None:
+    """backup.sh must map backed-up volumes to their owning services (no grafana_data)."""
+    content = script_content("backup.sh")
+    assert "[prometheus_data]=prometheus" in content
+    assert "[loki_data]=loki" in content
+    assert "grafana_data" not in content, (
+        "backup.sh does not back up grafana_data; a map entry would be dead"
+    )
+
+
+def test_backup_sh_stops_services_before_tar() -> None:
+    """backup.sh must stop services via compose before the tar loop."""
+    content = script_content("backup.sh")
+    stop_idx = content.index("compose")
+    assert "stop" in content[stop_idx:], (
+        "backup.sh must call docker compose stop before snapshotting"
+    )
+    assert content.index("${CONTAINER_CMD:-docker} compose") < content.index("tar czf"), (
+        "the compose stop must appear before the tar snapshot in the script"
+    )
+    # All compose invocations must be runtime-agnostic (no bare `docker compose`)
+    assert "${CONTAINER_CMD:-docker} compose" in content, (
+        "backup.sh must use ${CONTAINER_CMD:-docker} compose"
+    )
+    bare = re.search(r'(?<!\{CONTAINER_CMD:-)\bdocker\s+compose\b', content)
+    assert bare is None, "backup.sh still contains a hardcoded 'docker compose'"
+
+
+def test_backup_sh_has_exit_trap_restart() -> None:
+    """backup.sh must register an EXIT trap that restarts stopped services."""
+    content = script_content("backup.sh")
+    trap_lines = [ln for ln in content.splitlines() if "trap" in ln]
+    assert any("EXIT" in ln for ln in trap_lines), (
+        "backup.sh must trap EXIT to guarantee service restart on abort"
+    )
+    # The cleanup body must restart services.
+    assert re.search(r"cleanup\(\)[\s\S]*?compose[\s\S]*?start", content), (
+        "the EXIT-trap cleanup must restart the stopped services"
+    )
+
+
 # ---------------------------------------------------------------------------
 # restore.sh
 # ---------------------------------------------------------------------------
