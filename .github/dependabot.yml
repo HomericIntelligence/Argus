@@ -30,7 +30,9 @@ updates:
         update-types:
           - "major"
   - package-ecosystem: 'pip'
-    directory: '/'
+    # The only pip manifest in the repo lives in /jetstream-consumer; the root
+    # has no requirements*.txt and pyproject.toml has no [project] table.
+    directory: '/jetstream-consumer'
     schedule:
       interval: "monthly"
     cooldown:
