@@ -75,6 +75,71 @@ class TestLokiConfig(unittest.TestCase):
     def test_limits_config_has_retention_period(self):
         assert "retention_period" in self.config["limits_config"]
 
+    def test_auth_enabled_is_true(self):
+        """Issue #209: Loki must reject credential-less requests."""
+        assert self.config.get("auth_enabled") is True, (
+            "auth_enabled must be true — Loki is otherwise an open-access "
+            "log endpoint (audit finding #25)"
+        )
+
+
+class TestLokiDatasourceAuth(unittest.TestCase):
+    """Issue #209: Grafana's Loki datasource and Promtail's push client must
+    authenticate, with credentials sourced from the environment — never
+    hardcoded literals."""
+
+    def setUp(self):
+        self.datasources = load_yaml(CONFIGS_DIR / "grafana" / "datasources.yml")
+        self.promtail = load_yaml(CONFIGS_DIR / "promtail.yml")
+
+    def _loki_datasource(self) -> dict:
+        return next(ds for ds in self.datasources["datasources"] if ds["type"] == "loki")
+
+    def test_loki_datasource_basic_auth_enabled(self):
+        assert self._loki_datasource().get("basicAuth") is True
+
+    def test_loki_datasource_basic_auth_user_from_env(self):
+        user = self._loki_datasource().get("basicAuthUser", "")
+        assert user.startswith("$"), (
+            f"basicAuthUser must use env interpolation, got: {user!r}"
+        )
+
+    def test_loki_datasource_basic_auth_password_from_env(self):
+        password = self._loki_datasource().get("secureJsonData", {}).get(
+            "basicAuthPassword", ""
+        )
+        assert password.startswith("$"), (
+            f"secureJsonData.basicAuthPassword must use env interpolation, "
+            f"got: {password!r}"
+        )
+
+    def test_loki_datasource_url_not_direct_loki(self):
+        url = self._loki_datasource()["url"]
+        assert "loki-proxy" in url and "loki:3100" not in url, (
+            f"Loki datasource must go through loki-proxy, got: {url!r}"
+        )
+
+    def test_promtail_push_client_has_basic_auth(self):
+        client = self.promtail["clients"][0]
+        assert "basic_auth" in client, (
+            "promtail push client must send basic auth (issue #209)"
+        )
+        assert client["basic_auth"]["username"] == "${LOKI_AUTH_USER}"
+        assert client["basic_auth"]["password"] == "${LOKI_AUTH_PASSWORD}"
+
+    def test_compose_passes_loki_credentials_to_promtail_and_grafana(self):
+        """Structural guard against forgotten env wiring: config files
+        reference LOKI_AUTH_USER/LOKI_AUTH_PASSWORD, so both services that
+        consume them must actually receive the variables."""
+        compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        for service in ("promtail", "grafana"):
+            env = compose["services"][service].get("environment", {})
+            for var in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD"):
+                assert env.get(var) == f"${{{var}}}", (
+                    f"{service} environment must pass {var} through "
+                    f"(issue #209); got: {env.get(var)!r}"
+                )
+
 
 class TestPromtailConfig(unittest.TestCase):
     def setUp(self):

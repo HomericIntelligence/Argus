@@ -153,6 +153,9 @@ services:
       - /tmp/hermes.log:/logs/hermes.log:ro
     environment:
       HOSTNAME: ${HOSTNAME}
+      # Loki basic auth (issue #209); expanded in promtail.yml via -config.expand-env
+      LOKI_AUTH_USER: ${LOKI_AUTH_USER}
+      LOKI_AUTH_PASSWORD: ${LOKI_AUTH_PASSWORD}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
@@ -215,6 +218,9 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Loki datasource basic auth via $__env interpolation in datasources.yml (issue #209)
+      LOKI_AUTH_USER: ${LOKI_AUTH_USER}
+      LOKI_AUTH_PASSWORD: ${LOKI_AUTH_PASSWORD}
       GF_SERVER_PROTOCOL: https
       GF_SERVER_CERT_FILE: /etc/grafana/tls/grafana.crt
       GF_SERVER_CERT_KEY: /etc/grafana/tls/grafana.key

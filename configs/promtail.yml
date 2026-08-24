@@ -8,6 +8,11 @@ positions:
 
 clients:
   - url: https://loki:3100/loki/api/v1/push
+    # Credentials expanded at container start via -config.expand-env=true;
+    # never hardcode literals here (issue #209).
+    basic_auth:
+      username: ${LOKI_AUTH_USER}
+      password: ${LOKI_AUTH_PASSWORD}
     tls_config:
       ca_file: /etc/promtail/tls/ca.crt
 
