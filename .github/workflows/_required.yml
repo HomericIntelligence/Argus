@@ -249,9 +249,12 @@ jobs:
           cache: true
       - name: Install locked environment (exercises ${{ matrix.platform }} solve)
         run: pixi install --locked
-      # jq is absent from target.win-64.dependencies, so pytest is skipped on
-      # Windows; osx-64 is omitted entirely (GitHub-hosted macOS runners are
-      # Apple-silicon from macos-14 onward).
+      # pytest itself IS available on win-64 (declared unconditionally in
+      # pixi.toml [dependencies] and solved into the win-64 lock); tests are
+      # skipped on Windows because parts of the unit suite depend on POSIX
+      # shell/bash scripts (e.g. tests/test_backup_restore.py,
+      # tests/test_htpasswd_security.py). osx-64 is omitted entirely
+      # (GitHub-hosted macOS runners are Apple-silicon from macos-14 onward).
       - name: Run unit tests
         if: matrix.runner == 'macos-14'
         run: pixi run pytest tests/ -v
