@@ -37,23 +37,18 @@ gen-certs:
 setup:
     @./scripts/setup.sh
 
-# Generate configs/nginx/htpasswd using bcrypt; set LOKI_PASSWORD env var or be prompted
+# Generate secrets/htpasswd via the canonical generator (scripts/gen-htpasswd.sh).
+# The script reads LOKI_AUTH_USER / LOKI_AUTH_PASSWORD from .env and verifies
+# its own output (exists, non-empty, correct format) before returning.
 gen-htpasswd:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "${LOKI_PASSWORD:-}" ]; then
-        read -rsp "Loki proxy password: " LOKI_PASSWORD
-        echo
-    fi
-    docker run --rm httpd:2.4-alpine htpasswd -nbB loki "$LOKI_PASSWORD" > configs/nginx/htpasswd
-    echo "configs/nginx/htpasswd written (bcrypt). Keep this file out of version control."
+    ./scripts/gen-htpasswd.sh
 
 # Start all observability services
 start: gen-htpasswd
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ ! -f configs/nginx/htpasswd ]; then
-        echo "ERROR: configs/nginx/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+    if [ ! -s secrets/htpasswd ]; then
+        echo "ERROR: secrets/htpasswd is missing or empty. Run 'just gen-htpasswd' to create it." >&2
         exit 1
     fi
     ./scripts/check-grafana-password.sh
@@ -69,6 +64,12 @@ status:
 
 # Restart all services (stop then start)
 restart: gen-htpasswd
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -s secrets/htpasswd ]; then
+        echo "ERROR: secrets/htpasswd is missing or empty. Run 'just gen-htpasswd' to create it." >&2
+        exit 1
+    fi
     ./scripts/check-grafana-password.sh
     {{compose_cmd}} down
     {{compose_cmd}} up -d
@@ -82,8 +83,8 @@ validate: check-env-example validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
-    if [ ! -f configs/nginx/htpasswd ]; then
-        echo "ERROR: configs/nginx/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+    if [ ! -s secrets/htpasswd ]; then
+        echo "ERROR: secrets/htpasswd is missing or empty. Run 'just gen-htpasswd' to create it." >&2
         exit 1
     fi
     echo "Config is valid."

@@ -3,6 +3,8 @@ Tests for issue #130: htpasswd file must not be tracked in git;
 secrets/htpasswd must be generated at runtime from environment variables.
 """
 import os
+import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -96,6 +98,36 @@ class TestJustfile(unittest.TestCase):
 
     def test_restart_depends_on_gen_htpasswd(self) -> None:
         self.assertRegex(self.content, r"restart:\s+gen-htpasswd")
+
+    def test_gen_htpasswd_delegates_to_script(self) -> None:
+        self.assertIn("./scripts/gen-htpasswd.sh", self.content,
+                      "gen-htpasswd recipe must delegate to scripts/gen-htpasswd.sh")
+
+    def _recipe_block(self, recipe: str) -> str:
+        """Return the justfile text from a recipe header to the next header."""
+        match = re.search(rf"^{recipe}:.*?(?=^[a-z][a-z0-9-]*:|\Z)",
+                          self.content, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, f"recipe '{recipe}' not found in justfile")
+        return match.group(0)  # type: ignore[union-attr]
+
+    def test_start_gates_on_secrets_htpasswd(self) -> None:
+        block = self._recipe_block("start")
+        self.assertIn("[ ! -s secrets/htpasswd ]", block,
+                      "start must gate on secrets/htpasswd existing AND being non-empty")
+
+    def test_restart_gates_on_secrets_htpasswd(self) -> None:
+        block = self._recipe_block("restart")
+        self.assertIn("[ ! -s secrets/htpasswd ]", block,
+                      "restart must gate on secrets/htpasswd existing AND being non-empty")
+
+    def test_validate_gates_on_secrets_htpasswd(self) -> None:
+        block = self._recipe_block("validate")
+        self.assertIn("[ ! -s secrets/htpasswd ]", block,
+                      "validate must gate on secrets/htpasswd existing AND being non-empty")
+
+    def test_old_committed_path_not_in_justfile(self) -> None:
+        self.assertNotIn("configs/nginx/htpasswd", self.content,
+                         "justfile must not reference the dead configs/nginx/htpasswd path")
 
 
 class TestGenScript(unittest.TestCase):
@@ -191,6 +223,88 @@ class TestGenScript(unittest.TestCase):
         mode = secrets_htpasswd.stat().st_mode & 0o777
         self.assertEqual(mode, 0o600,
                          f"secrets/htpasswd must be chmod 600, got {oct(mode)}")
+
+
+class TestGenScriptFailureModes(unittest.TestCase):
+    """Issue #341: generation failures must exit non-zero and never leave an
+    empty or malformed credentials file behind."""
+
+    HTPASSWD = REPO_ROOT / "secrets" / "htpasswd"
+
+    def _sandbox_path(self, tmpdir: str, include_openssl: bool) -> str:
+        """Build a restricted PATH containing every binary gen-htpasswd.sh
+        needs except (optionally) openssl."""
+        sandbox = Path(tmpdir)
+        needed = ["bash", "dirname", "mkdir", "chmod", "head"]
+        if include_openssl:
+            needed.append("openssl")
+        for binary in needed:
+            resolved = shutil.which(binary)
+            self.assertIsNotNone(resolved, f"{binary} must exist on the real PATH")
+            os.symlink(resolved, sandbox / binary)
+        return str(sandbox)
+
+    def _snapshot_htpasswd(self) -> str | None:
+        if self.HTPASSWD.exists():
+            return self.HTPASSWD.read_text()
+        return None
+
+    def _run_with_sandbox(self, path: str) -> subprocess.CompletedProcess[str]:
+        env = {
+            **os.environ,
+            "LOKI_AUTH_USER": "testuser",
+            "LOKI_AUTH_PASSWORD": "testpass123",
+            "PATH": path,
+        }
+        return subprocess.run(
+            [str(GEN_SCRIPT)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+
+    @unittest.skipIf(shutil.which("bash") is None, "bash not available")
+    def test_fails_without_openssl_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            before = self._snapshot_htpasswd()
+            result = self._run_with_sandbox(self._sandbox_path(tmpdir, include_openssl=False))
+            self.assertNotEqual(result.returncode, 0,
+                                "Script must exit non-zero when openssl is unavailable")
+            self.assertIn("openssl", result.stderr,
+                          "Error message must name the missing binary")
+            after = self._snapshot_htpasswd()
+            self.assertEqual(before, after,
+                             "A failed generation must not create or alter secrets/htpasswd")
+
+    @unittest.skipIf(shutil.which("bash") is None, "bash not available")
+    def test_fails_when_openssl_stub_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sandbox = Path(self._sandbox_path(tmpdir, include_openssl=False))
+            stub = sandbox / "openssl"
+            stub.write_text("#!/bin/bash\necho 'garbage'\nexit 1\n")
+            stub.chmod(0o755)
+            before = self._snapshot_htpasswd()
+            result = self._run_with_sandbox(str(sandbox))
+            self.assertNotEqual(result.returncode, 0,
+                                "Script must exit non-zero when the hash step fails")
+            after = self._snapshot_htpasswd()
+            self.assertEqual(before, after,
+                             "A failed generation must not truncate secrets/htpasswd")
+
+    @unittest.skipIf(shutil.which("bash") is None, "bash not available")
+    def test_fails_when_hash_is_empty(self) -> None:
+        """An openssl that 'succeeds' with empty output would produce a
+        '<user>:\\n' file — the post-write format check must catch it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sandbox = Path(self._sandbox_path(tmpdir, include_openssl=False))
+            stub = sandbox / "openssl"
+            stub.write_text("#!/bin/bash\nexit 0\n")
+            stub.chmod(0o755)
+            result = self._run_with_sandbox(str(sandbox))
+            self.assertNotEqual(result.returncode, 0,
+                                "Script must exit non-zero on empty hash output")
+            self.assertIn("unexpected format", result.stderr)
 
 
 class TestGitleaksConfig(unittest.TestCase):
