@@ -77,7 +77,9 @@ restart: gen-htpasswd
 clean:
     {{compose_cmd}} down -v
 
-# Validate docker-compose config, YAML files, and required runtime files
+# Validate docker-compose config, YAML files, required runtime files, and
+# health gates (gates fail when their containers are down unless explicitly
+# skipped via ALERTMANAGER_CHECK_SKIP_ON_DOWN=1)
 validate: check-env-example validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
@@ -87,6 +89,8 @@ validate: check-env-example validate-promtail
         exit 1
     fi
     echo "Config is valid."
+    just check-alertmanager
+    echo "Health checks passed."
 
 # Verify every env var referenced by docker-compose.yml is documented in
 # .env.example. Fails on undocumented drift (issue #215).
@@ -169,6 +173,11 @@ reload-alertmanager:
 test-alertmanager:
     curl -s http://localhost:9093/-/healthy && echo ""
     curl -s http://localhost:9093/api/v2/status | jq '.cluster.status'
+
+# Health-gate Alertmanager; fails when the container is down unless
+# ALERTMANAGER_CHECK_SKIP_ON_DOWN=1 (issue #250)
+check-alertmanager:
+    ./scripts/check-alertmanager.sh
 
 # === Grafana ===
 
