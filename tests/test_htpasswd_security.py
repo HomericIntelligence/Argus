@@ -235,7 +235,7 @@ class TestGenScriptFailureModes(unittest.TestCase):
         """Build a restricted PATH containing every binary gen-htpasswd.sh
         needs except (optionally) openssl."""
         sandbox = Path(tmpdir)
-        needed = ["bash", "dirname", "mkdir", "chmod", "head"]
+        needed = ["bash", "dirname", "mkdir", "chmod", "head", "rm"]
         if include_openssl:
             needed.append("openssl")
         for binary in needed:
@@ -295,16 +295,25 @@ class TestGenScriptFailureModes(unittest.TestCase):
     @unittest.skipIf(shutil.which("bash") is None, "bash not available")
     def test_fails_when_hash_is_empty(self) -> None:
         """An openssl that 'succeeds' with empty output would produce a
-        '<user>:\\n' file — the post-write format check must catch it."""
+        '<user>:\\n' file — the post-write format check must catch it and the
+        pre-existing valid secrets/htpasswd must be left untouched (atomic write)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             sandbox = Path(self._sandbox_path(tmpdir, include_openssl=False))
             stub = sandbox / "openssl"
             stub.write_text("#!/bin/bash\nexit 0\n")
             stub.chmod(0o755)
+            self.HTPASSWD.parent.mkdir(exist_ok=True)
+            self.HTPASSWD.write_text("olduser:$apr1$valid$hash\n")
+            before = self._snapshot_htpasswd()
             result = self._run_with_sandbox(str(sandbox))
             self.assertNotEqual(result.returncode, 0,
                                 "Script must exit non-zero on empty hash output")
             self.assertIn("unexpected format", result.stderr)
+            after = self._snapshot_htpasswd()
+            self.assertEqual(before, after,
+                             "A malformed generation must not replace a valid secrets/htpasswd")
+            self.assertFalse(Path(str(self.HTPASSWD) + ".tmp").exists(),
+                             "Failed generation must not leave a .tmp artifact behind")
 
 
 class TestGitleaksConfig(unittest.TestCase):
