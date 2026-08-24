@@ -383,6 +383,17 @@ jobs:
           else
             echo "OK: no :latest image tags found"
           fi
+      - name: Ensure all workflow actions are pinned to full commit SHAs
+        run: |
+          UNPINNED=$(grep -rhE '^[[:space:]]*(-[[:space:]]+)?uses:' .github/workflows/ \
+            --include='*.yml' | grep -vE '@[0-9a-f]{40}([[:space:]]|$|#)' || true)
+          if [ -n "$UNPINNED" ]; then
+            echo "FAIL: unpinned action refs found — pin to full 40-hex commit SHA:"
+            echo "$UNPINNED"
+            exit 1
+          else
+            echo "OK: all action refs are SHA-pinned"
+          fi
 
   atlas-dashboard:
     name: atlas-dashboard
