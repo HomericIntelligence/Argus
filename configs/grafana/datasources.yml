@@ -25,11 +25,16 @@ datasources:
     url: http://loki-proxy:80
     isDefault: false
     editable: false
+    # Basic auth against loki-proxy; values interpolated from the Grafana
+    # container environment (issue #209). Never hardcode credentials here.
+    basicAuth: true
+    basicAuthUser: $LOKI_AUTH_USER
     jsonData:
       maxLines: 1000
       tlsSkipVerify: false
       tlsAuthWithCACert: true
     secureJsonData:
+      basicAuthPassword: $LOKI_AUTH_PASSWORD
       tlsCACert: |
         # Mount the CA cert content here, or use Grafana's provisioning
         # secret injection. See docs/tls-setup.md for options.
