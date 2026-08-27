@@ -1,0 +1,7 @@
+# PyPI dependencies audited by `pixi run --environment lint pip-audit`.
+# These pins mirror pixi.toml [feature.lint.pypi-dependencies] and pixi.lock.
+# tests/test_pip_audit_requirements.py rejects manifest or lock drift.
+idna==3.18
+msgpack==1.2.1
+pip==26.2.1
+pip-audit==2.10.0
