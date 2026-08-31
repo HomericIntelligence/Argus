@@ -1,15 +1,15 @@
 name: CI
 
-# merge_group is intentionally absent from `on`: the merge queue runs only the
-# fast merge-queue-smoke.yml workflow (single merge-queue-smoke job, <5 min).
 on:
   push:
     branches: ["main", "feature/**", "fix/**", "chore/**"]
   pull_request:
     branches: ["main"]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -292,10 +292,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [unit-tests, test, atlas-dashboard]
+    if: always()
 
     steps:
       - name: Aggregate test result
+        env:
+          UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
+          EXPORTER_TEST_RESULT: ${{ needs.test.result }}
+          ATLAS_DASHBOARD_RESULT: ${{ needs.atlas-dashboard.result }}
         run: |
+          set -euo pipefail
+          failed=0
+          if [ "${UNIT_TESTS_RESULT}" != "success" ]; then
+            echo "::error::unit-tests finished with ${UNIT_TESTS_RESULT}"
+            failed=1
+          fi
+          if [ "${EXPORTER_TEST_RESULT}" != "success" ]; then
+            echo "::error::test finished with ${EXPORTER_TEST_RESULT}"
+            failed=1
+          fi
+          if [ "${ATLAS_DASHBOARD_RESULT}" != "success" ]; then
+            echo "::error::atlas-dashboard finished with ${ATLAS_DASHBOARD_RESULT}"
+            failed=1
+          fi
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
           echo "OK: in-workflow test suites passed (unit-tests, Test exporter, Atlas dashboard (Go))"
 
   # package — builds the distributable. Argus's clean distributable is the Go
