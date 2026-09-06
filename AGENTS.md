@@ -84,13 +84,17 @@ graph TD
 Copy `.env.example` to `.env` before running `just start`. The stack will refuse
 to start without a `.env` file.
 
-| Variable            | Default in .env.example              | Required | Purpose                                            |
-|---------------------|--------------------------------------|----------|----------------------------------------------------|
-| `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password                             |
-| `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
-| `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
-| `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
-| `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
+| Variable                 | Default in .env.example              | Required | Purpose                                                                                                                                                                                    |
+|--------------------------|--------------------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GF_ADMIN_PASSWORD`      | `changeme`                           | **Yes**  | Grafana admin password                                                                                                                                                                     |
+| `AGAMEMNON_URL`          | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                                                                                                                                                                     |
+| `NESTOR_URL`             | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                                                                                                                                                        |
+| `NATS_URL`               | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                                                                                                                                                               |
+| `NATS_LOG_DIR`           | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this)                                                                                                                                         |
+| `GRAFANA_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Password docker-compose.yml hands Grafana at boot (`GF_SECURITY_ADMIN_PASSWORD`). Distinct from `GF_ADMIN_PASSWORD`, which `just import-dashboards` uses for API auth — keep both in sync. |
+| `NOMAD_ADDR`             | `172.20.0.1:4646`                    | Yes      | Nomad agent metrics endpoint scraped by Prometheus for the `nomad` job                                                                                                                     |
+| `LOKI_AUTH_USER`         | `loki`                               | **Yes**  | Loki basic-auth username; `just gen-htpasswd` writes it into configs/nginx/htpasswd                                                                                                        |
+| `LOKI_AUTH_PASSWORD`     | `changeme`                           | **Yes**  | Loki basic-auth password used by `scripts/gen-htpasswd.sh`; rotate with `just gen-htpasswd && just restart`                                                                                |
 
 Optional overrides (not required by `just start`):
 
@@ -107,6 +111,21 @@ Optional overrides (not required by `just start`):
   Defaults to `docker` (auto-promoted to `podman` if `podman-compose` is on
   `$PATH`). Justfile recipes pass `CONTAINER_CMD={{container_cmd}}`
   automatically, so you rarely need to set it by hand.
+- `GF_SERVER_ROOT_URL` — pins Grafana's served origin (mitigates host-header
+  injection). Default matches the loopback-only port mapping in
+  docker-compose.yml; override when fronting Grafana with a reverse proxy.
+- Container name overrides (`PROMETHEUS_CONTAINER_NAME`, `LOKI_CONTAINER_NAME`,
+  `PROMTAIL_CONTAINER_NAME`, `GRAFANA_CONTAINER_NAME`,
+  `EXPORTER_CONTAINER_NAME`) — each service uses
+  `${*_CONTAINER_NAME:-<default>}` in docker-compose.yml so operators can run
+  multiple stacks side-by-side without name collisions. Leave commented unless
+  renaming containers.
+- Host port overrides (`GRAFANA_PORT`, `EXPORTER_PORT`) — Grafana and the
+  exporter publish on `127.0.0.1:<PORT>`; override only when the defaults
+  collide with another service on the host.
+- `JETSTREAM_CONSUMER_IMAGE` — image for the jetstream-consumer service, built
+  locally by docker compose by default. Override to pin a published GHCR tag
+  in production.
 
 `172.20.0.1` / `172.24.0.1` are WSL2 host gateway addresses — they reach services
 running on the Windows host or in other WSL distros. Substitute Tailscale IPs for
