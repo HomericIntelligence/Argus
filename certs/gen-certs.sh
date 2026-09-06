@@ -58,19 +58,6 @@ EOF
     echo "[ok]  CA generated: ca.crt"
 fi
 
-# Fingerprint of the CA public key, embedded verbatim as Authority Key
-# Identifier in every leaf below. Explicit hex (rather than keyid-copy from
-# -CA) because `openssl x509 -req` has no issuer context on 1.1.1
-# ("no issuer certificate") while stacking -addext risks duplicates —
-# this form works on 1.1.1 and 3.x alike. Fail loudly on empty extraction
-# rather than minting unchained leaves.
-CA_SKID=$(openssl x509 -in ca.crt -noout -text \
-    | awk '/Subject Key Identifier/{getline; print}' | tr -d ' :\n')
-if [[ -z "$CA_SKID" ]]; then
-    echo "ERROR: could not extract Subject Key Identifier from ca.crt" >&2
-    exit 1
-fi
-
 # ── Per-service certs ──────────────────────────────────────────────────────────
 for svc in "${SERVICES[@]}"; do
     if [[ -f "${svc}.crt" && -z "$FORCE" ]]; then
@@ -98,7 +85,13 @@ keyUsage = critical, digitalSignature, keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName = ${SANS[$svc]}
 subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid:${CA_SKID}
+# Authority Key Identifier is copied from the -CA issuer at signing time
+# (keyid,issuer — the man-documented portable form). Do NOT use
+# keyid:<explicit-hex>: OpenSSL 3.x rejects it ("unknown option"), and do
+# NOT put req_extensions in the CSR config: the CSR builder has no issuer
+# context and dies ("no issuer certificate" on 1.1.1). Extensions below
+# apply at signing via -extfile only.
+authorityKeyIdentifier = keyid,issuer
 EOF
 
     openssl req -new -key "${svc}.key" -out "${svc}.csr" -config "$san_ext"
