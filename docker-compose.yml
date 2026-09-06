@@ -243,7 +243,11 @@ services:
       # Grafana with a reverse proxy on a different hostname.
       GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-https://localhost:${GRAFANA_PORT:-3001}/}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      # Grafana serves HTTPS only (GF_SERVER_PROTOCOL=https above), so the
+      # probe must use https:// with -k (self-signed CA; localhost-only
+      # probe). Real curl ships in this image; -f fails on HTTP errors so
+      # --wait gates until Grafana is actually healthy (closes #623).
+      test: ["CMD", "curl", "-skf", "https://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
