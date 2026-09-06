@@ -28,8 +28,14 @@ services:
       # so the gateway IP is sourced from .env instead of being hardcoded in
       # the static config file. Closes #217.
       NOMAD_ADDR: ${NOMAD_ADDR:-172.20.0.1:4646}
+      # Bearer token for the Atlas /metrics scrape (see authorization in
+      # configs/prometheus.yml). Minted per-run by scripts/smoke-stack.sh;
+      # empty by default, in which case Atlas answers 401s until configured.
+      ATLAS_AUTH_BEARER_TOKEN: ${ATLAS_AUTH_BEARER_TOKEN:-}
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml.tmpl:ro
+      - ./configs/prometheus-web.yml:/etc/prometheus/web.yml:ro
+      - ./configs/promtool-healthcheck.yml:/etc/prometheus/healthcheck.yml:ro
       - ./rules:/etc/prometheus/rules:ro
       - ./certs/prometheus.crt:/etc/prometheus/tls/prometheus.crt:ro
       - ./certs/prometheus.key:/etc/prometheus/tls/prometheus.key:ro
@@ -50,7 +56,8 @@ services:
       - |
         set -eu
         : "$${NOMAD_ADDR:?NOMAD_ADDR is required (see .env.example)}"
-        sed "s|\$${NOMAD_ADDR}|$${NOMAD_ADDR}|g" \
+        sed -e "s|\$${NOMAD_ADDR}|$${NOMAD_ADDR}|g" \
+            -e "s|\$${ATLAS_AUTH_BEARER_TOKEN}|$${ATLAS_AUTH_BEARER_TOKEN}|g" \
           /etc/prometheus/prometheus.yml.tmpl \
           > /run/prometheus/prometheus.yml
         exec /bin/prometheus "$$@"
@@ -60,9 +67,19 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
-      - "--web.config.file=/run/prometheus/prometheus.yml"
+      - "--web.config.file=/etc/prometheus/web.yml"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      # Prometheus serves HTTPS only (TLS via --web.config.file above), probed
+      # with the in-image promtool (Go TLS stack). Busybox wget can NOT be used
+      # here: its TLS client sends a malformed ECDHE point and the handshake
+      # fails ("point is not on curve" server-side) — verified empirically.
+      test:
+        - CMD
+        - /bin/promtool
+        - check
+        - healthy
+        - --url=https://localhost:9090
+        - --http.config.file=/etc/prometheus/healthcheck.yml
       interval: 30s
       timeout: 10s
       retries: 3
@@ -97,7 +114,12 @@ services:
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      # Loki serves HTTPS only (http_tls_config in configs/loki.yml), so the
+      # probe must use https:// with --no-check-certificate (self-signed CA;
+      # localhost-only probe). Unlike prom/prometheus, this image's busybox
+      # wget delegates TLS to OpenSSL and negotiates modern TLS fine —
+      # verified empirically (closes #623).
+      test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://localhost:3100/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -226,7 +248,11 @@ services:
       # Grafana with a reverse proxy on a different hostname.
       GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-https://localhost:${GRAFANA_PORT:-3001}/}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      # Grafana serves HTTPS only (GF_SERVER_PROTOCOL=https above), so the
+      # probe must use https:// with -k (self-signed CA; localhost-only
+      # probe). Real curl ships in this image; -f fails on HTTP errors so
+      # --wait gates until Grafana is actually healthy (closes #623).
+      test: ["CMD", "curl", "-skf", "https://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

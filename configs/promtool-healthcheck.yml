@@ -1,0 +1,10 @@
+# HTTP client config for the Prometheus container healthcheck
+# (docker-compose.yml: promtool check healthy --http.config.file=...).
+# insecure_skip_verify is required here: Prometheus serves its self-signed
+# cert (see prometheus-web.yml) and busybox wget in prom/prometheus cannot
+# negotiate modern TLS — it sends a malformed ECDHE point and the handshake
+# dies ("point is not on curve" server-side). Go-based promtool has no such
+# issue. Scope is limited to the in-container localhost readiness probe;
+# external scrapes (e.g. the 'prometheus' job) still pin ca.crt.
+tls_config:
+  insecure_skip_verify: true

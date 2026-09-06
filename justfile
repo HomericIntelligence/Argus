@@ -119,6 +119,12 @@ test:
 test-unit:
     pixi run test-unit
 
+# Run live-stack smoke tests: builds the full compose stack, validates
+# exporter → Prometheus → query end-to-end, then tears the stack down
+# (destructive to smoke volumes only). Requires Docker.
+test-smoke:
+    pixi run bash scripts/smoke-stack.sh
+
 # Tail logs for a specific service (e.g. just logs prometheus)
 logs SERVICE:
     {{compose_cmd}} logs -f {{SERVICE}}

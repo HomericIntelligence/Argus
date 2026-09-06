@@ -149,7 +149,10 @@ def collect() -> str:
     gauge("hi_agamemnon_health", "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise", agamemnon_health)
 
     # ── Agamemnon agents ───────────────────────────────────────────────────
-    d = _fetch(f"{AGAMEMNON_URL}/v1/agents", AGAMEMNON_TLS_CA)
+    # Reuse agents_data from the parallel batch above. A second serial fetch
+    # here once doubled worst-case /metrics latency past Prometheus'
+    # scrape_timeout (up == 0 with dead upstreams) — closes #623.
+    d = agents_data
     if d:
         agents = d.get("agents", [])
         total   = len(agents)

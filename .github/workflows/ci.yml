@@ -207,6 +207,36 @@ jobs:
       - name: Run tests
         run: python -m pytest tests/ -v
 
+  stack-smoke:
+    name: Live stack smoke (exporter to Prometheus)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pixi
+        run: curl -fsSL https://pixi.sh/install.sh | bash && echo "$HOME/.pixi/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: pixi install
+
+      # Brings the compose stack up with --wait, runs the gated live_stack
+      # pytest suite, tears the stack down (including volumes) via EXIT trap.
+      - name: Smoke-test the live stack
+        run: pixi run bash scripts/smoke-stack.sh
+
   lint:
     name: Lint Python
     runs-on: ubuntu-latest

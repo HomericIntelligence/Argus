@@ -201,6 +201,36 @@ class TestCollectFormat(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Test collect() — upstream fetch budget (closes #623)
+# ---------------------------------------------------------------------------
+
+class TestCollectFetchBudget(unittest.TestCase):
+    def test_each_upstream_url_fetched_exactly_once(self):
+        """collect() must not re-fetch serially: with unreachable upstreams
+        every extra round-trip adds a full timeout to /metrics latency and
+        trips Prometheus' scrape_timeout (up == 0). Regression test for the
+        duplicate serial /v1/agents fetch."""
+        fetched: list[str] = []
+        hc_patch, _ = _patch_collect()
+
+        def _recording_fetch(url: str, ca_file=None):
+            fetched.append(url)
+
+        with hc_patch, patch.object(exporter_mod, "_fetch", side_effect=_recording_fetch):
+            exporter_mod.collect()
+
+        counts: dict[str, int] = {}
+        for url in fetched:
+            counts[url] = counts.get(url, 0) + 1
+        dupes = {url: n for url, n in counts.items() if n > 1}
+        self.assertEqual(dupes, {}, f"collect() fetched URLs more than once: {dupes}")
+        self.assertEqual(
+            len(fetched), 5,
+            f"collect() should issue exactly 5 upstream fetches, got {len(fetched)}: {fetched}",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Test collect() — metric names and values
 # ---------------------------------------------------------------------------
 
