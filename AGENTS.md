@@ -276,7 +276,12 @@ Argus/
 - Use `just test-scrape` to verify the `up` metric for all targets before declaring a scrape job healthy.
 - Run `just test` to execute the unit test suite before submitting a PR.
 - `import-dashboards` reads `GF_ADMIN_PASSWORD` from `.env` — never hardcode credentials.
-- `pixi run --environment lint pip-audit` audits `jetstream-consumer/requirements.txt` (the only pinned-PyPI surface). Expected output on a clean run: `No known vulnerabilities found`, exit 0. If a new pinned-PyPI file is added (e.g., `exporter/requirements.txt`), extend the `pip-audit` task in `pixi.toml` with another `--requirement` flag and add the path to `.github/workflows/security.yml`'s `paths:` filter.
+- `pixi run --environment lint pip-audit` audits `jetstream-consumer/requirements.txt`
+  (the only pinned-PyPI surface). Expected output on a clean run:
+  `No known vulnerabilities found`, exit 0. If a new pinned-PyPI file is added
+  (e.g., `exporter/requirements.txt`), extend the `pip-audit` task in `pixi.toml`
+  with another `--requirement` flag and add the path to
+  `.github/workflows/security.yml`'s `paths:` filter.
 
 ## Common Commands
 
