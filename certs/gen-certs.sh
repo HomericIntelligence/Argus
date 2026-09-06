@@ -26,9 +26,49 @@ if [[ -f ca.crt && -z "$FORCE" ]]; then
 else
     echo "[gen] Generating CA key and certificate..."
     openssl genrsa -out ca.key 4096
+
+    # Self-signed CA with explicit v3 extensions in a hermetic temp config.
+    # Relying on the system openssl.cnf is fragile (distros differ in whether
+    # they inject basicConstraints, and none add keyUsage) — and stacking
+    # -addext on top of a cnf-provided basicConstraints fails with
+    # "duplicate extension". Python 3.13's verifier rejects a CA without
+    # keyUsage (closes #623), so both extensions are set here explicitly.
+    ca_ext=$(mktemp)
+    cat > "$ca_ext" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+prompt             = no
+
+[req_distinguished_name]
+CN = argus-local-ca
+O  = Argus
+OU = HomericIntelligence
+
+[v3_ca_argus]
+basicConstraints = critical, CA:true
+keyUsage = critical, keyCertSign, cRLSign, digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+EOF
+
     openssl req -new -x509 -days "$DAYS" -key ca.key -out ca.crt \
-        -subj "/CN=argus-local-ca/O=Argus/OU=HomericIntelligence"
+        -subj "/CN=argus-local-ca/O=Argus/OU=HomericIntelligence" \
+        -config "$ca_ext" -extensions v3_ca_argus
+    rm -f "$ca_ext"
     echo "[ok]  CA generated: ca.crt"
+fi
+
+# Fingerprint of the CA public key, embedded verbatim as Authority Key
+# Identifier in every leaf below. Explicit hex (rather than keyid-copy from
+# -CA) because `openssl x509 -req` has no issuer context on 1.1.1
+# ("no issuer certificate") while stacking -addext risks duplicates —
+# this form works on 1.1.1 and 3.x alike. Fail loudly on empty extraction
+# rather than minting unchained leaves.
+CA_SKID=$(openssl x509 -in ca.crt -noout -text \
+    | awk '/Subject Key Identifier/{getline; print}' | tr -d ' :\n')
+if [[ -z "$CA_SKID" ]]; then
+    echo "ERROR: could not extract Subject Key Identifier from ca.crt" >&2
+    exit 1
 fi
 
 # ── Per-service certs ──────────────────────────────────────────────────────────
@@ -46,7 +86,6 @@ for svc in "${SERVICES[@]}"; do
     cat > "$san_ext" <<EOF
 [req]
 distinguished_name = req_distinguished_name
-req_extensions     = v3_req
 prompt             = no
 
 [req_distinguished_name]
@@ -54,7 +93,12 @@ CN = ${svc}
 O  = Argus
 
 [v3_req]
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = ${SANS[$svc]}
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:${CA_SKID}
 EOF
 
     openssl req -new -key "${svc}.key" -out "${svc}.csr" -config "$san_ext"
