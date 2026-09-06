@@ -21,7 +21,6 @@ import pytest
 
 from tests.test_exporter_tls import _import_exporter
 
-
 # ---------------------------------------------------------------------------
 # Live HTTPS server fixture
 # ---------------------------------------------------------------------------
@@ -85,6 +84,9 @@ def https_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str
     # create_default_context(CLIENT_AUTH) pins minimum_version to TLSv1.2,
     # avoiding the legacy-protocol surface of ssl.SSLContext(PROTOCOL_TLS_SERVER).
     ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    # Pin the floor explicitly so CodeQL (py/insecure-protocol-version) can
+    # verify legacy TLS 1.0/1.1 are disabled even if interpreter defaults change.
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
     server.socket = ctx.wrap_socket(server.socket, server_side=True)
 
