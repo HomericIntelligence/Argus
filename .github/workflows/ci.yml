@@ -201,6 +201,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install just
+        # TestJustRecipeGuard tests shell out to `just`; without it they fail
+        # with FileNotFoundError (see #624, #621).
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+
       - name: Install test dependencies
         run: pip install pytest pytest-cov pyyaml
 
@@ -221,7 +228,9 @@ jobs:
           python-version: "3.13"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned: unpinned installs drifted to 0.16.4 and introduced new
+        # I001/RUF100 findings across PRs (#629, #634). Bump deliberately.
+        run: pip install "ruff==0.16.4"
 
       - name: Run ruff
         run: ruff check exporter/ tests/

@@ -37,7 +37,8 @@ python = ">=3.13,<3.14"
 [feature.lint.pypi-dependencies]
 pip-audit = ">=2.8"
 idna = ">=3.15"
-pip = ">=26.1.2"
+# >=26.2: pip 26.1.2 carries PYSEC-2026-3721 (pip-audit failure on #598, #623).
+pip = ">=26.2"
 msgpack = ">=1.2.1"
 
 [feature.lint.tasks]
