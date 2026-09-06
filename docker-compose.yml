@@ -28,6 +28,10 @@ services:
       # so the gateway IP is sourced from .env instead of being hardcoded in
       # the static config file. Closes #217.
       NOMAD_ADDR: ${NOMAD_ADDR:-172.20.0.1:4646}
+      # Bearer token for the Atlas /metrics scrape (see authorization in
+      # configs/prometheus.yml). Minted per-run by scripts/smoke-stack.sh;
+      # empty by default, in which case Atlas answers 401s until configured.
+      ATLAS_AUTH_BEARER_TOKEN: ${ATLAS_AUTH_BEARER_TOKEN:-}
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml.tmpl:ro
       - ./configs/prometheus-web.yml:/etc/prometheus/web.yml:ro
@@ -52,7 +56,8 @@ services:
       - |
         set -eu
         : "$${NOMAD_ADDR:?NOMAD_ADDR is required (see .env.example)}"
-        sed "s|\$${NOMAD_ADDR}|$${NOMAD_ADDR}|g" \
+        sed -e "s|\$${NOMAD_ADDR}|$${NOMAD_ADDR}|g" \
+            -e "s|\$${ATLAS_AUTH_BEARER_TOKEN}|$${ATLAS_AUTH_BEARER_TOKEN}|g" \
           /etc/prometheus/prometheus.yml.tmpl \
           > /run/prometheus/prometheus.yml
         exec /bin/prometheus "$$@"
