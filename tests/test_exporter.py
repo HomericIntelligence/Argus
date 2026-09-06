@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 # Make the exporter importable without running __main__ logic
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-import exporter.exporter as exporter_mod  # noqa: E402  (must follow sys.path insert)
+import exporter.exporter as exporter_mod
 
 
 def _make_response(data: dict | None = None, status: int = 200) -> MagicMock:
