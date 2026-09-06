@@ -6,8 +6,9 @@ CVE scan covers the default toolchain (bandit, ruff, pytest, pyyaml,
 yamllint) in addition to pip-audit itself.
 """
 
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 _ROOT = Path(__file__).parent.parent
 
