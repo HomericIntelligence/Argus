@@ -8,6 +8,7 @@
 #   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
 #                       only so `just --list` works without `.env`; production
 #                       deployments MUST override this.
+#   GRAFANA_ADMIN_USER  Grafana admin username. Optional; defaults to "admin".
 set dotenv-load
 
 # === Variables ===
@@ -19,6 +20,7 @@ AGAMEMNON_URL := "http://172.20.0.1:8080"
 GRAFANA_PORT := "3001"
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
+GRAFANA_ADMIN_USER := env_var_or_default("GRAFANA_ADMIN_USER", "admin")
 
 # === Default ===
 
@@ -179,8 +181,9 @@ test-jetstream:
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
 # Reads GF_ADMIN_PASSWORD from .env (required — never hardcoded)
+# and GRAFANA_ADMIN_USER (optional, default "admin")
 import-dashboards:
-    GRAFANA_PORT={{GRAFANA_PORT}} GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
 
 # === Versioning ===
 

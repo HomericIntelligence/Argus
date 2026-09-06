@@ -75,5 +75,38 @@ class TestJustfileCredentials(unittest.TestCase):
         )
 
 
+class TestImportDashboardsAdminUser(unittest.TestCase):
+    """Issue #183: the Grafana admin *username* must be env-configurable."""
+
+    def _script_text(self) -> str:
+        return SCRIPT.read_text()
+
+    def test_script_builds_auth_from_env_user(self) -> None:
+        """Script must default GRAFANA_ADMIN_USER from the environment."""
+        source = self._script_text()
+        assert 'GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"' in source, (
+            "import-dashboards.sh should read GRAFANA_ADMIN_USER with an 'admin' default"
+        )
+        assert 'GRAFANA_AUTH="${GRAFANA_ADMIN_USER}:' in source, (
+            "import-dashboards.sh should build GRAFANA_AUTH from GRAFANA_ADMIN_USER"
+        )
+        assert 'GRAFANA_AUTH="admin:' not in source, (
+            "import-dashboards.sh must not hardcode the 'admin' username"
+        )
+
+    def test_justfile_passes_admin_user_to_script(self) -> None:
+        """import-dashboards recipe must forward GRAFANA_ADMIN_USER to the script."""
+        content = JUSTFILE.read_text()
+        assert "GRAFANA_ADMIN_USER" in content, (
+            "justfile should define/forward GRAFANA_ADMIN_USER"
+        )
+        recipe = next(
+            line for line in content.splitlines() if "import-dashboards.sh" in line
+        )
+        assert "GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}}" in recipe, (
+            "import-dashboards recipe should pass GRAFANA_ADMIN_USER to the script"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
