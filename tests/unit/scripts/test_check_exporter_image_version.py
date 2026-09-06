@@ -243,6 +243,7 @@ class TestBumpScriptNextVersion:
             cwd=repo,
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
         assert (repo / "exporter" / "VERSION").read_text().strip() == expected
@@ -257,6 +258,7 @@ class TestBumpScriptNextVersion:
             cwd=repo,
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
         assert (repo / "exporter" / "VERSION").read_text().strip() == "0.1.0"
@@ -272,6 +274,7 @@ class TestBumpScriptNextVersion:
             cwd=repo,
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 1
         assert "expected exactly one" in result.stderr
@@ -283,5 +286,6 @@ class TestBumpScriptNextVersion:
             cwd=repo,
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 1
