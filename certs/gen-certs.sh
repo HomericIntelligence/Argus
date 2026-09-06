@@ -67,6 +67,18 @@ EOF
     echo "[ok]  ${svc}.crt generated"
 done
 
+# Stack containers run as non-root users (nobody 65534, grafana 472, loki
+# 10001), but openssl writes private keys mode 0600 owned by the invoking user.
+# Normalize every mounted cert/key to 0644 so the containers can read them
+# (closes #623: Prometheus exited on "permission denied" for its TLS key and
+# never became healthy). Unconditional — also repairs certs skipped above.
+# These are ephemeral local-dev credentials (gitignored, loopback-only
+# services); ca.key is never mounted and stays 0600.
+for svc in "${SERVICES[@]}"; do
+    chmod 644 "${svc}.crt" "${svc}.key"
+done
+chmod 644 ca.crt
+
 echo ""
 echo "Certificate generation complete."
 echo "Files written to: $CERTS_DIR"

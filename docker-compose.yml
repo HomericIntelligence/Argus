@@ -30,6 +30,8 @@ services:
       NOMAD_ADDR: ${NOMAD_ADDR:-172.20.0.1:4646}
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml.tmpl:ro
+      - ./configs/prometheus-web.yml:/etc/prometheus/web.yml:ro
+      - ./configs/promtool-healthcheck.yml:/etc/prometheus/healthcheck.yml:ro
       - ./rules:/etc/prometheus/rules:ro
       - ./certs/prometheus.crt:/etc/prometheus/tls/prometheus.crt:ro
       - ./certs/prometheus.key:/etc/prometheus/tls/prometheus.key:ro
@@ -60,9 +62,19 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
-      - "--web.config.file=/run/prometheus/prometheus.yml"
+      - "--web.config.file=/etc/prometheus/web.yml"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      # Prometheus serves HTTPS only (TLS via --web.config.file above), probed
+      # with the in-image promtool (Go TLS stack). Busybox wget can NOT be used
+      # here: its TLS client sends a malformed ECDHE point and the handshake
+      # fails ("point is not on curve" server-side) — verified empirically.
+      test:
+        - CMD
+        - /bin/promtool
+        - check
+        - healthy
+        - --url=https://localhost:9090
+        - --http.config.file=/etc/prometheus/healthcheck.yml
       interval: 30s
       timeout: 10s
       retries: 3
