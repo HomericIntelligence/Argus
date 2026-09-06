@@ -217,9 +217,10 @@ jobs:
       - name: Build CI image (podman)
         run: podman build --ignorefile ci/.dockerignore -f ci/Containerfile -t argus-ci:local .
       - name: Run unit-tests checks (in container)
-        # ci-unit-tests runs `pytest` (exporter/ + tests/) inside the CI
+        # ci-unit-tests runs the gated `pixi run test-unit` task (pytest +
+        # coverage with fail_under from pyproject.toml) inside the CI
         # container via scripts/run_ci_local.sh — see the justfile recipe.
-        run: just ci-unit-tests  # invokes pytest via run_ci_local.sh unit-tests
+        run: just ci-unit-tests  # invokes test-unit via run_ci_local.sh unit-tests
 
   integration-tests:
     name: integration-tests

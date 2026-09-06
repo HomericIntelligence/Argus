@@ -188,25 +188,6 @@ jobs:
         working-directory: dashboard
         run: docker build -t argus-dashboard:ci .
 
-  test:
-    name: Test exporter
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.13"
-
-      - name: Install test dependencies
-        run: pip install pytest pytest-cov pyyaml
-
-      - name: Run tests
-        run: python -m pytest tests/ -v
-
   lint:
     name: Lint Python
     runs-on: ubuntu-latest
@@ -285,18 +266,18 @@ jobs:
           echo "OK: Python sources compile"
 
   # test (aggregate) — gate that succeeds only when the test suites pass.
-  # Sub-checks (Python unit tests + coverage, Test exporter, Atlas dashboard
-  # (Go), integration-tests in _required.yml) are kept as their own checks.
+  # Sub-checks (Python unit tests + coverage, Atlas dashboard (Go),
+  # integration-tests in _required.yml) are kept as their own checks.
   test-aggregate:
     name: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [unit-tests, test, atlas-dashboard]
+    needs: [unit-tests, atlas-dashboard]
 
     steps:
       - name: Aggregate test result
         run: |
-          echo "OK: in-workflow test suites passed (unit-tests, Test exporter, Atlas dashboard (Go))"
+          echo "OK: in-workflow test suites passed (unit-tests, Atlas dashboard (Go))"
 
   # package — builds the distributable. Argus's clean distributable is the Go
   # `atlas` binary (built with the release-injected version). The Python

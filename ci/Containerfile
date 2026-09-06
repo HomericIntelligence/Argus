@@ -16,7 +16,7 @@
 #   docker build -f ci/Containerfile -t argus-ci:local .
 #
 # Run:
-#   podman run --rm -v .:/workspace:Z argus-ci:local pixi run pytest tests/ -v
+#   podman run --rm -v .:/workspace:Z argus-ci:local pixi run test-unit
 
 # ============================================================================
 # Stage 0: pixi binary — installed from a pinned GitHub release so the checksum
@@ -102,6 +102,6 @@ RUN groupadd -r ci && useradd -r -g ci -u 1000 -m -s /bin/bash ci \
 WORKDIR /workspace
 
 # No ENTRYPOINT — commands are provided externally by CI or run_ci_local.sh
-# Example: podman run --rm -v .:/workspace:Z argus-ci:local pixi run pytest tests/ -v
+# Example: podman run --rm -v .:/workspace:Z argus-ci:local pixi run test-unit
 
 USER ci
