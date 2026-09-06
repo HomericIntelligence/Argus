@@ -6,16 +6,15 @@ connections are made during the test suite.
 """
 from __future__ import annotations
 
-import contextlib
 import json
 import sys
-import threading
 import unittest
 import urllib.error
 import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+from tests.helpers_http import live_server
 
 # Make the exporter importable without running __main__ logic
 REPO_ROOT = Path(__file__).parent.parent
@@ -309,34 +308,9 @@ def _make_handler(path: str) -> tuple:
     return handler, mock_server
 
 
-class _SilentHandler(exporter_mod.Handler):
-    """Test-only Handler subclass that suppresses access log output (#286).
-
-    The production Handler routes log_message to log.debug, which is silent at
-    the default INFO level but spams stderr if a developer flips LOG_LEVEL to
-    DEBUG while running the test suite. Override with a no-op so the in-process
-    fixture stays quiet regardless of the surrounding log config.
-    """
-
-    def log_message(self, fmt: str, *args: object) -> None:  # type: ignore[override]
-        return
-
-
-@contextlib.contextmanager
-def _live_server():
-    """Spin up a real ThreadingHTTPServer on an ephemeral port; yield the port."""
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _SilentHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield server.server_address[1]
-    finally:
-        server.shutdown()
-
-
 class TestHandler(unittest.TestCase):
     def _get_response(self, path: str, mock_collect_output: str = "# TYPE x gauge\nx{} 1\n") -> str:
-        with patch.object(exporter_mod, "collect", return_value=mock_collect_output), _live_server() as port:
+        with patch.object(exporter_mod, "collect", return_value=mock_collect_output), live_server() as port:
                 url = f"http://127.0.0.1:{port}{path}"
                 try:
                     resp = urllib.request.urlopen(url, timeout=5)
@@ -370,6 +344,12 @@ class TestHandler(unittest.TestCase):
     def test_unknown_path_returns_404(self):
         response = self._get_response("/notfound")
         self.assertIn("404", response)
+
+    def test_live_server_yields_usable_port(self):
+        """The shared live_server() helper yields a positive ephemeral port."""
+        with live_server() as port:
+            self.assertIsInstance(port, int)
+            self.assertGreater(port, 0)
 
     def test_metrics_body_contains_collect_output(self):
         collect_output = "# TYPE hi_agents_total gauge\nhi_agents_total{} 42\n"
