@@ -137,14 +137,14 @@ Atlas dashboard variables use the `ATLAS_` prefix — see `dashboard/README.md` 
 
 ## Scrape Targets
 
-| Job              | Target                          | Path         | What it provides                        |
-|------------------|---------------------------------|--------------|-----------------------------------------|
-| homeric-exporter | argus-exporter:9100             | /metrics     | Agamemnon, Nestor, and NATS metrics     |
-| jetstream-consumer | jetstream-consumer:9101       | /metrics     | JetStream event-rate / task-latency     |
-| prometheus       | localhost:9090                  | /metrics     | Prometheus self-monitoring (HTTPS)      |
-| nomad            | `${NOMAD_ADDR}` (default `172.20.0.1:4646`) | /v1/metrics | Job and allocation metrics |
-| atlas            | argus-dashboard:3002            | /metrics     | Atlas dashboard self-metrics            |
-| alertmanager     | alertmanager:9093               | /metrics     | Alertmanager pipeline health            |
+| Job                | Target                                      | Path        | What it provides                    |
+|--------------------|---------------------------------------------|-------------|-------------------------------------|
+| homeric-exporter   | argus-exporter:9100                         | /metrics    | Agamemnon, Nestor, and NATS metrics |
+| jetstream-consumer | jetstream-consumer:9101                     | /metrics    | JetStream event-rate / task-latency |
+| prometheus         | localhost:9090                              | /metrics    | Prometheus self-monitoring (HTTPS)  |
+| nomad              | `${NOMAD_ADDR}` (default `172.20.0.1:4646`) | /v1/metrics | Job and allocation metrics          |
+| atlas              | argus-dashboard:3002                        | /metrics    | Atlas dashboard self-metrics        |
+| alertmanager       | alertmanager:9093                           | /metrics    | Alertmanager pipeline health        |
 
 The exporter aggregates Agamemnon, Nestor, and NATS data and exposes them as
 Prometheus metrics on port 9100; Prometheus does **not** scrape those upstreams
