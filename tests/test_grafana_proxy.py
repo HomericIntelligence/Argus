@@ -51,7 +51,7 @@ def _fetch(
     """
     req = urllib.request.Request(_proxy_url(path), headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310 - loopback only
+        with urllib.request.urlopen(req, timeout=10) as resp:
             return resp.status, dict(resp.headers), resp.read()
     except urllib.error.HTTPError as err:
         return err.code, dict(err.headers), err.read()

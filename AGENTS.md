@@ -86,15 +86,15 @@ graph TD
 Copy `.env.example` to `.env` before running `just start`. The stack will refuse
 to start without a `.env` file.
 
-| Variable            | Default in .env.example              | Required | Purpose                                            |
-|---------------------|--------------------------------------|----------|----------------------------------------------------|
-| `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password                             |
-| `GRAFANA_PROXY_USER` | `grafana`                           | **Yes**  | grafana-proxy Basic Auth user (issue #321)         |
-| `GRAFANA_PROXY_PASSWORD` | `changeme`                     | **Yes**  | grafana-proxy Basic Auth password (issue #321)     |
-| `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
-| `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
-| `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
-| `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
+| Variable                 | Default in .env.example              | Required | Purpose                                            |
+|--------------------------|--------------------------------------|----------|----------------------------------------------------|
+| `GF_ADMIN_PASSWORD`      | `changeme`                           | **Yes**  | Grafana admin password                             |
+| `GRAFANA_PROXY_USER`     | `grafana`                            | **Yes**  | grafana-proxy Basic Auth user (issue #321)         |
+| `GRAFANA_PROXY_PASSWORD` | `changeme`                           | **Yes**  | grafana-proxy Basic Auth password (issue #321)     |
+| `AGAMEMNON_URL`          | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
+| `NESTOR_URL`             | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
+| `NATS_URL`               | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
+| `NATS_LOG_DIR`           | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
 
 Optional overrides (not required by `just start`):
 
@@ -198,12 +198,12 @@ new to the stack frequently trip on:
    the prometheus container via `docker exec`. Use `just debug-prometheus`,
    `just debug-loki`, and `just debug-grafana-proxy` for ad-hoc inspection
    (these wrappers exec into the respective containers).
-6. **`just backup` / `just restore` need a running compose project.** The
+9. **`just backup` / `just restore` need a running compose project.** The
    restore script calls `docker compose stop` to quiesce services before
    replacing volume data; on a cold host with no containers, the stop is a
    no-op and the script still runs, but operators should expect to bring
    the stack up at least once before relying on restore.
-7. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
+10. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.

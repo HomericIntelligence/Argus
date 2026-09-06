@@ -16,12 +16,12 @@ components of the HomericIntelligence ecosystem.
 
 ## Stack
 
-| Component     | Role                          | Port |
-|---------------|-------------------------------|------|
-| Prometheus    | Metrics scraping and storage  | 9090 (loopback) |
-| Loki          | Log aggregation               | 3100 (internal) |
-| Promtail      | Log shipping to Loki          | —    |
-| grafana-proxy | Basic-auth proxy for Grafana  | 3001 (loopback) |
+| Component     | Role                          | Port                 |
+|---------------|-------------------------------|----------------------|
+| Prometheus    | Metrics scraping and storage  | 9090 (loopback)      |
+| Loki          | Log aggregation               | 3100 (internal)      |
+| Promtail      | Log shipping to Loki          | —                    |
+| grafana-proxy | Basic-auth proxy for Grafana  | 3001 (loopback)      |
 | Grafana       | Dashboards and visualization  | — (proxy-only, #321) |
 
 ## Quick Start
