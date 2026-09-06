@@ -11,8 +11,9 @@ Two guards live here:
 """
 
 import re
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 _ROOT = Path(__file__).parent.parent
 
@@ -32,7 +33,7 @@ def _pixi_tasks() -> dict[str, str]:
             tasks[name] = value["cmd"]
         else:
             msg = f"Unsupported pixi task definition for {name!r}: {value!r}"
-            raise AssertionError(msg)
+            raise TypeError(msg)
     return tasks
 
 
