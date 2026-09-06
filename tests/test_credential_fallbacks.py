@@ -95,9 +95,10 @@ def _resolve_compose_cmd() -> list[str] | None:
     """Return a working compose command, or None when none is available."""
     docker = shutil.which("docker")
     if docker is not None:
-        probe = subprocess.run(  # noqa: S603
+        probe = subprocess.run(
             [docker, "compose", "version"],
             capture_output=True,
+            check=False,
             timeout=30,
         )
         if probe.returncode == 0:
@@ -127,12 +128,13 @@ class TestComposeFailFastBehavior(unittest.TestCase):
         assert COMPOSE_CMD is not None
         # --env-file /dev/null suppresses .env loading so developer machines
         # with a populated .env cannot mask the fail-fast behavior.
-        return subprocess.run(  # noqa: S603
+        return subprocess.run(
             [*COMPOSE_CMD, "--env-file", "/dev/null", "config"],
             cwd=REPO_ROOT,
             env=self._base_env(),
             capture_output=True,
             text=True,
+            check=False,
             timeout=120,
         )
 
@@ -153,12 +155,13 @@ class TestComposeFailFastBehavior(unittest.TestCase):
         marker = "dummytestvalue318"
         env["GRAFANA_ADMIN_PASSWORD"] = marker
         assert COMPOSE_CMD is not None
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             [*COMPOSE_CMD, "--env-file", "/dev/null", "config"],
             cwd=REPO_ROOT,
             env=env,
             capture_output=True,
             text=True,
+            check=False,
             timeout=60,
         )
         self.assertEqual(
