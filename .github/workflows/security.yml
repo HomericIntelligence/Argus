@@ -6,7 +6,7 @@ on:
     paths:
       - "pixi.toml"
       - "pixi.lock"
-      - "exporter/requirements*.txt"
+      - "jetstream-consumer/requirements.txt"
   schedule:
     - cron: "0 8 * * 1"
   workflow_dispatch:

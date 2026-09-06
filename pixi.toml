@@ -41,7 +41,11 @@ pip = ">=26.1.2"
 msgpack = ">=1.2.1"
 
 [feature.lint.tasks]
-pip-audit = "pip-audit"
+# Audit pinned PyPI requirements for known CVEs.
+# Only jetstream-consumer ships pinned pip deps; the exporter is stdlib-only,
+# and Grafana/Prometheus/Loki are container images (out of pip-audit's scope).
+# --strict makes any skipped dep a hard fail, preventing silent no-op regressions.
+pip-audit = "pip-audit --strict --requirement jetstream-consumer/requirements.txt"
 
 [environments]
 lint = { features = ["lint"], no-default-feature = true }
