@@ -54,6 +54,11 @@ scrape_configs:
     static_configs:
       - targets: ['argus-dashboard:3002']
     metrics_path: /metrics
+    # Atlas requires the bearer token on /metrics (see dashboard/README.md).
+    # Interpolated by the prometheus entrypoint from $ATLAS_AUTH_BEARER_TOKEN
+    # (minted by scripts/smoke-stack.sh; empty in dev .env means 401s).
+    authorization:
+      credentials: '${ATLAS_AUTH_BEARER_TOKEN}'
 
   # Alertmanager self-monitoring: exposes alert pipeline health
   # (alertmanager_alerts, alertmanager_notifications_total, etc.) on :9093/metrics
