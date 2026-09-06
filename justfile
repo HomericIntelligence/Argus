@@ -119,6 +119,12 @@ test:
 test-unit:
     pixi run test-unit
 
+# === Security ===
+
+# Run pip-audit CVE scan over the default + lint environments (mirrors .github/workflows/security.yml)
+audit:
+    pixi run --environment lint pip-audit
+
 # Tail logs for a specific service (e.g. just logs prometheus)
 logs SERVICE:
     {{compose_cmd}} logs -f {{SERVICE}}

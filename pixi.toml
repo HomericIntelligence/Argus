@@ -44,4 +44,4 @@ msgpack = ">=1.2.1"
 pip-audit = "pip-audit"
 
 [environments]
-lint = { features = ["lint"], no-default-feature = true }
+lint = { features = ["lint"] }
