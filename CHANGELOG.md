@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Removed silent `admin` fallbacks from `docker-compose.yml` and `justfile`.
+  Both now fail fast when their respective Grafana password env vars are unset
+  (`GRAFANA_ADMIN_PASSWORD` for compose, `GF_ADMIN_PASSWORD` for just-based
+  recipes). CI workflows updated to inject `GRAFANA_ADMIN_PASSWORD` for
+  compose validation. Regression tests added. (#318, follow-up to #124)
+
 ## Upgrade Guide: v0.1.0 → v0.2.0
 
 This release is not backwards-compatible with v0.1.0 deployments without operator action.

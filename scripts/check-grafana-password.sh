@@ -20,8 +20,8 @@ fi
 PASSWORD="${GRAFANA_ADMIN_PASSWORD:-}"
 
 # Known-insecure defaults that must never reach a deployed stack.
-#   - empty    : docker-compose.yml falls back to `admin`
-#   - admin    : the compose fallback itself
+#   - empty    : docker-compose.yml refuses to start (`:?` on GRAFANA_ADMIN_PASSWORD)
+#   - admin    : the historical compose fallback, still a weak value
 #   - changeme : the placeholder shipped in .env.example
 case "$PASSWORD" in
     ""|admin|changeme)
