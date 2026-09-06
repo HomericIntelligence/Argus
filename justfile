@@ -37,23 +37,22 @@ gen-certs:
 setup:
     @./scripts/setup.sh
 
-# Generate configs/nginx/htpasswd using bcrypt; set LOKI_PASSWORD env var or be prompted
+# Generate secrets/htpasswd and secrets/htpasswd-grafana (apr1 hashes) via
+# scripts/gen-htpasswd.sh; credentials come from .env (LOKI_AUTH_*,
+# GRAFANA_PROXY_*)
 gen-htpasswd:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ -z "${LOKI_PASSWORD:-}" ]; then
-        read -rsp "Loki proxy password: " LOKI_PASSWORD
-        echo
-    fi
-    docker run --rm httpd:2.4-alpine htpasswd -nbB loki "$LOKI_PASSWORD" > configs/nginx/htpasswd
-    echo "configs/nginx/htpasswd written (bcrypt). Keep this file out of version control."
+    @./scripts/gen-htpasswd.sh
 
 # Start all observability services
 start: gen-htpasswd
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ ! -f configs/nginx/htpasswd ]; then
-        echo "ERROR: configs/nginx/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+    if [ ! -f secrets/htpasswd ]; then
+        echo "ERROR: secrets/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+        exit 1
+    fi
+    if [ ! -f secrets/htpasswd-grafana ]; then
+        echo "ERROR: secrets/htpasswd-grafana is missing. Run 'just gen-htpasswd' to create it." >&2
         exit 1
     fi
     ./scripts/check-grafana-password.sh
@@ -82,8 +81,12 @@ validate: check-env-example validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
-    if [ ! -f configs/nginx/htpasswd ]; then
-        echo "ERROR: configs/nginx/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+    if [ ! -f secrets/htpasswd ]; then
+        echo "ERROR: secrets/htpasswd is missing. Run 'just gen-htpasswd' to create it." >&2
+        exit 1
+    fi
+    if [ ! -f secrets/htpasswd-grafana ]; then
+        echo "ERROR: secrets/htpasswd-grafana is missing. Run 'just gen-htpasswd' to create it." >&2
         exit 1
     fi
     echo "Config is valid."
@@ -145,6 +148,10 @@ debug-prometheus:
 debug-loki:
     {{compose_cmd}} exec loki sh
 
+# Debug the Grafana auth proxy from inside its container
+debug-grafana-proxy:
+    {{compose_cmd}} exec grafana-proxy sh
+
 # Manually test Agamemnon and Nestor health endpoints
 scrape-agamemnon:
     ./scripts/scrape-agamemnon.sh {{AGAMEMNON_URL}}
@@ -177,10 +184,11 @@ test-jetstream:
     @echo "Checking jetstream-consumer metrics endpoint..."
     curl -s http://localhost:9101/metrics | grep hi_jetstream
 
-# Import all JSON dashboards from dashboards/ into Grafana via API
-# Reads GF_ADMIN_PASSWORD from .env (required — never hardcoded)
+# Import all JSON dashboards from dashboards/ into Grafana via API.
+# Runs the import inside the grafana container (Grafana has no host port
+# since #321), authenticating with GF_ADMIN_PASSWORD from .env (required).
 import-dashboards:
-    GRAFANA_PORT={{GRAFANA_PORT}} GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+    GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
 
 # === Versioning ===
 

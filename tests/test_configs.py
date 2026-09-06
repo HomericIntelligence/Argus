@@ -401,17 +401,24 @@ class TestDockerComposePorts(unittest.TestCase):
             f"Prometheus must not bind to 0.0.0.0:9090, got: {ports}"
         )
 
-    def test_grafana_port_is_loopback_bound(self) -> None:
-        ports = self._ports("grafana")
-        assert any(str(p).startswith("127.0.0.1:") for p in ports), (
-            f"Grafana must bind to 127.0.0.1, got: {ports}"
+    def test_grafana_has_no_host_port_binding(self) -> None:
+        """Since #321 Grafana has no host port; traffic goes via grafana-proxy."""
+        assert "ports" not in self.services["grafana"], (
+            "grafana must not publish a host port (reach it through grafana-proxy)"
         )
 
-    def test_grafana_port_not_open_bound(self) -> None:
-        ports = self._ports("grafana")
-        assert not any(str(p) == "3000:3000" or str(p) == "3001:3000" for p in ports), (
-            f"Grafana must not bind to 0.0.0.0, got: {ports}"
+    def test_grafana_proxy_port_is_loopback_bound(self) -> None:
+        ports = self._ports("grafana-proxy")
+        assert any(str(p).startswith("127.0.0.1:") for p in ports), (
+            f"grafana-proxy must bind to 127.0.0.1, got: {ports}"
         )
+
+    def test_grafana_proxy_port_not_open_bound(self) -> None:
+        ports = self._ports("grafana-proxy")
+        assert not any(
+            str(p).split(":")[-2] in ("3000", "3001") and str(p).startswith(("3000:", "3001:"))
+            for p in ports
+        ), f"grafana-proxy must not bind to 0.0.0.0, got: {ports}"
 
     def test_exporter_port_is_loopback_bound(self) -> None:
         ports = self._ports("argus-exporter")
