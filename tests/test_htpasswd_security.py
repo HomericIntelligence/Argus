@@ -92,10 +92,10 @@ class TestJustfile(unittest.TestCase):
         self.assertIn("gen-htpasswd:", self.content)
 
     def test_start_depends_on_gen_htpasswd(self) -> None:
-        self.assertRegex(self.content, r"start:\s+gen-htpasswd")
+        self.assertRegex(self.content, r"start:[^\n]*\bgen-htpasswd\b")
 
     def test_restart_depends_on_gen_htpasswd(self) -> None:
-        self.assertRegex(self.content, r"restart:\s+gen-htpasswd")
+        self.assertRegex(self.content, r"restart:[^\n]*\bgen-htpasswd\b")
 
 
 class TestGenScript(unittest.TestCase):

@@ -53,5 +53,54 @@ class TestJustfileNoHardcodedCredentials(unittest.TestCase):
         )
 
 
+class TestJustfileEnvGuard(unittest.TestCase):
+    def setUp(self) -> None:
+        self.content = JUSTFILE.read_text()
+
+    def test_start_depends_on_check_env(self) -> None:
+        """start recipe must declare the check-env dependency."""
+        self.assertIn(
+            "start: check-env",
+            self.content,
+            "start recipe does not depend on check-env",
+        )
+
+    def test_restart_depends_on_check_env(self) -> None:
+        """restart recipe must declare the check-env dependency."""
+        self.assertIn(
+            "restart: check-env",
+            self.content,
+            "restart recipe does not depend on check-env",
+        )
+
+    def test_check_env_recipe_present(self) -> None:
+        """The check-env guard recipe must exist in the justfile."""
+        self.assertIn(
+            "\ncheck-env:\n",
+            self.content,
+            "check-env recipe not found in justfile",
+        )
+
+    def test_check_env_suggests_env_example(self) -> None:
+        """check-env must reference .env.example in its remediation hint."""
+        self.assertIn(
+            ".env.example",
+            self.content,
+            "check-env remediation hint does not mention .env.example",
+        )
+
+    def test_check_env_exits_nonzero(self) -> None:
+        """check-env body must exit non-zero when .env is missing."""
+        start = self.content.index("\ncheck-env:\n")
+        end = self.content.find("\n# ", start)
+        if end == -1:
+            end = len(self.content)
+        self.assertIn(
+            "exit 1",
+            self.content[start:end],
+            "check-env recipe does not exit non-zero",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
