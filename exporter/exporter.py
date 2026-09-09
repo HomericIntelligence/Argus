@@ -13,14 +13,80 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # LOG_LEVEL env var (default INFO) controls log verbosity at runtime so
 # operators can flip to DEBUG (e.g. for HTTP access logs) without a redeploy.
 # Accepts standard logging level names: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+#
+# LOG_FORMAT env var (default json): "json" emits one JSON object per log line
+# on stdout so Loki/Grafana can query fields like client_ip/path/status_code
+# individually (`{container="argus-exporter"} | json | status=~"5.."`).
+# "text" restores the previous plaintext format as a rollback escape hatch.
+# In text mode the named logger keeps propagate=True so records fall through
+# to root's basicConfig handler unchanged; in JSON mode it owns a dedicated
+# handler and cuts propagation to avoid double emission.
 _LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+_LOG_FORMAT = os.environ.get("LOG_FORMAT", "json").lower()
+
+# Top-level JSON keys this formatter owns; extras colliding with them get a
+# ctx_ prefix so user context is never silently dropped.
+_RESERVED_JSON_FIELDS = frozenset({
+    "timestamp", "level", "logger", "message", "exception", "stack_info",
+})
+
+
+class _JsonFormatter(logging.Formatter):
+    """Format each LogRecord as a single-line JSON object.
+
+    Extras passed via ``extra=`` are flattened as top-level keys so they become
+    individually queryable fields in Loki/Grafana. Keys colliding with the
+    formatter's reserved fields get a ``ctx_`` prefix instead of being lost.
+    """
+
+    _DEFAULT_ATTRS: frozenset[str] = (
+        frozenset(
+            logging.LogRecord("x", logging.INFO, "x", 0, "x", None, None).__dict__
+        )
+        | {"message", "msg", "args"}
+    )
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Render one record as compact JSON (UTF-8 friendly)."""
+        payload: dict[str, object] = {
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            # getMessage() resolves lazy %-style args into the final message.
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            payload["stack_info"] = self.formatStack(record.stack_info)
+        for key, value in record.__dict__.items():
+            if key in _JsonFormatter._DEFAULT_ATTRS:
+                continue
+            out_key = f"ctx_{key}" if key in _RESERVED_JSON_FIELDS else key
+            payload[out_key] = value
+        return json.dumps(payload, default=str, ensure_ascii=False)
+
+
 logging.basicConfig(level=_LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("homeric-exporter")
+
+if _LOG_FORMAT == "json":
+    # Attach the JSON formatter to the named logger only — third-party loggers
+    # keep root's plaintext formatting. setLevel is required because once
+    # propagation is cut, only this logger's own level gates emission.
+    _json_handler = logging.StreamHandler()
+    _json_handler.setFormatter(_JsonFormatter())
+    log.addHandler(_json_handler)
+    log.setLevel(_LOG_LEVEL)
+    log.propagate = False
 
 AGAMEMNON_URL     = os.environ.get("AGAMEMNON_URL",     "http://172.20.0.1:8080")
 NESTOR_URL        = os.environ.get("NESTOR_URL",        "http://172.20.0.1:8081")
@@ -225,6 +291,28 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        """Emit an access-log record with structured, individually queryable fields.
+
+        Overrides BaseHTTPRequestHandler.log_request so client IP, method,
+        path, status, and response size travel as ``extra=`` fields (rendered
+        as top-level JSON keys) instead of being baked into the message text.
+        """
+        requestline: str = getattr(self, "requestline", "")
+        address = getattr(self, "client_address", None)
+        log.debug(
+            "%s %s",
+            requestline,
+            code,
+            extra={
+                "client_ip": str(address[0]) if address else "-",
+                "method": requestline.split(" ", 1)[0],
+                "path": self.path.split("?", 1)[0],
+                "status_code": str(code),
+                "response_bytes": str(size),
+            },
+        )
 
     def log_message(self, fmt: str, *args: object) -> None:
         log.debug(fmt, *args)
