@@ -31,16 +31,7 @@ jobs:
         run: pixi install
 
       - name: Lint all YAML files
-        run: |
-          pixi run yamllint -d "{extends: default, rules: {line-length: {max: 120}, truthy: disable}}" \
-            configs/prometheus.yml \
-            configs/loki.yml \
-            configs/promtail.yml \
-            configs/grafana/datasources.yml \
-            configs/grafana/dashboards.yml \
-            rules/agent-alerts.yml \
-            rules/atlas-alerts.yml \
-            docker-compose.yml
+        run: pixi run yamllint --config-file .yamllint.yaml .
 
       - name: Validate Promtail config syntax
         run: |
