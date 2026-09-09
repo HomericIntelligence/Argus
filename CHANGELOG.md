@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- CI `Test exporter` job now installs `just`, so tests that shell out to
+  `just` (e.g. `TestJustRecipeGuard`) no longer fail with `FileNotFoundError`.
+- CI `Lint Python` job pins `ruff==0.16.4` to stop unpinned-install drift
+  from introducing new findings.
+- Bumped `pip` to `>=26.2` in the pixi `lint` env (fixes PYSEC-2026-3721
+  flagged by `pip-audit`).
+
 ## Upgrade Guide: v0.1.0 → v0.2.0
 
 This release is not backwards-compatible with v0.1.0 deployments without operator action.
