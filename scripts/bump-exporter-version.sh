@@ -61,8 +61,13 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     exit 0
 fi
 
-sed -i "s|^${CURRENT_VERSION}$|${NEW_VERSION}|" "$VERSION_FILE"
-sed -i "s|${OLD_TAG}|${NEW_TAG}|" "$COMPOSE_FILE"
+# Portable in-place edit: bare `sed -i` is GNU-only (BSD/macOS sed requires
+# a backup suffix and errors with "invalid command code"). `-i.bak` works on
+# both; remove the backup afterwards so no *.bak files leak into the repo.
+sed -i.bak "s|^${CURRENT_VERSION}$|${NEW_VERSION}|" "$VERSION_FILE"
+rm -f "${VERSION_FILE}.bak"
+sed -i.bak "s|${OLD_TAG}|${NEW_TAG}|" "$COMPOSE_FILE"
+rm -f "${COMPOSE_FILE}.bak"
 
 # Verify both files agree before committing.
 python3 "$CHECKER"
