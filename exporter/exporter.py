@@ -110,7 +110,7 @@ def collect() -> str:
     lines: list[str] = []
     emitted_types: set[str] = set()
 
-    def gauge(name: str, help: str, value: float, labels: dict | None = None) -> None:
+    def gauge(name: str, value: float, labels: dict | None = None) -> None:
         lstr = ",".join(f'{k}="{v}"' for k, v in (labels or {}).items())
         if name not in emitted_types:
             help_text = _METRIC_HELP.get(name, "")
@@ -146,7 +146,7 @@ def collect() -> str:
     }
 
     # ── Agamemnon health ───────────────────────────────────────────────────
-    gauge("hi_agamemnon_health", "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise", agamemnon_health)
+    gauge("hi_agamemnon_health", agamemnon_health)
 
     # ── Agamemnon agents ───────────────────────────────────────────────────
     d = _fetch(f"{AGAMEMNON_URL}/v1/agents", AGAMEMNON_TLS_CA)
@@ -155,12 +155,11 @@ def collect() -> str:
         total   = len(agents)
         online  = sum(1 for a in agents if a.get("status") == "online")
         offline = total - online
-        gauge("hi_agents_total",   "Total number of agents registered in Agamemnon", total)
-        gauge("hi_agents_online",  "Number of agents with status=online", online)
-        gauge("hi_agents_offline", "Number of agents with status!=online", offline)
+        gauge("hi_agents_total",   total)
+        gauge("hi_agents_online",  online)
+        gauge("hi_agents_offline", offline)
         for ag in agents:
             gauge("hi_agent_online",
-                  "1 if the individual agent is online, 0 otherwise",
                   1 if ag.get("status") == "online" else 0,
                   {"name":    ag.get("name", "unknown"),
                    "host":    ag.get("host", "unknown"),
@@ -169,42 +168,42 @@ def collect() -> str:
     # ── Agamemnon tasks ────────────────────────────────────────────────────
     if tasks_data:
         tasks = tasks_data.get("tasks", [])
-        gauge("hi_tasks_total", "Total number of tasks known to Agamemnon", len(tasks))
+        gauge("hi_tasks_total", len(tasks))
         status_counts: dict[str, int] = {}
         for task in tasks:
             s = task.get("status", "unknown")
             status_counts[s] = status_counts.get(s, 0) + 1
         for status, count in status_counts.items():
-            gauge("hi_tasks_by_status", "Task count partitioned by status label", count, {"status": status})
+            gauge("hi_tasks_by_status", count, {"status": status})
 
     # ── Nestor health + research stats ────────────────────────────────────
-    gauge("hi_nestor_health", "1 if Nestor /v1/health returned HTTP 200, 0 otherwise", nestor_health)
+    gauge("hi_nestor_health", nestor_health)
 
     if nestor_stats:
-        gauge("hi_nestor_research_active",    "Number of research jobs currently active in Nestor",    nestor_stats.get("active", 0))
-        gauge("hi_nestor_research_completed", "Number of research jobs completed in Nestor",           nestor_stats.get("completed", 0))
-        gauge("hi_nestor_research_pending",   "Number of research jobs pending in Nestor",             nestor_stats.get("pending", 0))
+        gauge("hi_nestor_research_active",    nestor_stats.get("active", 0))
+        gauge("hi_nestor_research_completed", nestor_stats.get("completed", 0))
+        gauge("hi_nestor_research_pending",   nestor_stats.get("pending", 0))
 
     # ── NATS ───────────────────────────────────────────────────────────────
     if nats_varz:
-        gauge("nats_connections",    "Current number of client connections to NATS",              nats_varz.get("connections", 0))
-        gauge("nats_in_msgs",        "Current inbound message rate from NATS server",             nats_varz.get("in_msgs", 0))
-        gauge("nats_out_msgs",       "Current outbound message rate from NATS server",            nats_varz.get("out_msgs", 0))
-        gauge("nats_in_bytes",       "Current inbound bytes rate from NATS server",               nats_varz.get("in_bytes", 0))
-        gauge("nats_out_bytes",      "Current outbound bytes rate from NATS server",              nats_varz.get("out_bytes", 0))
-        gauge("nats_slow_consumers", "Number of slow consumer connections detected by NATS",      nats_varz.get("slow_consumers", 0))
+        gauge("nats_connections",    nats_varz.get("connections", 0))
+        gauge("nats_in_msgs",        nats_varz.get("in_msgs", 0))
+        gauge("nats_out_msgs",       nats_varz.get("out_msgs", 0))
+        gauge("nats_in_bytes",       nats_varz.get("in_bytes", 0))
+        gauge("nats_out_bytes",      nats_varz.get("out_bytes", 0))
+        gauge("nats_slow_consumers", nats_varz.get("slow_consumers", 0))
 
     if nats_jsz:
-        gauge("nats_jetstream_streams",   "Number of JetStream streams",                              nats_jsz.get("streams", 0))
-        gauge("nats_jetstream_consumers", "Number of JetStream consumers",                            nats_jsz.get("consumers", 0))
-        gauge("nats_jetstream_messages",  "Total messages stored across all JetStream streams",       nats_jsz.get("messages", 0))
-        gauge("nats_jetstream_bytes",     "Total bytes stored across all JetStream streams",          nats_jsz.get("bytes", 0))
+        gauge("nats_jetstream_streams",   nats_jsz.get("streams", 0))
+        gauge("nats_jetstream_consumers", nats_jsz.get("consumers", 0))
+        gauge("nats_jetstream_messages",  nats_jsz.get("messages", 0))
+        gauge("nats_jetstream_bytes",     nats_jsz.get("bytes", 0))
 
     # ── exporter self ──────────────────────────────────────────────────────
-    gauge("homeric_exporter_scrape_timestamp_seconds", "Unix timestamp (seconds) when the last scrape completed", time.time())
-    gauge("homeric_exporter_scrape_duration_seconds",  "Duration in seconds of the last upstream scrape cycle",  time.time() - start)
+    gauge("homeric_exporter_scrape_timestamp_seconds", time.time())
+    gauge("homeric_exporter_scrape_duration_seconds",  time.time() - start)
     for upstream, count in fetch_errors.items():
-        gauge("homeric_exporter_fetch_errors",  "Number of fetch failures per upstream service",             count, {"upstream": upstream})
+        gauge("homeric_exporter_fetch_errors", count, {"upstream": upstream})
 
     return "\n".join(lines) + "\n"
 
