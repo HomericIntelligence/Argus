@@ -19,13 +19,21 @@ FILE="$2"
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-declare -A VOLUME_TO_SERVICE=(
-    [prometheus_data]=prometheus
-    [loki_data]=loki
-    [grafana_data]=grafana
-)
+# Portable volume→service mapping (see backup.sh: no bash-4 keyed arrays —
+# macOS ships Bash 3.2 and pixi-matrix runs on osx-arm64).
+volume_to_service() {
+    case "$1" in
+        prometheus_data) printf 'prometheus' ;;
+        loki_data) printf 'loki' ;;
+        grafana_data) printf 'grafana' ;;
+        *) return 1 ;;
+    esac
+}
 
-SERVICE="${VOLUME_TO_SERVICE[$VOLUME]:-}"
+SERVICE=""
+if svc="$(volume_to_service "$VOLUME")"; then
+    SERVICE="$svc"
+fi
 
 if [[ ! -f "$FILE" ]]; then
     echo "Error: Backup file not found: $FILE"
