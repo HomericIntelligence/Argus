@@ -55,6 +55,7 @@ scrape_configs:
           - localhost
         labels:
           job: hermes
+          host: ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
           service: project-hermes
           __path__: /logs/hermes.log
     pipeline_stages:
@@ -91,6 +92,7 @@ scrape_configs:
           - localhost
         labels:
           job: nats
+          host: ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
           service: nats-server
           __path__: /logs/nats/nats.log
     pipeline_stages:
