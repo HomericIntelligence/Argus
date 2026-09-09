@@ -137,6 +137,10 @@ test-scrape:
     {{compose_cmd}} exec prometheus wget -qO- "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
 
 
+# Smoke-test that Promtail renders the host label from ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
+test-promtail-host-label:
+    COMPOSE_CMD="{{compose_cmd}}" ./scripts/test-promtail-host-label.sh
+
 # Debug Prometheus from inside its container (port not exposed to host)
 debug-prometheus:
     {{compose_cmd}} exec prometheus sh
