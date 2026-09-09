@@ -75,6 +75,22 @@ def test_unit_tests_job_invokes_pytest() -> None:
     )
 
 
+def test_unit_tests_job_has_no_dependencies() -> None:
+    """Required unit-tests must not declare `needs:` (#585 follow-up for #647).
+
+    A `needs: [lint]` gate would skip the required unit-tests context
+    whenever lint fails; the fail-closed queue then blocks on a skipped
+    check instead of a definitive test signal. Cost saving lives only in
+    non-required fast-fail jobs (markdownlint, justfile-check, symlink-check).
+    """
+    jobs = _load_workflow(WORKFLOW)["jobs"]
+    assert not jobs["unit-tests"].get("needs"), (
+        "unit-tests job in _required.yml must not depend on lint: "
+        "required jobs run independently so pull_request and merge_group "
+        "always produce a success/failure signal"
+    )
+
+
 def _test_aggregate_step(job: dict) -> dict:
     needs = job.get("needs", [])
     assert len(needs) == len(TEST_AGGREGATE_DEPENDENCIES)
