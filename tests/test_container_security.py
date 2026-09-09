@@ -14,7 +14,8 @@ REPO_ROOT = Path(__file__).parent.parent
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 DOCKERFILE = REPO_ROOT / "exporter" / "Dockerfile"
 
-# Services that must have non-root user directives (debug-shell is dev-only, excluded)
+# Services that must have non-root user directives (debug-shell is dev-only,
+# excluded from the user: requirement — see test_debug_shell_has_cap_and_privilege_hardening)
 HARDENED_SERVICES = {
     "prometheus": "65534:65534",
     "loki": "10001:10001",
@@ -82,11 +83,17 @@ class TestDockerComposeNonRoot(unittest.TestCase):
                 f"Service '{svc}' missing security_opt: no-new-privileges:true",
             )
 
-    def test_debug_shell_not_hardened(self) -> None:
-        """dev-only debug-shell is excluded from hardening requirements."""
+    def test_debug_shell_has_cap_and_privilege_hardening(self) -> None:
+        """dev-only debug-shell must still drop caps and set no-new-privileges."""
         self.assertIn("debug-shell", self.services, "debug-shell service should still exist")
         debug = self.services["debug-shell"]
         self.assertIn("profiles", debug, "debug-shell must remain dev-only via profiles")
+        self.assertIn("ALL", debug.get("cap_drop", []), "debug-shell missing cap_drop: [ALL]")
+        self.assertIn(
+            "no-new-privileges:true",
+            debug.get("security_opt", []),
+            "debug-shell missing security_opt: no-new-privileges:true",
+        )
 
 
 class TestDockerfileNonRoot(unittest.TestCase):

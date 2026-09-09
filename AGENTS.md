@@ -38,15 +38,15 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 
 ## Stack Components
 
-| Service         | Image                          | Purpose                                                |
-|-----------------|--------------------------------|--------------------------------------------------------|
-| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
-| Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
-| Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
-| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
-| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
-| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
-| argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
+| Service        | Image                                                                                                                                                  | Purpose                                                |
+|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+| Prometheus     | prom/prometheus:v2.54.1                                                                                                                                | Scrape and store metrics                               |
+| Alertmanager   | prom/alertmanager:v0.32.1                                                                                                                              | Route Prometheus alerts to receivers                   |
+| Loki           | grafana/loki:3.1.2                                                                                                                                     | Store and query log streams                            |
+| loki-proxy     | nginx:1.27-alpine                                                                                                                                      | Basic-auth proxy in front of Loki                      |
+| Promtail       | grafana/promtail:3.1.2                                                                                                                                 | Tail container logs and ship to Loki                   |
+| Grafana        | grafana/grafana:11.2.2                                                                                                                                 | Visualize metrics and logs                             |
+| argus-exporter | pinned GHCR image `ghcr.io/homericintelligence/argus-exporter:vX.Y.Z` (version tracked in `exporter/VERSION`, bumped via `just bump-exporter-version`) | Convert HomericIntelligence APIs to Prometheus metrics |
 
 ### Network topology (two-network design)
 
@@ -184,6 +184,13 @@ new to the stack frequently trip on:
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.
+8. **`grafana_data` volume ownership is fixed by the `grafana-init` one-shot
+   container** (issue #332). Docker creates named volumes root-owned, but
+   grafana runs as UID 472 and cannot fix ownership itself. On every
+   `just start` / `docker compose up`, `grafana-init` recursively chowns the
+   volume to `472:472` before grafana starts (gated via
+   `depends_on: service_completed_successfully`) — operators never need to
+   hand-chown volumes.
 
 ## Metric Catalog
 
@@ -276,11 +283,18 @@ Argus/
 - Use `just test-scrape` to verify the `up` metric for all targets before declaring a scrape job healthy.
 - Run `just test` to execute the unit test suite before submitting a PR.
 - `import-dashboards` reads `GF_ADMIN_PASSWORD` from `.env` — never hardcode credentials.
+- `pixi run --environment lint pip-audit` audits `jetstream-consumer/requirements.txt`
+  (the only pinned-PyPI surface). Expected output on a clean run:
+  `No known vulnerabilities found`, exit 0. If a new pinned-PyPI file is added
+  (e.g., `exporter/requirements.txt`), extend the `pip-audit` task in `pixi.toml`
+  with another `--requirement` flag and add the path to
+  `.github/workflows/security.yml`'s `paths:` filter.
 
 ## Common Commands
 
 ```bash
 just start                   # docker compose up -d (requires .env)
+just bump-exporter-version <patch|minor|major>  # bump exporter/VERSION + compose pin atomically
 just stop                    # docker compose down
 just status                  # docker compose ps
 just logs <service>          # docker compose logs -f <service>

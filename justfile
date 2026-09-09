@@ -8,6 +8,7 @@
 #   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
 #                       only so `just --list` works without `.env`; production
 #                       deployments MUST override this.
+#   GRAFANA_ADMIN_USER  Grafana admin username. Optional; defaults to "admin".
 set dotenv-load
 
 # === Variables ===
@@ -19,6 +20,7 @@ AGAMEMNON_URL := "http://172.20.0.1:8080"
 GRAFANA_PORT := "3001"
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
+GRAFANA_ADMIN_USER := env_var_or_default("GRAFANA_ADMIN_USER", "admin")
 
 # === Default ===
 
@@ -77,7 +79,9 @@ restart: gen-htpasswd
 clean:
     {{compose_cmd}} down -v
 
-# Validate docker-compose config, YAML files, and required runtime files
+# Validate docker-compose config, YAML files, required runtime files, and
+# health gates (gates fail when their containers are down unless explicitly
+# skipped via ALERTMANAGER_CHECK_SKIP_ON_DOWN=1)
 validate: check-env-example validate-promtail
     #!/usr/bin/env bash
     set -euo pipefail
@@ -87,6 +91,8 @@ validate: check-env-example validate-promtail
         exit 1
     fi
     echo "Config is valid."
+    just check-alertmanager
+    echo "Health checks passed."
 
 # Verify every env var referenced by docker-compose.yml is documented in
 # .env.example. Fails on undocumented drift (issue #215).
@@ -103,6 +109,11 @@ validate-promtail:
         -config.expand-env=true \
         -check-syntax
     @echo "promtail config OK."
+
+# bash -n + shellcheck every tracked .sh file (issue #359). Delegates to
+# tests/test-shell-lint.sh so the checks match ci.yml and `just ci-lint` exactly.
+check-shell:
+    @pixi run bash tests/test-shell-lint.sh
 
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:
@@ -170,6 +181,11 @@ test-alertmanager:
     curl -s http://localhost:9093/-/healthy && echo ""
     curl -s http://localhost:9093/api/v2/status | jq '.cluster.status'
 
+# Health-gate Alertmanager; fails when the container is down unless
+# ALERTMANAGER_CHECK_SKIP_ON_DOWN=1 (issue #250)
+check-alertmanager:
+    ./scripts/check-alertmanager.sh
+
 # === Grafana ===
 
 # Check jetstream-consumer metrics endpoint
@@ -179,14 +195,31 @@ test-jetstream:
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
 # Reads GF_ADMIN_PASSWORD from .env (required — never hardcoded)
+# and GRAFANA_ADMIN_USER (optional, default "admin").
+# Note: this recipe deliberately does NOT use {{GF_ADMIN_PASSWORD}} interpolation,
+# because the global env_var_or_default fallback at the top of this file would
+# otherwise substitute "admin" for an unset value and bypass the guard below (issue #262).
 import-dashboards:
-    GRAFANA_PORT={{GRAFANA_PORT}} GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if [[ -z "${GF_ADMIN_PASSWORD-}" ]]; then
+        echo "ERROR: GF_ADMIN_PASSWORD is not set (or is empty) in .env." >&2
+        echo "       Set GF_ADMIN_PASSWORD=<your-grafana-admin-password> in .env" >&2
+        echo "       at the repository root, then re-run 'just import-dashboards'." >&2
+        exit 1
+    fi
+    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
 
 # === Versioning ===
 
 # Bump version and promote CHANGELOG (patch|minor|major)
 bump TYPE:
     bash scripts/bump-version.sh {{TYPE}}
+
+# Bump exporter image version (patch|minor|major) across exporter/VERSION and
+# docker-compose.yml atomically; pass --dry-run to preview. Refs #393.
+bump-exporter-version TYPE *FLAGS:
+    bash scripts/bump-exporter-version.sh {{TYPE}} {{FLAGS}}
 
 # Preview CHANGELOG entries since last tag without committing
 generate-changelog:

@@ -146,6 +146,12 @@ run_lint() {
 
     log_step "lint — gosec (Go dashboard)"
     run_in_container NO_PIXI_READY "if [ -f dashboard/go.mod ]; then gosec ./dashboard/...; else echo '::notice::No dashboard/go.mod, skipping gosec'; fi"
+
+    log_step "lint — bash -n + shellcheck (tracked *.sh)"
+    # The checker binary is baked into the image (see ci/Containerfile); the
+    # gate logic lives in tests/test-shell-lint.sh so CI, local container runs
+    # and `just check-shell` all enforce exactly the same checks.
+    run_in_container NO_PIXI_READY "bash tests/test-shell-lint.sh"
 }
 
 run_pixi_check() {
@@ -155,12 +161,12 @@ run_pixi_check() {
 }
 
 run_unit_tests() {
-    log_step "unit-tests — yamllint + pytest"
+    log_step "unit-tests — yamllint + pytest (coverage-gated via pixi test-unit task)"
     run_in_container "yamllint -c .yamllint.yaml . && \
         if command -v promtool &>/dev/null && [ -d rules ]; then \
         mapfile -t rule_files < <(find rules -type f \\( -name '*.yml' -o -name '*.yaml' \\)); \
         if [ \"\${#rule_files[@]}\" -gt 0 ]; then promtool check rules \"\${rule_files[@]}\"; fi; fi; \
-        pixi run pytest tests/ -v"
+        pixi run test-unit"
 }
 
 run_integration_tests() {

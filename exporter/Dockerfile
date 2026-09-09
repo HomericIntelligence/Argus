@@ -1,7 +1,7 @@
-# Base-image minor must stay within the CI validation set (.github/workflows/ci.yml
-# setup-python version) and the pixi dev/test env; enforced by
-# tests/test_dockerfile_constraints.py
-FROM python:3.13-slim AS base
+# Base image digest-pinned for reproducible builds (issue #313); the Python
+# version is constrained by tests/test_dockerfile_constraints.py. Rotate the
+# digest when picking up Debian security patches.
+FROM python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4 AS base
 
 # Install no extra packages — exporter uses stdlib only
 WORKDIR /app

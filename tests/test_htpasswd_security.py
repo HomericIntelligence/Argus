@@ -33,6 +33,33 @@ class TestHtpasswdNotCommitted(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "",
                          "configs/nginx/htpasswd must not be tracked in git")
 
+    def test_leaked_hash_absent_from_tracked_files(self) -> None:
+        # Issue #225 decision: history intentionally retains the leaked
+        # APR1-MD5 hash as a pre-rotation artifact (commits 45f1de32,
+        # e2d8758a). Credential rotation is an operator action outside this
+        # repo; htpasswd is runtime-generated via just gen-htpasswd and
+        # gitignored. This test guards against re-committing the hash into
+        # tracked files in the working tree.
+        # Deterministic and offline: asserts plain `git grep` output over
+        # tracked files only, no network, no skip path. Fails loudly if the
+        # hash reappears in any tracked file.
+        # Note: hash is assembled via concatenation so this file's own
+        # search pattern does not self-match `git grep -F`.
+        leaked_hash = "$apr1$" + "IvtTVmT2$Vyef8metZTBYPpuH6byNP."
+        result = subprocess.run(
+            ["git", "grep", "-l", "-F", leaked_hash, "--", "."],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=REPO_ROOT,
+        )
+        self.assertIn(result.returncode, (0, 1),
+                      f"git grep failed: {result.stderr}")
+        self.assertEqual(
+            result.stdout.strip(), "",
+            "leaked htpasswd hash is present in tracked files "
+            "(issue #225: must not re-commit the pre-rotation hash)")
+
     def test_htpasswd_file_not_present_on_disk(self) -> None:
         self.assertFalse(
             COMMITTED_HTPASSWD.exists(),
