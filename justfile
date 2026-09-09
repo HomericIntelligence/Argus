@@ -178,9 +178,20 @@ test-jetstream:
     curl -s http://localhost:9101/metrics | grep hi_jetstream
 
 # Import all JSON dashboards from dashboards/ into Grafana via API
-# Reads GF_ADMIN_PASSWORD from .env (required — never hardcoded)
+# Reads GF_ADMIN_PASSWORD from .env (required — never hardcoded).
+# Note: this recipe deliberately does NOT use {{GF_ADMIN_PASSWORD}} interpolation,
+# because the global env_var_or_default fallback at the top of this file would
+# otherwise substitute "admin" for an unset value and bypass the guard below (issue #262).
 import-dashboards:
-    GRAFANA_PORT={{GRAFANA_PORT}} GF_ADMIN_PASSWORD={{GF_ADMIN_PASSWORD}} ./scripts/import-dashboards.sh
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if [[ -z "${GF_ADMIN_PASSWORD-}" ]]; then
+        echo "ERROR: GF_ADMIN_PASSWORD is not set (or is empty) in .env." >&2
+        echo "       Set GF_ADMIN_PASSWORD=<your-grafana-admin-password> in .env" >&2
+        echo "       at the repository root, then re-run 'just import-dashboards'." >&2
+        exit 1
+    fi
+    GRAFANA_PORT={{GRAFANA_PORT}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
 
 # === Versioning ===
 
