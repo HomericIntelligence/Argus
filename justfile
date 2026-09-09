@@ -78,7 +78,7 @@ clean:
     {{compose_cmd}} down -v
 
 # Validate docker-compose config, YAML files, and required runtime files
-validate: check-env-example validate-promtail
+validate: check-env-example validate-promtail check-ports-static
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
@@ -103,6 +103,15 @@ validate-promtail:
         -config.expand-env=true \
         -check-syntax
     @echo "promtail config OK."
+
+# Static check: assert every docker-compose.yml port binding is loopback-only
+# (issue #327). Stack-independent — safe on cold hosts.
+check-ports-static:
+    pixi run pytest tests/test_port_bindings.py -q --no-cov
+
+# Runtime check: assert the running stack has no 0.0.0.0 host bindings (#327)
+check-ports:
+    @COMPOSE_CMD="{{compose_cmd}}" bash scripts/check-ports.sh
 
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:

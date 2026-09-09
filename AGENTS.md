@@ -291,6 +291,8 @@ just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
 just test                    # Run pytest unit tests
+just check-ports             # Verify running stack's host ports are loopback-only
+just check-ports-static      # Verify docker-compose.yml ports are loopback-only (issue #327)
 just backup                  # Back up data volumes to ./backups/
 ```
 
