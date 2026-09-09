@@ -215,9 +215,9 @@ import-dashboards:
 
 # === Versioning ===
 
-# Bump version and promote CHANGELOG (patch|minor|major)
-bump TYPE:
-    bash scripts/bump-version.sh {{TYPE}}
+# Bump version and promote CHANGELOG (patch|minor|major) [--allow-empty]
+bump *ARGS:
+    bash scripts/bump-version.sh {{ARGS}}
 
 # Bump exporter image version (patch|minor|major) across exporter/VERSION and
 # docker-compose.yml atomically; pass --dry-run to preview. Refs #393.
