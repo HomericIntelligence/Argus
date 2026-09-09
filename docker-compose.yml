@@ -177,11 +177,48 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:9093:9093"
+    environment:
+      # Slack incoming webhook used by the 'slack' receiver (see #344).
+      # When SLACK_WEBHOOK_URL is empty the default route falls back to the
+      # 'null' receiver, so a fresh clone boots with no paging configured.
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SLACK_CHANNEL: ${SLACK_CHANNEL:-argus-alerts}
     volumes:
-      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
       - alertmanager_data:/alertmanager
+    tmpfs:
+      # Writable scratch for the rendered alertmanager.yml (the template is
+      # mounted read-only). Sized small — only one tiny YAML file lives here.
+      # prom/alertmanager runs as nobody/nogroup = 65534.
+      - /run/alertmanager:size=1m,mode=0700,uid=65534,gid=65534
+    # Render the env-var placeholders in alertmanager.yml.tmpl into a writable
+    # tmpfs file, then exec the official entrypoint — same sed-based pattern
+    # as the prometheus service above. With no SLACK_WEBHOOK_URL set, alerts
+    # route to the retained 'null' receiver instead of failing delivery.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ -n "$${SLACK_WEBHOOK_URL:-}" ]; then
+          default_receiver='slack'
+        else
+          # Placeholder keeps the YAML schema-valid; the default route points
+          # at 'null' in this mode so the slack receiver is never used.
+          SLACK_WEBHOOK_URL='http://localhost:1/disabled'
+          default_receiver='null'
+          echo "WARN: SLACK_WEBHOOK_URL unset; alerts routed to 'null' (logged only)" >&2
+        fi
+        sed \
+          -e "s|\$${ALERTMANAGER_DEFAULT_RECEIVER}|$${default_receiver}|g" \
+          -e "s|\$${SLACK_WEBHOOK_URL}|$${SLACK_WEBHOOK_URL}|g" \
+          -e "s|\$${SLACK_CHANNEL}|$${SLACK_CHANNEL}|g" \
+          /etc/alertmanager/alertmanager.yml.tmpl \
+          > /run/alertmanager/alertmanager.yml
+        exec /bin/alertmanager "$@"
+      - "alertmanager"
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--config.file=/run/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
     networks:
       - argus

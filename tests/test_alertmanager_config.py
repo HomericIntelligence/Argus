@@ -66,13 +66,64 @@ class TestAlertmanagerConfigStructure:
     def test_default_receiver_exists_in_receivers(self, alertmanager_config: dict) -> None:
         default_receiver = alertmanager_config["route"]["receiver"]
         receiver_names = [r["name"] for r in alertmanager_config["receivers"]]
-        assert default_receiver in receiver_names, (
-            f"Default receiver '{default_receiver}' must be defined in receivers"
-        )
+        # The default receiver may be a render-time placeholder
+        # (${ALERTMANAGER_DEFAULT_RECEIVER} → 'slack' or 'null' at container
+        # start); both possible resolutions must be defined receivers.
+        if "ALERTMANAGER_DEFAULT_RECEIVER" in str(default_receiver):
+            assert "slack" in receiver_names and "null" in receiver_names
+        else:
+            assert default_receiver in receiver_names, (
+                f"Default receiver '{default_receiver}' must be defined in receivers"
+            )
 
     @pytest.mark.parametrize("field", ["group_by", "group_wait", "group_interval", "repeat_interval", "receiver"])
     def test_route_required_fields(self, alertmanager_config: dict, field: str) -> None:
         assert field in alertmanager_config["route"], f"route.{field} must be present"
+
+
+class TestSlackReceiver:
+    """The 'slack' receiver wired in by #344 (credentials rendered at runtime)."""
+
+    def test_receivers_include_null_and_slack(self, alertmanager_config: dict) -> None:
+        receiver_names = [r["name"] for r in alertmanager_config["receivers"]]
+        assert "null" in receiver_names
+        assert "slack" in receiver_names
+
+    def test_route_receiver_uses_render_token(self, alertmanager_config: dict) -> None:
+        receiver = alertmanager_config["route"]["receiver"]
+        assert "ALERTMANAGER_DEFAULT_RECEIVER" in str(receiver), (
+            "route.receiver must use the ALERTMANAGER_DEFAULT_RECEIVER render "
+            "token (resolved at container start), not a hardcoded value"
+        )
+
+    def test_slack_receiver_has_slack_configs(self, alertmanager_config: dict) -> None:
+        slack = next(
+            r for r in alertmanager_config["receivers"] if r["name"] == "slack"
+        )
+        assert isinstance(slack.get("slack_configs"), list)
+        assert len(slack["slack_configs"]) == 1
+
+    def test_slack_api_url_references_webhook_token(self, alertmanager_config: dict) -> None:
+        slack = next(
+            r for r in alertmanager_config["receivers"] if r["name"] == "slack"
+        )
+        url = slack["slack_configs"][0]["api_url"]
+        assert "SLACK_WEBHOOK_URL" in str(url), (
+            "slack_configs[0].api_url must reference the SLACK_WEBHOOK_URL "
+            "render token so credentials come from .env"
+        )
+
+    def test_slack_send_resolved(self, alertmanager_config: dict) -> None:
+        slack = next(
+            r for r in alertmanager_config["receivers"] if r["name"] == "slack"
+        )
+        assert slack["slack_configs"][0]["send_resolved"] is True
+
+    def test_no_literal_slack_webhook_secret_committed(self) -> None:
+        content = ALERTMANAGER_CONFIG.read_text()
+        assert "hooks.slack.com" not in content, (
+            "no literal Slack webhook URL may be committed to the repo"
+        )
 
 
 class TestPrometheusAlertingBlock:
@@ -152,3 +203,41 @@ class TestDockerComposeAlertmanager:
     def test_restart_policy(self, compose_config: dict) -> None:
         svc = compose_config["services"]["alertmanager"]
         assert svc.get("restart") == "unless-stopped"
+
+    def test_slack_env_passthrough(self, compose_config: dict) -> None:
+        svc = compose_config["services"]["alertmanager"]
+        env = svc.get("environment", {})
+        assert "SLACK_WEBHOOK_URL" in env, (
+            "SLACK_WEBHOOK_URL must be forwarded to the alertmanager container"
+        )
+        assert "SLACK_CHANNEL" in env, (
+            "SLACK_CHANNEL must be forwarded to the alertmanager container"
+        )
+
+    def test_template_mounted_readonly(self, compose_config: dict) -> None:
+        svc = compose_config["services"]["alertmanager"]
+        volumes = svc.get("volumes", [])
+        assert any(
+            "alertmanager.yml.tmpl" in str(v) and ":ro" in str(v) for v in volumes
+        ), (
+            "the alertmanager config must be mounted as a read-only .tmpl "
+            "template (rendered at container start)"
+        )
+
+    def test_tmpfs_for_rendered_config(self, compose_config: dict) -> None:
+        svc = compose_config["services"]["alertmanager"]
+        tmpfs = [str(t) for t in svc.get("tmpfs", [])]
+        assert any("/run/alertmanager" in t for t in tmpfs), (
+            "a writable tmpfs at /run/alertmanager must hold the rendered config"
+        )
+
+    def test_entrypoint_has_empty_webhook_fallback(self) -> None:
+        content = COMPOSE_FILE.read_text()
+        am_block = content.split("alertmanager:", 1)[1].split("grafana:", 1)[0]
+        assert "[ -n \"$${SLACK_WEBHOOK_URL:-}\" ]" in am_block, (
+            "entrypoint must fall back to the 'null' receiver when "
+            "SLACK_WEBHOOK_URL is unset so the stack boots without credentials"
+        )
+        assert "--config.file=/run/alertmanager/alertmanager.yml" in am_block, (
+            "alertmanager must run against the rendered config, not the template"
+        )
