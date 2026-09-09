@@ -1,7 +1,7 @@
 {
   "title": "NATS Event Bus",
   "uid": "nats-events",
-  "version": 1,
+  "version": 2,
   "schemaVersion": 38,
   "tags": ["nats", "messaging"],
   "timezone": "browser",
@@ -16,7 +16,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(nats_in_msgs_total[1m])",
+          "expr": "nats_in_msgs",
           "legendFormat": "msgs/s in",
           "refId": "A"
         }
@@ -37,7 +37,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(nats_out_msgs_total[1m])",
+          "expr": "nats_out_msgs",
           "legendFormat": "msgs/s out",
           "refId": "A"
         }
@@ -97,12 +97,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(nats_in_msgs_total[1m])",
+          "expr": "nats_in_msgs",
           "legendFormat": "In msg/s",
           "refId": "A"
         },
         {
-          "expr": "rate(nats_out_msgs_total[1m])",
+          "expr": "nats_out_msgs",
           "legendFormat": "Out msg/s",
           "refId": "B"
         }
@@ -119,12 +119,12 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(nats_in_bytes_total[1m])",
+          "expr": "nats_in_bytes",
           "legendFormat": "Bytes in/s",
           "refId": "A"
         },
         {
-          "expr": "rate(nats_out_bytes_total[1m])",
+          "expr": "nats_out_bytes",
           "legendFormat": "Bytes out/s",
           "refId": "B"
         }
