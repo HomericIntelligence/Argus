@@ -38,15 +38,15 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 
 ## Stack Components
 
-| Service         | Image                          | Purpose                                                |
-|-----------------|--------------------------------|--------------------------------------------------------|
-| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
-| Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
-| Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
-| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
-| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
-| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
-| argus-exporter  | built from exporter/           | Convert HomericIntelligence APIs to Prometheus metrics |
+| Service        | Image                                                                                                                                                  | Purpose                                                |
+|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
+| Prometheus     | prom/prometheus:v2.54.1                                                                                                                                | Scrape and store metrics                               |
+| Alertmanager   | prom/alertmanager:v0.32.1                                                                                                                              | Route Prometheus alerts to receivers                   |
+| Loki           | grafana/loki:3.1.2                                                                                                                                     | Store and query log streams                            |
+| loki-proxy     | nginx:1.27-alpine                                                                                                                                      | Basic-auth proxy in front of Loki                      |
+| Promtail       | grafana/promtail:3.1.2                                                                                                                                 | Tail container logs and ship to Loki                   |
+| Grafana        | grafana/grafana:11.2.2                                                                                                                                 | Visualize metrics and logs                             |
+| argus-exporter | pinned GHCR image `ghcr.io/homericintelligence/argus-exporter:vX.Y.Z` (version tracked in `exporter/VERSION`, bumped via `just bump-exporter-version`) | Convert HomericIntelligence APIs to Prometheus metrics |
 
 ### Network topology (two-network design)
 
@@ -281,6 +281,7 @@ Argus/
 
 ```bash
 just start                   # docker compose up -d (requires .env)
+just bump-exporter-version <patch|minor|major>  # bump exporter/VERSION + compose pin atomically
 just stop                    # docker compose down
 just status                  # docker compose ps
 just logs <service>          # docker compose logs -f <service>
