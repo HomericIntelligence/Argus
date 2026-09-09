@@ -63,6 +63,18 @@ repos:
         language: system
         files: ^(docker-compose\.ya?ml|\.env\.example|scripts/check-env-example\.sh)$
         pass_filenames: false
+
+      - id: check-exporter-image-version
+        name: "check exporter/VERSION ↔ compose tag ↔ publish workflow consistency"
+        description: >
+          Asserts exporter/VERSION, the ${EXPORTER_IMAGE:-...} default in
+          docker-compose.yml, and the semver tag published by
+          publish-exporter-image.yml all agree. See HomericIntelligence/Argus#393.
+        entry: python3 scripts/check-exporter-image-version.py
+        language: system
+        files: ^(exporter/VERSION|docker-compose\.ya?ml|\.github/workflows/publish-exporter-image\.yml|scripts/check-exporter-image-version\.py)$
+        pass_filenames: false
+
       - id: require-signed-commits
         name: "require gpg/ssh-signed commits on push"
         description: >

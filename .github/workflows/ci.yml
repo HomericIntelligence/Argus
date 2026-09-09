@@ -1,15 +1,15 @@
 name: CI
 
-# merge_group is intentionally absent from `on`: the merge queue runs only the
-# fast merge-queue-smoke.yml workflow (single merge-queue-smoke job, <5 min).
 on:
   push:
     branches: ["main", "feature/**", "fix/**", "chore/**"]
   pull_request:
     branches: ["main"]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -81,6 +81,11 @@ jobs:
       - name: Check .env.example documents every compose variable
         run: bash scripts/check-env-example.sh
 
+      # Stdlib-only; keeps exporter/VERSION, the compose pin, and the
+      # publish workflow's semver tag in lockstep (Refs #393).
+      - name: Check exporter image version consistency
+        run: python3 scripts/check-exporter-image-version.py
+
       - name: Lint exporter Python
         run: pixi run ruff check exporter/exporter.py
 
@@ -114,7 +119,17 @@ jobs:
           SCAN_CHECK
 
       - name: Lint shell scripts
-        run: shellcheck --severity=warning scripts/*.sh
+        run: |
+          # Fail loudly if shellcheck is missing instead of silently passing
+          # (the gate's tool presence is part of its correctness).
+          if ! command -v shellcheck > /dev/null 2>&1; then
+            echo "::error::shellcheck missing on runner"
+            exit 1
+          fi
+          # Single source of truth for the gate (bash -n + shellcheck
+          # --severity=warning over every tracked *.sh, plus a negative
+          # vacuous-gate check): tests/test-shell-lint.sh
+          bash tests/test-shell-lint.sh
 
       - name: Assert htpasswd is not tracked
         # Guard against accidental re-addition of nginx basic-auth credentials
@@ -201,6 +216,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install just
+        # TestJustRecipeGuard tests shell out to `just`; without it they fail
+        # with FileNotFoundError (see #624, #621).
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+        with:
+          just-version: "1.36.0"
+
       - name: Install test dependencies
         run: pip install pytest pytest-cov pyyaml
 
@@ -221,7 +243,9 @@ jobs:
           python-version: "3.13"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned: unpinned installs drifted to 0.16.4 and introduced new
+        # I001/RUF100 findings across PRs (#629, #634). Bump deliberately.
+        run: pip install "ruff==0.16.4"
 
       - name: Run ruff
         run: ruff check exporter/ tests/
@@ -292,10 +316,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [unit-tests, test, atlas-dashboard]
+    if: always()
 
     steps:
       - name: Aggregate test result
+        env:
+          UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
+          EXPORTER_TEST_RESULT: ${{ needs.test.result }}
+          ATLAS_DASHBOARD_RESULT: ${{ needs.atlas-dashboard.result }}
         run: |
+          set -euo pipefail
+          failed=0
+          if [ "${UNIT_TESTS_RESULT}" != "success" ]; then
+            echo "::error::unit-tests finished with ${UNIT_TESTS_RESULT}"
+            failed=1
+          fi
+          if [ "${EXPORTER_TEST_RESULT}" != "success" ]; then
+            echo "::error::test finished with ${EXPORTER_TEST_RESULT}"
+            failed=1
+          fi
+          if [ "${ATLAS_DASHBOARD_RESULT}" != "success" ]; then
+            echo "::error::atlas-dashboard finished with ${ATLAS_DASHBOARD_RESULT}"
+            failed=1
+          fi
+          if [ "${failed}" -ne 0 ]; then
+            exit 1
+          fi
           echo "OK: in-workflow test suites passed (unit-tests, Test exporter, Atlas dashboard (Go))"
 
   # package — builds the distributable. Argus's clean distributable is the Go
