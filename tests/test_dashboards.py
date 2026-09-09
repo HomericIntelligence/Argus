@@ -121,5 +121,45 @@ class TestAllDashboards(unittest.TestCase):
             f"Duplicate dashboard UIDs found: {[u for u in uids if uids.count(u) > 1]}"
 
 
+class TestDashboardDocumentation(unittest.TestCase):
+    """Every dashboard in dashboards/ must be documented in README.md and AGENTS.md.
+
+    Guards against the doc drift that caused issue #102: a dashboard JSON file
+    added to dashboards/ without a corresponding entry in the documentation.
+    A dashboard counts as documented when its uid appears verbatim in each doc
+    file. CLAUDE.md is a pointer file whose sole content defers to AGENTS.md,
+    so AGENTS.md is checked as the authoritative agent-facing documentation.
+    """
+
+    DOC_FILES = ("README.md", "AGENTS.md")
+
+    def _dashboard_uids(self) -> dict[str, str]:
+        files = get_dashboard_files()
+        assert len(files) > 0, "No dashboard files found"
+        return {load_json(p)["uid"]: p.name for p in files}
+
+    def test_every_dashboard_uid_documented(self) -> None:
+        uids = self._dashboard_uids()
+        for doc_name in self.DOC_FILES:
+            doc_text = (REPO_ROOT / doc_name).read_text()
+            for uid, filename in sorted(uids.items()):
+                with self.subTest(doc=doc_name, dashboard=filename):
+                    assert uid in doc_text, (
+                        f"{filename} (uid: {uid}) is not documented in {doc_name}; "
+                        f"add an entry for it (see issues #102 and #231)"
+                    )
+
+    def test_documented_count_matches_dashboard_count(self) -> None:
+        uids = self._dashboard_uids()
+        for doc_name in self.DOC_FILES:
+            doc_text = (REPO_ROOT / doc_name).read_text()
+            missing = sorted(u for u in uids if u not in doc_text)
+            with self.subTest(doc=doc_name):
+                assert not missing, (
+                    f"{doc_name} documents {len(uids) - len(missing)} of "
+                    f"{len(uids)} dashboards; missing: {missing}"
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
