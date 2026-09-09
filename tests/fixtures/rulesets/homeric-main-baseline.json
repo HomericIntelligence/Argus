@@ -59,9 +59,6 @@
           },
           {
             "context": "release"
-          },
-          {
-            "context": "build"
           }
         ]
       }
