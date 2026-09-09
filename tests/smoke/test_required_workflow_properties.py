@@ -232,19 +232,19 @@ def test_test_aggregate_rejects_non_success_dependency(
 @pytest.mark.parametrize(
     ("conditional_target", "expected_message"),
     (
-        ("job", "required job build has conditional execution"),
-        ("validator-step", "required job build has a conditional validator step"),
+        ("job", "required job package has conditional execution"),
+        ("validator-step", "required job package has a conditional validator step"),
     ),
 )
 def test_required_job_conditions_are_rejected(
     tmp_path: Path, conditional_target: str, expected_message: str
 ) -> None:
     workflow = _load_workflow(CI_WORKFLOW)
-    build = workflow["jobs"]["build"]
+    package = workflow["jobs"]["package"]
     if conditional_target == "job":
-        build["if"] = "false"
+        package["if"] = "false"
     else:
-        build["steps"][-1]["if"] = "false"
+        package["steps"][-1]["if"] = "false"
 
     fixture = tmp_path / "ci.yml"
     fixture.write_text(yaml.safe_dump(workflow, sort_keys=False))
@@ -256,14 +256,14 @@ def test_required_job_conditions_are_rejected(
 
 def test_nonaggregate_required_job_dependencies_are_rejected(tmp_path: Path) -> None:
     workflow = _load_workflow(CI_WORKFLOW)
-    workflow["jobs"]["build"]["needs"] = ["unit-tests"]
+    workflow["jobs"]["package"]["needs"] = ["unit-tests"]
 
     fixture = tmp_path / "ci.yml"
     fixture.write_text(yaml.safe_dump(workflow, sort_keys=False))
     dependency_results = dict.fromkeys(TEST_AGGREGATE_DEPENDENCIES, "success")
 
     with pytest.raises(
-        AssertionError, match="required job build declares dependencies"
+        AssertionError, match="required job package declares dependencies"
     ):
         _reachable_job_outcomes(fixture, "pull_request", dependency_results)
 
