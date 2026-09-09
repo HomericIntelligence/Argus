@@ -54,10 +54,17 @@ def test_backup_sh_syntax() -> None:
 
 
 def test_backup_sh_defines_volume_to_service_map() -> None:
-    """backup.sh must map backed-up volumes to their owning services (no grafana_data)."""
+    """backup.sh must map backed-up volumes to their owning services (no grafana_data).
+
+    The mapping is a portable `case` function (not `declare -A`): macOS ships
+    Bash 3.2, which has no associative arrays.
+    """
     content = script_content("backup.sh")
-    assert "[prometheus_data]=prometheus" in content
-    assert "[loki_data]=loki" in content
+    assert "declare -A" not in content, (
+        "backup.sh must stay Bash 3.2 compatible (no associative arrays)"
+    )
+    assert "prometheus_data) printf 'prometheus'" in content
+    assert "loki_data) printf 'loki'" in content
     assert "grafana_data" not in content, (
         "backup.sh does not back up grafana_data; a map entry would be dead"
     )
@@ -324,8 +331,11 @@ def test_restore_sh_compose_branch_uses_hardcoded_docker_known_limitation(
     # current behavior so a partial or full fix triggers a visible failure. If
     # restore.sh is fixed to route compose through CONTAINER_CMD, flip the
     # docker/podman expectations on the four assertions below.
-    assert "[prometheus_data]=prometheus" in RESTORE_SRC, (
-        "VOLUME_TO_SERVICE map changed — update this test"
+    assert "declare -A" not in RESTORE_SRC, (
+        "restore.sh must stay Bash 3.2 compatible (no associative arrays)"
+    )
+    assert "prometheus_data) printf 'prometheus'" in RESTORE_SRC, (
+        "volume_to_service map changed — update this test"
     )
     stub = make_stub_env(tmp_path)
     fake = tmp_path / "fake.tar.gz"
