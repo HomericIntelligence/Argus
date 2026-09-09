@@ -114,7 +114,17 @@ jobs:
           SCAN_CHECK
 
       - name: Lint shell scripts
-        run: shellcheck --severity=warning scripts/*.sh
+        run: |
+          # Fail loudly if shellcheck is missing instead of silently passing
+          # (the gate's tool presence is part of its correctness).
+          if ! command -v shellcheck > /dev/null 2>&1; then
+            echo "::error::shellcheck missing on runner"
+            exit 1
+          fi
+          # Single source of truth for the gate (bash -n + shellcheck
+          # --severity=warning over every tracked *.sh, plus a negative
+          # vacuous-gate check): tests/test-shell-lint.sh
+          bash tests/test-shell-lint.sh
 
       - name: Assert htpasswd is not tracked
         # Guard against accidental re-addition of nginx basic-auth credentials
