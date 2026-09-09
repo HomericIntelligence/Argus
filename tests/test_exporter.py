@@ -245,15 +245,31 @@ class TestCollectMetricNames(unittest.TestCase):
         self.assertIn("nats_connections", self.output)
 
     def test_agent_totals_correct(self):
-        """hi_agents_total, hi_agents_online, hi_agents_offline values."""
+        """hi_agents_count, hi_agents_online, hi_agents_offline values."""
+        lines = {ln.split()[0]: ln.split()[1]
+                 for ln in self.output.splitlines()
+                 if not ln.startswith("#") and ln.strip()}
+        self.assertEqual(lines.get("hi_agents_count{}"), "2")
+        self.assertEqual(lines.get("hi_agents_online{}"), "1")
+        self.assertEqual(lines.get("hi_agents_offline{}"), "1")
+
+    def test_deprecated_agent_total_alias_emitted(self):
+        """hi_agents_total is still emitted as a deprecated alias (#426)."""
+        self.assertIn("# HELP hi_agents_total (deprecated, use hi_agents_count)", self.output)
         lines = {ln.split()[0]: ln.split()[1]
                  for ln in self.output.splitlines()
                  if not ln.startswith("#") and ln.strip()}
         self.assertEqual(lines.get("hi_agents_total{}"), "2")
-        self.assertEqual(lines.get("hi_agents_online{}"), "1")
-        self.assertEqual(lines.get("hi_agents_offline{}"), "1")
 
     def test_task_total_correct(self):
+        lines = {ln.split()[0]: ln.split()[1]
+                 for ln in self.output.splitlines()
+                 if not ln.startswith("#") and ln.strip()}
+        self.assertEqual(lines.get("hi_tasks_count{}"), "3")
+
+    def test_deprecated_task_total_alias_emitted(self):
+        """hi_tasks_total is still emitted as a deprecated alias (#426)."""
+        self.assertIn("# HELP hi_tasks_total (deprecated, use hi_tasks_count)", self.output)
         lines = {ln.split()[0]: ln.split()[1]
                  for ln in self.output.splitlines()
                  if not ln.startswith("#") and ln.strip()}
@@ -276,6 +292,51 @@ class TestCollectMetricNames(unittest.TestCase):
         self.assertIn("nats_out_msgs", self.output)
         self.assertNotIn("nats_in_msgs_total", self.output)
         self.assertNotIn("nats_out_msgs_total", self.output)
+
+    def test_nats_bytes_and_jetstream_names_have_no_total(self):
+        """Byte and JetStream gauges must not carry the _total counter suffix (#426)."""
+        hc_patch, fetch_patch = _patch_collect(
+            agents_data=self.agents_data,
+            tasks_data=self.tasks_data,
+            nats_varz=self.nats_varz,
+            nats_jsz={"streams": 2, "consumers": 4, "messages": 100, "bytes": 4096},
+        )
+        with hc_patch, fetch_patch:
+            output = exporter_mod.collect()
+        for name in ("nats_in_bytes", "nats_out_bytes",
+                     "nats_jetstream_messages", "nats_jetstream_bytes",
+                     "nats_jetstream_streams", "nats_jetstream_consumers"):
+            self.assertIn(name, output)
+            self.assertNotIn(f"{name}_total", output)
+
+    def test_no_gauge_family_carries_counter_total_suffix(self):
+        """Full-sweep naming invariant (#426): no gauge family may end in _total.
+
+        _total is reserved for counters per Prometheus naming best practices.
+        The exporter is gauge-only; the only permitted exceptions are the two
+        deprecated aliases emitted during the #426 rename window.
+        """
+        deprecated_aliases = {"hi_agents_total", "hi_tasks_total"}
+        type_lines = [ln for ln in self.output.splitlines() if ln.startswith("# TYPE")]
+        self.assertTrue(type_lines, "collect() output must contain # TYPE lines")
+        for ln in type_lines:
+            parts = ln.split()
+            name, metric_type = parts[2], parts[3]
+            if metric_type != "gauge":
+                self.fail(f"{name} declared as {metric_type}; this exporter emits gauges only")
+            if name.endswith("_total"):
+                self.assertIn(
+                    name, deprecated_aliases,
+                    f"gauge family '{name}' carries the counter-reserved _total suffix",
+                )
+
+    def test_deprecated_aliases_are_marked_deprecated(self):
+        """Any allowlisted _total alias must carry a (deprecated) HELP marker."""
+        help_lines = {ln.split()[2]: ln for ln in self.output.splitlines()
+                      if ln.startswith("# HELP")}
+        for alias in ("hi_agents_total", "hi_tasks_total"):
+            self.assertIn(alias, help_lines)
+            self.assertIn("(deprecated", help_lines[alias])
 
     def test_nats_msg_metrics_typed_as_gauge(self):
         """Both renamed metrics must be declared as gauge, not counter."""
@@ -372,9 +433,9 @@ class TestHandler(unittest.TestCase):
         self.assertIn("404", response)
 
     def test_metrics_body_contains_collect_output(self):
-        collect_output = "# TYPE hi_agents_total gauge\nhi_agents_total{} 42\n"
+        collect_output = "# TYPE hi_agents_count gauge\nhi_agents_count{} 42\n"
         response = self._get_response("/metrics", mock_collect_output=collect_output)
-        self.assertIn("hi_agents_total", response)
+        self.assertIn("hi_agents_count", response)
 
     def test_log_message_emits_debug_record(self):
         """log_message must forward to log.debug, not swallow the record."""

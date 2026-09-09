@@ -16,7 +16,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "hi_agents_total",
+          "expr": "hi_agents_count",
           "legendFormat": "Total",
           "refId": "A"
         }
@@ -106,7 +106,7 @@
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "hi_agents_total",
+          "expr": "hi_agents_count",
           "legendFormat": "Total",
           "refId": "A"
         },
