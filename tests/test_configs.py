@@ -451,5 +451,35 @@ class TestDockerComposePorts(unittest.TestCase):
                     )
 
 
+class TestPrometheusLifecycleAndHealthcheck(unittest.TestCase):
+    """Issue #198: Prometheus reload endpoint and wget flag portability."""
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.prometheus = self.compose["services"]["prometheus"]
+
+    def test_prometheus_lifecycle_flag_present(self) -> None:
+        """--web.enable-lifecycle must be set so POST /-/reload works."""
+        command: Any = self.prometheus.get("command", [])
+        assert isinstance(command, list)
+        assert "--web.enable-lifecycle" in command, (
+            "prometheus command must include --web.enable-lifecycle "
+            "(required for POST /-/reload in just reload-prometheus)"
+        )
+
+    def test_prometheus_healthcheck_no_combined_qO(self) -> None:
+        """Prometheus healthcheck must not use the non-portable `-qO-` flag."""
+        test_cmd: Any = self.prometheus["healthcheck"]["test"]
+        assert "-qO-" not in str(test_cmd), (
+            f"prometheus healthcheck uses non-portable '-qO-' wget flag: {test_cmd!r}"
+        )
+
+    def test_prometheus_healthcheck_uses_portable_flags(self) -> None:
+        """Prometheus healthcheck must use space-separated -q -O flags (BusyBox-safe)."""
+        test_cmd: Any = self.prometheus["healthcheck"]["test"]
+        assert "-q" in str(test_cmd)
+        assert "/dev/stdout" in str(test_cmd)
+
+
 if __name__ == "__main__":
     unittest.main()
