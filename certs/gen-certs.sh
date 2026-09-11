@@ -26,8 +26,35 @@ if [[ -f ca.crt && -z "$FORCE" ]]; then
 else
     echo "[gen] Generating CA key and certificate..."
     openssl genrsa -out ca.key 4096
+
+    # Self-signed CA with explicit v3 extensions in a hermetic temp config.
+    # Relying on the system openssl.cnf is fragile (distros differ in whether
+    # they inject basicConstraints, and none add keyUsage) — and stacking
+    # -addext on top of a cnf-provided basicConstraints fails with
+    # "duplicate extension". Python 3.13's verifier rejects a CA without
+    # keyUsage (closes #623), so both extensions are set here explicitly.
+    ca_ext=$(mktemp)
+    cat > "$ca_ext" <<EOF
+[req]
+distinguished_name = req_distinguished_name
+prompt             = no
+
+[req_distinguished_name]
+CN = argus-local-ca
+O  = Argus
+OU = HomericIntelligence
+
+[v3_ca_argus]
+basicConstraints = critical, CA:true
+keyUsage = critical, keyCertSign, cRLSign, digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+EOF
+
     openssl req -new -x509 -days "$DAYS" -key ca.key -out ca.crt \
-        -subj "/CN=argus-local-ca/O=Argus/OU=HomericIntelligence"
+        -subj "/CN=argus-local-ca/O=Argus/OU=HomericIntelligence" \
+        -config "$ca_ext" -extensions v3_ca_argus
+    rm -f "$ca_ext"
     echo "[ok]  CA generated: ca.crt"
 fi
 
@@ -46,7 +73,6 @@ for svc in "${SERVICES[@]}"; do
     cat > "$san_ext" <<EOF
 [req]
 distinguished_name = req_distinguished_name
-req_extensions     = v3_req
 prompt             = no
 
 [req_distinguished_name]
@@ -54,7 +80,18 @@ CN = ${svc}
 O  = Argus
 
 [v3_req]
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
 subjectAltName = ${SANS[$svc]}
+subjectKeyIdentifier = hash
+# Authority Key Identifier is copied from the -CA issuer at signing time
+# (keyid,issuer — the man-documented portable form). Do NOT use
+# keyid:<explicit-hex>: OpenSSL 3.x rejects it ("unknown option"), and do
+# NOT put req_extensions in the CSR config: the CSR builder has no issuer
+# context and dies ("no issuer certificate" on 1.1.1). Extensions below
+# apply at signing via -extfile only.
+authorityKeyIdentifier = keyid,issuer
 EOF
 
     openssl req -new -key "${svc}.key" -out "${svc}.csr" -config "$san_ext"
@@ -66,6 +103,18 @@ EOF
     rm -f "$san_ext" "${svc}.csr"
     echo "[ok]  ${svc}.crt generated"
 done
+
+# Stack containers run as non-root users (nobody 65534, grafana 472, loki
+# 10001), but openssl writes private keys mode 0600 owned by the invoking user.
+# Normalize every mounted cert/key to 0644 so the containers can read them
+# (closes #623: Prometheus exited on "permission denied" for its TLS key and
+# never became healthy). Unconditional — also repairs certs skipped above.
+# These are ephemeral local-dev credentials (gitignored, loopback-only
+# services); ca.key is never mounted and stays 0600.
+for svc in "${SERVICES[@]}"; do
+    chmod 644 "${svc}.crt" "${svc}.key"
+done
+chmod 644 ca.crt
 
 echo ""
 echo "Certificate generation complete."
