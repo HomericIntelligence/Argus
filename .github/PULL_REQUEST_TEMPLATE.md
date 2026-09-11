@@ -20,7 +20,7 @@
 <!-- All items must be checked before requesting review. -->
 
 - [ ] `just validate` passes (docker compose config + YAML lint)
-- [ ] `just test` passes (pytest unit tests)
+- [ ] Targeted tests for changed behavior pass locally; CI/CD runs the complete pytest suite and coverage gate
 - [ ] `pixi run ruff check exporter/exporter.py` passes (if exporter changed)
 - [ ] `pixi run bandit -ll exporter/exporter.py` shows no HIGH findings (if exporter changed)
 - [ ] No credentials or secrets in the diff

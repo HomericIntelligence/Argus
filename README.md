@@ -16,19 +16,13 @@ components of the HomericIntelligence ecosystem.
 
 ## Stack
 
-| Component  | Role                         | Port |
-|------------|------------------------------|------|
-| Prometheus | Metrics scraping and storage | 9090 |
-| Loki       | Log aggregation              | 3100 |
-| Promtail   | Log shipping to Loki         | —    |
-| Grafana    | Dashboards and visualization | 3000 |
-
-| Component  | Role                          | Port |
-|------------|-------------------------------|------|
-| Prometheus | Metrics scraping and storage  | 9090 |
-| Loki       | Log aggregation               | 3100 |
-| Promtail   | Log shipping to Loki          | —    |
-| Grafana    | Dashboards and visualization  | 3001 |
+| Component     | Role                          | Port                 |
+|---------------|-------------------------------|----------------------|
+| Prometheus    | Metrics scraping and storage  | 9090 (loopback)      |
+| Loki          | Log aggregation               | 3100 (internal)      |
+| Promtail      | Log shipping to Loki          | —                    |
+| grafana-proxy | Basic-auth proxy for Grafana  | 3001 (loopback)      |
+| Grafana       | Dashboards and visualization  | — (proxy-only, #321) |
 
 ## Quick Start
 
@@ -40,15 +34,16 @@ components of the HomericIntelligence ecosystem.
 generates a `.env` (with a fresh bearer token and Grafana admin password)
 on first run. It is idempotent — safe to re-run.
 
-Then access Grafana at <http://localhost:3000> (credentials: the username set via
-`GRAFANA_ADMIN_USER`, default `admin`, and the password set in `.env`).
+Then access Grafana at <http://localhost:3001> through the basic-auth proxy
+(credentials: `GRAFANA_PROXY_USER`/`GRAFANA_PROXY_PASSWORD` from `.env`,
+then Grafana's own login with `GF_ADMIN_PASSWORD`).
 
 ```bash
 cp .env.example .env   # copy and edit for your environment
 just start
 ```
 
-Then access Grafana at <http://localhost:3001> (default credentials: admin / admin).
+Then access Grafana at <http://localhost:3001> via the auth proxy (issue #321).
 
 ## Environment Configuration
 
@@ -67,8 +62,8 @@ Key variables:
 | `NESTOR_URL` | `http://172.20.0.1:8081` | Nestor API base URL |
 | `NATS_URL` | `http://172.24.0.1:8222` | NATS monitoring endpoint |
 | `GF_SECURITY_ADMIN_PASSWORD` | `admin` | Grafana admin password |
-| `GRAFANA_ADMIN_USER` | `admin` | Grafana admin username (`GF_SECURITY_ADMIN_USER`) |
-| `GRAFANA_PORT` | `3001` | Host port for Grafana |
+| `GRAFANA_PROXY_USER` / `GRAFANA_PROXY_PASSWORD` | `grafana` / `changeme` | grafana-proxy Basic Auth credentials (issue #321) |
+| `GRAFANA_PORT` | `3001` | Host port for the Grafana auth proxy |
 | `PROMETHEUS_PORT` | `9090` | Host port for Prometheus |
 | `LOKI_PORT` | `3100` | Host port for Loki |
 | `EXPORTER_PORT` | `9100` | Host port for argus-exporter |
@@ -106,20 +101,14 @@ just start
 
 Key environment variables:
 
-| Variable             | Default                            | Purpose                             |
-|----------------------|------------------------------------|-------------------------------------|
-| `GF_ADMIN_PASSWORD`  | —                                  | Grafana admin password (required)   |
-| `GRAFANA_ADMIN_USER` | `admin`                            | Grafana admin username (optional)   |
-| `NATS_LOG_DIR`       | `/home/mvillmow/.local/share/nats` | Host log dir, mounted into Promtail |
+| Variable            | Default                            | Purpose                             |
+|---------------------|------------------------------------|-------------------------------------|
+| `GF_ADMIN_PASSWORD` | —                                  | Grafana admin password (required)   |
+| `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats` | Host log dir, mounted into Promtail |
 
 All scrape targets and service configs live in `configs/`. Alert rules are in
 `rules/`. Grafana dashboards (JSON) are in `dashboards/` and auto-provisioned
 on startup.
-
-Alert notifications are dropped by default (null receiver in
-`configs/alertmanager.yml`). To route alerts to Slack, email, or PagerDuty,
-see [docs/alerting.md](docs/alerting.md) and run `just reload-alertmanager`
-after editing the config.
 
 ## Common Commands
 

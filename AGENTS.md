@@ -38,23 +38,24 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 
 ## Stack Components
 
-| Service        | Image                                                                                                                                                  | Purpose                                                |
-|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|
-| Prometheus     | prom/prometheus:v2.54.1                                                                                                                                | Scrape and store metrics                               |
-| Alertmanager   | prom/alertmanager:v0.32.1                                                                                                                              | Route Prometheus alerts to receivers                   |
-| Loki           | grafana/loki:3.1.2                                                                                                                                     | Store and query log streams                            |
-| loki-proxy     | nginx:1.27-alpine                                                                                                                                      | Basic-auth proxy in front of Loki                      |
-| Promtail       | grafana/promtail:3.1.2                                                                                                                                 | Tail container logs and ship to Loki                   |
-| Grafana        | grafana/grafana:11.2.2                                                                                                                                 | Visualize metrics and logs                             |
-| argus-exporter | pinned GHCR image `ghcr.io/homericintelligence/argus-exporter:vX.Y.Z` (version tracked in `exporter/VERSION`, bumped via `just bump-exporter-version`) | Convert HomericIntelligence APIs to Prometheus metrics |
+| Service         | Image                          | Purpose                                                |
+|-----------------|--------------------------------|--------------------------------------------------------|
+| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
+| Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
+| Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
+| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
+| grafana-proxy   | nginx:1.27-alpine              | Basic-auth proxy in front of Grafana (issue #321)      |
+| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
+| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
+| argus-exporter  | pinned GHCR image `ghcr.io/homericintelligence/argus-exporter:vX.Y.Z` (version tracked in `exporter/VERSION`, bumped via `just bump-exporter-version`) | Convert HomericIntelligence APIs to Prometheus metrics |
 
 ### Network topology (two-network design)
 
 The compose stack defines two Docker bridge networks:
 
 - **`argus`** — public-facing bridge that prometheus, alertmanager, loki-proxy,
-  promtail, grafana, and argus-exporter share. Anything that needs to talk to
-  other services in the stack lives here.
+  grafana-proxy, promtail, grafana, and argus-exporter share. Anything that needs
+  to talk to other services in the stack lives here.
 - **`loki-internal`** — `internal: true` bridge with no egress. Only `loki`,
   `loki-proxy`, and `promtail` are attached. Loki is intentionally not on
   `argus`, so the only path to reach it is via `loki-proxy` (which terminates
@@ -76,6 +77,7 @@ graph TD
     L[Loki :3100] -->|query| G
     PT[Promtail :9080] -->|push| L
     LP[loki-proxy :3101] -->|auth proxy| L
+    GP[grafana-proxy :3001] -->|auth proxy + TLS| G
     LOGS[/var/log + NATS logs] -->|tail| PT
 ```
 
@@ -84,13 +86,15 @@ graph TD
 Copy `.env.example` to `.env` before running `just start`. The stack will refuse
 to start without a `.env` file.
 
-| Variable            | Default in .env.example              | Required | Purpose                                            |
-|---------------------|--------------------------------------|----------|----------------------------------------------------|
-| `GF_ADMIN_PASSWORD` | `changeme`                           | **Yes**  | Grafana admin password                             |
-| `AGAMEMNON_URL`     | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
-| `NESTOR_URL`        | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
-| `NATS_URL`          | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
-| `NATS_LOG_DIR`      | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
+| Variable                 | Default in .env.example              | Required | Purpose                                            |
+|--------------------------|--------------------------------------|----------|----------------------------------------------------|
+| `GF_ADMIN_PASSWORD`      | `changeme`                           | **Yes**  | Grafana admin password                             |
+| `GRAFANA_PROXY_USER`     | `grafana`                            | **Yes**  | grafana-proxy Basic Auth user (issue #321)         |
+| `GRAFANA_PROXY_PASSWORD` | `changeme`                           | **Yes**  | grafana-proxy Basic Auth password (issue #321)     |
+| `AGAMEMNON_URL`          | `http://172.20.0.1:8080`             | Yes      | Agamemnon API base URL                             |
+| `NESTOR_URL`             | `http://172.20.0.1:8081`             | Yes      | Nestor API base URL                                |
+| `NATS_URL`               | `http://172.24.0.1:8222`             | Yes      | NATS monitoring API base URL                       |
+| `NATS_LOG_DIR`           | `/home/mvillmow/.local/share/nats`   | Yes      | Host path to NATS log files (Promtail mounts this) |
 
 Optional overrides (not required by `just start`):
 
@@ -159,41 +163,50 @@ new to the stack frequently trip on:
    bind-mounts the file. If it is missing, Docker creates an empty
    *directory* at that path, which silently breaks the mount. Run
    `touch /tmp/hermes.log` (or symlink to the real Hermes log) once per host.
-3. **Loki proxy htpasswd is generated automatically.** `just start` depends
-   on `just gen-htpasswd`, which writes `configs/nginx/htpasswd` from
-   `LOKI_AUTH_USER`/`LOKI_AUTH_PASSWORD` in `.env`. To rotate the password,
-   update `LOKI_AUTH_PASSWORD` in `.env`, then run `just gen-htpasswd && just restart`.
+3. **Proxy htpasswd files are generated automatically.** `just start` depends
+   on `just gen-htpasswd`, which writes `secrets/htpasswd` (Loki) and
+   `secrets/htpasswd-grafana` (Grafana, issue #321) from
+   `LOKI_AUTH_USER`/`LOKI_AUTH_PASSWORD` and
+   `GRAFANA_PROXY_USER`/`GRAFANA_PROXY_PASSWORD` in `.env`. To rotate either
+   password, update the value in `.env`, then run `just gen-htpasswd && just restart`.
 4. **All host ports are loopback-only.** Prometheus (`127.0.0.1:9090`),
-   Grafana (`127.0.0.1:3001`), Alertmanager (`127.0.0.1:9093`), and the
-   exporter (`127.0.0.1:9100`) only accept connections from the host. To
-   reach them from another machine use an SSH tunnel
+   the Grafana auth proxy (`127.0.0.1:3001`, plain HTTP), Alertmanager
+   (`127.0.0.1:9093`), and the exporter (`127.0.0.1:9100`) only accept
+   connections from the host. To reach them from another machine use an SSH tunnel
    (`ssh -L 3001:localhost:3001 host`) or a Tailscale-encrypted route — the
    stack intentionally does not expose unauthenticated metric/log endpoints
    to the LAN.
-5. **`just test-scrape` requires the stack to be running.** After the host
+5. **Grafana sits behind two credentials since #321.** Browsers hit the nginx
+   basic-auth proxy on `127.0.0.1:3001` first (`GRAFANA_PROXY_USER` /
+   `GRAFANA_PROXY_PASSWORD`, hard-failed by `just start` if left at an insecure
+   default), then Grafana's own login page (`GF_ADMIN_PASSWORD`). Rotate each
+   independently: proxy creds via `.env` + `just gen-htpasswd && just restart`;
+   admin password via `.env` + updating Grafana itself (or wiping
+   `grafana_data`). Grafana has **no host port**; `just import-dashboards`
+   therefore runs the API call inside the grafana container.
+6. **Grafana cookies are not `Secure`.** The proxy listener is plain HTTP on
+   loopback by design — the threat model is *unauthenticated access*, not
+   passive eavesdropping on loopback. Operators who want HTTPS to the browser
+   can override `GF_SERVER_ROOT_URL=https://...` and add a TLS listener to
+   `configs/nginx/grafana.conf` (future option).
+7. **Atlas bypasses grafana-proxy by design.** Atlas connects to Grafana
+   directly over its internal HTTPS endpoint (`https://argus-grafana:3000`);
+   both sit inside the trust boundary on the `argus` bridge, so routing
+   through the proxy would add no security.
+8. **`just test-scrape` requires the stack to be running.** After the host
    port for Prometheus was removed, `test-scrape` runs the query *inside*
-   the prometheus container via `docker exec`. Use `just debug-prometheus`
-   and `just debug-loki` for ad-hoc inspection (these wrappers exec into
-   the respective containers).
-6. **`just backup` / `just restore` need a running compose project.** The
+   the prometheus container via `docker exec`. Use `just debug-prometheus`,
+   `just debug-loki`, and `just debug-grafana-proxy` for ad-hoc inspection
+   (these wrappers exec into the respective containers).
+9. **`just backup` / `just restore` need a running compose project.** The
    restore script calls `docker compose stop` to quiesce services before
-   replacing volume data; the backup script likewise stops prometheus and
-   loki for the duration of the snapshot and restarts them afterward
-   (brief scrape gap expected). On a cold host with no containers, the
-   stop is a no-op and the scripts still run, but operators should expect
-   to bring the stack up at least once before relying on backup or
-   restore.
-7. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
+   replacing volume data; on a cold host with no containers, the stop is a
+   no-op and the script still runs, but operators should expect to bring
+   the stack up at least once before relying on restore.
+10. **`jq` is unavailable on `win-64`.** Conda-forge does not ship a `jq`
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.
-8. **`grafana_data` volume ownership is fixed by the `grafana-init` one-shot
-   container** (issue #332). Docker creates named volumes root-owned, but
-   grafana runs as UID 472 and cannot fix ownership itself. On every
-   `just start` / `docker compose up`, `grafana-init` recursively chowns the
-   volume to `472:472` before grafana starts (gated via
-   `depends_on: service_completed_successfully`) — operators never need to
-   hand-chown volumes.
 
 ## Metric Catalog
 
@@ -235,18 +248,15 @@ All metrics include `# HELP` and `# TYPE` lines.
   storage used, distinct subject counts.
 - **task-throughput.json** (`uid: task-throughput`): Tasks by status
   (`hi_tasks_by_status`), completed/failed counts per hour.
+- **alertmanager.json** (`uid: alertmanager`): Alertmanager notification pipeline,
+  active alerts, silences, notification rate, failures, and integration latency.
+- **jetstream-events.json** (`uid: jetstream-events`): Agent/task event rates,
+  task completion latency, consumer status, and lag.
 - **argus-health.json** (`uid: argus-health`): Prometheus scrape-target counts (`up`),
   Homeric Exporter health (`up{job="homeric-exporter"}`), total targets. Stat panels
   backed by Prometheus.
 - **loki-explorer.json** (`uid: loki-explorer`): Syslog stream (`{job="syslog"}`),
   NATS log stream (`{job="nats"}`). Log panels backed by Loki.
-- **alertmanager.json** (`uid: alertmanager`): Alertmanager notification pipeline —
-  active firing/suppressed alerts, silences, notification rate, failures, and
-  p95 latency by integration. Stat and timeseries panels backed by Prometheus.
-- **jetstream-events.json** (`uid: jetstream-events`): JetStream consumer event
-  rates by subject prefix (agent/task), mean task completion latency, task
-  event rate by type and status, consumer connected state, and lag proxy
-  (consumer last sequence). Backed by the JetStream consumer metrics.
 
 ## Repository Structure
 
@@ -258,7 +268,8 @@ Argus/
 │   ├── promtail.yml          # Log scraping config
 │   ├── nginx/
 │   │   ├── loki.conf         # Nginx proxy config for Loki auth
-│   │   └── htpasswd          # Basic auth credentials for Loki proxy
+│   │   ├── grafana.conf      # Nginx proxy config for Grafana auth (#321)
+│   │   └── grafana-map.conf  # WebSocket Connection-header map for grafana-proxy
 │   └── grafana/
 │       ├── datasources.yml   # Auto-provision Prometheus + Loki datasources
 │       └── dashboards.yml    # Auto-provision dashboards from dashboards/
@@ -277,29 +288,6 @@ Argus/
 └── pixi.toml
 ```
 
-## Design Philosophy
-
-Argus inherits its design philosophy from ProjectOdyssey's agent-contract convention: state intent before rules.
-This section records that intent; the sections that follow codify it as enforceable principles and constraints.
-
-- **Observe, never act** — Argus is a read-only observability layer. It pulls from upstream services via HTTP
-  scrapes and log tailing, and never pushes data or commands back. The blast radius of any Argus defect or
-  compromise is bounded to this stack alone (see [Repo Role](#repo-role-in-the-homericintelligence-ecosystem)).
-- **Configuration as code** — dashboards, scrape targets, alert rules, and credential rotation paths live in
-  version-controlled files under `configs/`, `dashboards/`, and `rules/`. The Grafana UI is never a source of
-  truth; manual changes must be exported back to JSON or they do not exist (see [Key Principles](#key-principles)).
-- **Metric names are API** — `hi_*`, `nats_*`, and `homeric_exporter_*` names are consumed by dashboards and
-  alerts across the ecosystem. Renaming an existing metric requires a deprecation period plus a same-commit
-  update to `docs/metrics.md` (see [Coordination Protocol](#coordination-protocol)).
-- **Fail closed on exposure** — all host ports bind loopback only, and Loki sits on an internal network with no
-  egress reachable solely through the authenticated proxy. Unauthenticated metric/log endpoints are never
-  exposed to the LAN (see [Operator Notes](#operator-notes) and the two-network topology above).
-- **Hot-reload over restart** — prefer SIGHUP (`just reload-prometheus`) and `/-/reload`
-  (`just reload-alertmanager`) so fleet observability stays continuous while configuration changes land
-  (see [Development Guidelines](#development-guidelines)).
-- **One authoritative contract** — `AGENTS.md` is the single coordination contract every agent reads;
-  `CLAUDE.md` exists only to point here (see the [intro paragraph](#agentsmd--argus-multi-agent-coordination)).
-
 ## Key Principles
 
 1. Read-only access to the rest of the HomericIntelligence ecosystem — no modifications to external services.
@@ -314,20 +302,16 @@ This section records that intent; the sections that follow codify it as enforcea
 - Add new dashboards as JSON files in `dashboards/` and run `just import-dashboards`.
 - Alert rules in `rules/` also take effect after `just reload-prometheus`.
 - Use `just test-scrape` to verify the `up` metric for all targets before declaring a scrape job healthy.
-- Run `just test` to execute the unit test suite before submitting a PR.
+- Run only the individual tests relevant to your change during local development; CI/CD runs the complete test suite and coverage gates.
+- Use `pixi run pytest -q tests/path/to/test_file.py -k test_name --no-cov` (or the
+  repository's equivalent targeted command) for focused local validation. Do not run
+  the full test suite locally when CI/CD will execute it.
 - `import-dashboards` reads `GF_ADMIN_PASSWORD` from `.env` — never hardcode credentials.
-- `pixi run --environment lint pip-audit` audits `jetstream-consumer/requirements.txt`
-  (the only pinned-PyPI surface). Expected output on a clean run:
-  `No known vulnerabilities found`, exit 0. If a new pinned-PyPI file is added
-  (e.g., `exporter/requirements.txt`), extend the `pip-audit` task in `pixi.toml`
-  with another `--requirement` flag and add the path to
-  `.github/workflows/security.yml`'s `paths:` filter.
 
 ## Common Commands
 
 ```bash
 just start                   # docker compose up -d (requires .env)
-just bump-exporter-version <patch|minor|major>  # bump exporter/VERSION + compose pin atomically
 just stop                    # docker compose down
 just status                  # docker compose ps
 just logs <service>          # docker compose logs -f <service>
@@ -337,7 +321,7 @@ just test-alertmanager       # Check Alertmanager /-/healthy and cluster status
 just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
-just test                    # Run pytest unit tests
+just test                    # CI/CD runs the full pytest unit-test suite; use targeted pytest locally
 just backup                  # Back up data volumes to ./backups/
 ```
 
@@ -361,7 +345,7 @@ Argus delegates orchestration to the **Hephaestus plugin**. There is no `.claude
 directory in this repo. Use these skills instead:
 
 | Skill | Trigger Condition | Description |
-| ------- | ------------------ | ------------- |
+| ------- | ------------------ | -------------- |
 | `hephaestus:advise` | Before unfamiliar work or unknown errors | Searches team knowledge base for prior learnings |
 | `hephaestus:learn` | After experiments or novel discoveries | Saves session learnings as a new skill |
 | `hephaestus:myrmidon-swarm` | Multi-step parallel file changes | Hierarchical delegation (Opus → Sonnet → Haiku) |
@@ -466,7 +450,7 @@ just test-scrape
 Agents are permitted to make the following changes autonomously:
 
 | Area | Permitted |
-| ------ | ----------- |
+| ------ | --------- |
 | `configs/prometheus.yml` — add/edit scrape jobs | Yes |
 | `configs/loki.yml` — adjust retention, limits | Yes |
 | `configs/promtail.yml` — add log scrape targets | Yes |
@@ -487,18 +471,30 @@ When multiple agents work on this repository simultaneously:
    deprecation period and dashboard update in the same PR.
 3. **Alert rules must not regress** — `just validate` must pass before merging.
 4. **Test coverage** — Any change to `exporter/exporter.py` must include or update
-   tests in `tests/test_exporter.py`. `just test` must pass.
+   tests in `tests/test_exporter.py`. Local development should run only the affected
+   individual tests; CI/CD is responsible for the complete suite and coverage gate.
 
 ## Validation Gates
 
-Before opening a PR, agents must verify:
+Before opening a PR, agents should run targeted validation for changed behavior rather
+than the complete suite locally. CI/CD is the authoritative full validation gate and runs
+all tests plus coverage.
 
 ```bash
-just validate          # docker compose config + YAML lint
-just test              # pytest unit tests
+# Examples; select only tests relevant to the change
+pixi run pytest -q tests/test_configs.py -k grafana --no-cov
+pixi run pytest -q tests/test_import_dashboards.py --no-cov
+pixi run pytest -q tests/test_exporter.py -k metric --no-cov
 pixi run ruff check exporter/exporter.py
 pixi run bandit -ll exporter/exporter.py
+bash -n scripts/*.sh
+pixi run bash tests/test-shell-lint.sh
 ```
+
+Do not run `pixi run pytest`, `pixi run test`, `pixi run test-unit`, or
+`python -m pytest tests/ -v` locally when CI/CD is available; those commands run the
+full test suite and belong in CI/CD. Use an individual test file or `-k` selection
+instead.
 
 ## Prohibited Actions
 
