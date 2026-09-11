@@ -98,6 +98,35 @@ class TestOtherServicesNotOnLokiInternal(unittest.TestCase):
             )
 
 
+class TestGrafanaProxyTopology(unittest.TestCase):
+    """grafana-proxy fronts Grafana since #321: argus-only, loopback host port."""
+
+    def setUp(self):
+        self.compose = load_compose()
+
+    def test_grafana_proxy_on_argus_only(self):
+        nets = service_networks(self.compose, "grafana-proxy")
+        assert "argus" in nets, "grafana-proxy must be on the argus network"
+        assert "loki-internal" not in nets, (
+            "grafana-proxy must not be on loki-internal (no reason to reach Loki)"
+        )
+
+    def test_grafana_proxy_has_host_port_binding(self):
+        ports = self.compose["services"]["grafana-proxy"].get("ports", [])
+        assert any(
+            str(p).startswith("127.0.0.1:") and str(p).endswith(":80") for p in ports
+        ), f"grafana-proxy must publish 127.0.0.1:<port>:80, got: {ports}"
+
+    def test_grafana_has_no_host_port_binding(self):
+        grafana = self.compose["services"]["grafana"]
+        assert "ports" not in grafana, (
+            "grafana must have no host port binding since #321 (proxy-only access)"
+        )
+        assert "3000" in [str(p) for p in grafana.get("expose", [])], (
+            "grafana should expose 3000 on the internal network"
+        )
+
+
 class TestGrafanaDatasourcePointsToProxy(unittest.TestCase):
     """Grafana must query Loki via loki-proxy, not directly."""
 

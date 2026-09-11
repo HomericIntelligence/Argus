@@ -63,7 +63,7 @@ done < <(git log "${RANGE}" --format="%h%x09%s%x09%an" 2>/dev/null || true)
 
 # Print non-empty sections in order
 first=true
-for ((section_index_value = 0; section_index_value < ${#section_order[@]}; section_index_value++)); do
+for section_index_value in "${!section_order[@]}"; do
     if [[ -n "${sections[$section_index_value]}" ]]; then
         if [[ "$first" == "false" ]]; then
             echo ""
