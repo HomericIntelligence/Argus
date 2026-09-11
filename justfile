@@ -142,7 +142,7 @@ test-unit:
 # exporter → Prometheus → query end-to-end, then tears the stack down
 # (destructive to smoke volumes only). Requires Docker.
 test-smoke:
-    pixi run bash scripts/smoke-stack.sh
+    pixi run test-smoke
 
 # === Security ===
 
