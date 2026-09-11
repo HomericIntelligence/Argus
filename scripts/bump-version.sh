@@ -69,8 +69,26 @@ if [[ -z "${CHANGELOG_BODY//[[:space:]]/}" ]]; then
     fi
 fi
 
-# Update version in pixi.toml (after emptiness check so an abort leaves the tree clean)
-sed -i "s/^version = \"${CURRENT_VERSION}\"$/version = \"${NEW_VERSION}\"/" "$PIXI_TOML"
+replace_in_file() {
+    local file=$1
+    local old=$2
+    local new=$3
+    python3 - "$file" "$old" "$new" <<'PYEOF'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+content = path.read_text()
+updated = content.replace(old, new, 1)
+if updated == content:
+    raise SystemExit(f"ERROR: expected text not found in {path}")
+path.write_text(updated)
+PYEOF
+}
+
+replace_in_file "$PIXI_TOML" "version = \"${CURRENT_VERSION}\"" "version = \"${NEW_VERSION}\""
 
 # Build the new versioned section
 NEW_SECTION="## [${NEW_VERSION}] - ${TODAY}"$'\n\n'"${CHANGELOG_BODY}"
