@@ -282,6 +282,8 @@ services:
         condition: service_started
       loki-proxy:
         condition: service_started
+      alertmanager:
+        condition: service_started
       grafana-init:
         # Grafana must not touch the volume until ownership is fixed.
         condition: service_completed_successfully
