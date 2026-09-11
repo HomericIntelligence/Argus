@@ -11,22 +11,24 @@ else
     RANGE="${LAST_TAG}..HEAD"
 fi
 
-declare -A sections
+# Use indexed arrays only: macOS runners still ship Bash 3.2, which does not
+# support associative arrays.
 declare -a section_order=("feat" "fix" "docs" "chore" "refactor" "test" "ci" "other")
-declare -A section_titles=(
-    ["feat"]="### Added"
-    ["fix"]="### Fixed"
-    ["docs"]="### Documentation"
-    ["chore"]="### Chore"
-    ["refactor"]="### Refactored"
-    ["test"]="### Tests"
-    ["ci"]="### CI"
-    ["other"]="### Other"
-)
+declare -a section_titles=("### Added" "### Fixed" "### Documentation" "### Chore" "### Refactored" "### Tests" "### CI" "### Other")
+declare -a sections=("" "" "" "" "" "" "" "")
 
-for key in "${section_order[@]}"; do
-    sections[$key]=""
-done
+section_index() {
+    case "$1" in
+        feat) echo 0 ;;
+        fix) echo 1 ;;
+        docs) echo 2 ;;
+        chore) echo 3 ;;
+        refactor) echo 4 ;;
+        test) echo 5 ;;
+        ci) echo 6 ;;
+        *) echo 7 ;;
+    esac
+}
 
 while IFS=$'\t' read -r hash subject _author; do
     [[ -z "$subject" ]] && continue
@@ -51,28 +53,24 @@ while IFS=$'\t' read -r hash subject _author; do
         entry="- ${subject} (${hash})"
     fi
 
-    # Map unknown types to "other"
-    if [[ -z "${sections[$type]+x}" ]]; then
-        type="other"
-    fi
-
-    if [[ -n "${sections[$type]}" ]]; then
-        sections[$type]="${sections[$type]}"$'\n'"${entry}"
+    section_index_value=$(section_index "$type")
+    if [[ -n "${sections[$section_index_value]}" ]]; then
+        sections[$section_index_value]="${sections[$section_index_value]}"$'\n'"${entry}"
     else
-        sections[$type]="${entry}"
+        sections[$section_index_value]="${entry}"
     fi
 done < <(git log "${RANGE}" --format="%h%x09%s%x09%an" 2>/dev/null || true)
 
 # Print non-empty sections in order
 first=true
-for key in "${section_order[@]}"; do
-    if [[ -n "${sections[$key]}" ]]; then
+for ((section_index_value = 0; section_index_value < ${#section_order[@]}; section_index_value++)); do
+    if [[ -n "${sections[$section_index_value]}" ]]; then
         if [[ "$first" == "false" ]]; then
             echo ""
         fi
-        echo "${section_titles[$key]}"
+        echo "${section_titles[$section_index_value]}"
         echo ""
-        echo "${sections[$key]}"
+        echo "${sections[$section_index_value]}"
         first=false
     fi
 done
