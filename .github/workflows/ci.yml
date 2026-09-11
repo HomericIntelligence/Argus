@@ -72,6 +72,9 @@ jobs:
       - name: Check .env.example documents every compose variable
         run: bash scripts/check-env-example.sh
 
+      - name: Check AGENTS.md documents every .env.example variable
+        run: bash scripts/check-env-docs.sh
+
       # Stdlib-only; keeps exporter/VERSION, the compose pin, and the
       # publish workflow's semver tag in lockstep (Refs #393).
       - name: Check exporter image version consistency
