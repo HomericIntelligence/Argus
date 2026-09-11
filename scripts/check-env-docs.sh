@@ -34,13 +34,15 @@ fi
 # Variables mentioned in AGENTS.md that are intentionally absent from
 # .env.example. HOSTNAME / CONTAINER_CMD are operator-shell or justfile-level
 # knobs (see the "Optional overrides" bullets in the Environment Variables
-# section); GF_SECURITY_ADMIN_PASSWORD is Grafana's native container env var
-# (set by docker-compose.yml from GRAFANA_ADMIN_PASSWORD, never a .env knob).
+# section); GF_SECURITY_ADMIN_PASSWORD and GF_SECURITY_ADMIN_USER are Grafana's
+# native container env vars (set by docker-compose.yml from the corresponding
+# .env values, never direct .env knobs).
 # Extend as needed with a justification for each entry.
 DOC_ONLY_ALLOWLIST=(
     HOSTNAME
     CONTAINER_CMD
     GF_SECURITY_ADMIN_PASSWORD
+    GF_SECURITY_ADMIN_USER
 )
 
 # Prefix skipped on BOTH sides. ATLAS_* variables belong to the Atlas

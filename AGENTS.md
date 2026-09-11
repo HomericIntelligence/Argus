@@ -98,6 +98,12 @@ to start without a `.env` file.
 
 Optional overrides (not required by `just start`):
 
+- `GRAFANA_ADMIN_USER` — Grafana's admin username; defaults to `admin` and is
+  used by both `docker-compose.yml` (`GF_SECURITY_ADMIN_USER`) and
+  `just import-dashboards`.
+- `PROMTAIL_HOSTNAME` — stable hostname label for Promtail-rendered log
+  streams; defaults to `hermes` and should match `PROMTAIL_HOST_LABEL` when
+  both are set.
 - `PROMTAIL_HOST_LABEL` — overrides the `host` label Promtail attaches to log
   streams. Defaults to the container's `$HOSTNAME`.
 - `HOSTNAME` — Promtail's `promtail.yml` substitutes `${HOSTNAME:-hermes}` into
