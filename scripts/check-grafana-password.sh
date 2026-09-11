@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Warn when GRAFANA_ADMIN_PASSWORD is unset or matches a known default.
+# Warn when GF_ADMIN_PASSWORD is unset or matches a known default.
 #
 # Called from `just start` / `just restart` so the user is told — loudly —
 # whenever the Grafana stack would otherwise come up with the insecure
@@ -17,26 +17,26 @@ set -euo pipefail
 # Source .env so credentials are visible even when the caller didn't export
 # them (justfile uses `set dotenv-load`, but this script may also be invoked
 # directly).
-if [ -f .env ] && { [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ] || [ -z "${GRAFANA_PROXY_PASSWORD:-}" ]; }; then
+if [ -f .env ] && { [ -z "${GF_ADMIN_PASSWORD:-}" ] || [ -z "${GRAFANA_PROXY_PASSWORD:-}" ]; }; then
     # shellcheck disable=SC1091
     set -a; . ./.env; set +a
 fi
 
-PASSWORD="${GRAFANA_ADMIN_PASSWORD:-}"
+PASSWORD="${GF_ADMIN_PASSWORD:-}"
 
 # Known-insecure defaults that must never reach a deployed stack.
-#   - empty    : docker-compose.yml falls back to `admin`
-#   - admin    : the compose fallback itself
+#   - empty    : docker-compose.yml refuses to start (`:?` on GF_ADMIN_PASSWORD)
+#   - admin    : the historical compose fallback, still a weak value
 #   - changeme : the placeholder shipped in .env.example
 case "$PASSWORD" in
     ""|admin|changeme)
         cat >&2 <<'WARN'
 ================================================================================
-WARNING: GRAFANA_ADMIN_PASSWORD is unset or set to a known default value.
+WARNING: GF_ADMIN_PASSWORD is unset or set to a known default value.
 
-Grafana will start with an insecure admin password (default fallback: 'admin').
-Set GRAFANA_ADMIN_PASSWORD to a strong, unique value in .env before exposing
-this stack to any network. See .env.example for the canonical variable name.
+docker-compose.yml refuses to start without GF_ADMIN_PASSWORD, and 'admin' and
+'changeme' are the values published in this repository. Set a strong, unique
+value in .env before exposing this stack to any network.
 ================================================================================
 WARN
         ;;

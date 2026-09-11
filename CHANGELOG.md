@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Removed silent `admin` fallbacks from `docker-compose.yml` and `justfile`.
+  Both now fail fast, and the duplicate `GRAFANA_ADMIN_PASSWORD` name is gone
+  in favour of the single documented `GF_ADMIN_PASSWORD`. CI workflows inject
+  `GF_ADMIN_PASSWORD` for compose validation. Regression tests added.
+  (#318, follow-up to #124)
+
 ### Fixed
 
 - CI `Test exporter` job now installs `just`, so tests that shell out to
