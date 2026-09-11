@@ -71,6 +71,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -118,6 +120,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -151,6 +155,8 @@ jobs:
     needs: lint
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Skip if no justfile
@@ -191,6 +197,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
+      GRAFANA_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -264,6 +273,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
+      GRAFANA_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -311,6 +323,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -343,6 +357,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
+      GRAFANA_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -375,6 +392,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -438,6 +457,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      GF_ADMIN_PASSWORD: ci-validation-only
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
