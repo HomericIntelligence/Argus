@@ -7,6 +7,7 @@ Alias tests verify that `rotate-htpasswd` is defined as an alias for
 `gen-htpasswd`, that its target recipe still exists, and that it is
 discoverable via `just --list` when the just binary is available.
 """
+import os
 import re
 import shutil
 import subprocess
@@ -102,12 +103,16 @@ def test_alias_listed_by_just_list() -> None:
 @pytest.mark.skipif(shutil.which("just") is None, reason="just binary not on PATH")
 def test_alias_dry_run_dispatches_to_gen_htpasswd() -> None:
     """Dry-running the alias must print the gen-htpasswd recipe body."""
+    # The strict justfile evaluates GF_ADMIN_PASSWORD at parse time, so
+    # provide a sentinel to reach recipe-body printing.
+    env = dict(os.environ, GF_ADMIN_PASSWORD="ci-test-sentinel")
     result = subprocess.run(
         ["just", "-n", "rotate-htpasswd"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
+        env=env,
     )
     # `just -n` prints shebang recipe bodies to stderr
     combined = result.stdout + result.stderr

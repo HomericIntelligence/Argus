@@ -176,12 +176,16 @@ class TestJustfileWiring(unittest.TestCase):
     def test_validate_body_invokes_check_alertmanager(self) -> None:
         # `just -n` prints only recipe body commands (no comments), so this
         # cannot be satisfied by a doc-comment mention.
+        # The strict justfile evaluates GF_ADMIN_PASSWORD at parse time, so
+        # provide a sentinel to reach recipe-body printing.
+        env = dict(os.environ, GF_ADMIN_PASSWORD="ci-test-sentinel")
         result = subprocess.run(
             ["just", "-n", "validate"],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
             check=True,
+            env=env,
         )
         self.assertIn("check-alertmanager", result.stdout + result.stderr)
 
