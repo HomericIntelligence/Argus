@@ -299,15 +299,18 @@ class Handler(BaseHTTPRequestHandler):
         as top-level JSON keys) instead of being baked into the message text.
         """
         requestline: str = getattr(self, "requestline", "")
+        safe_requestline = requestline.replace("\r", " ").replace("\n", " ")
+        safe_method = safe_requestline.split(" ", 1)[0]
+        safe_path = self.path.split("?", 1)[0].replace("\r", " ").replace("\n", " ")
         address = getattr(self, "client_address", None)
         log.debug(
             "%s %s",
-            requestline,
+            safe_requestline,
             code,
             extra={
                 "client_ip": str(address[0]) if address else "-",
-                "method": requestline.split(" ", 1)[0],
-                "path": self.path.split("?", 1)[0],
+                "method": safe_method,
+                "path": safe_path,
                 "status_code": str(code),
                 "response_bytes": str(size),
             },
