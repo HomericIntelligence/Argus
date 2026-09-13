@@ -181,6 +181,7 @@ services:
       # Loki basic auth (issue #209); expanded in promtail.yml via -config.expand-env
       LOKI_AUTH_USER: ${LOKI_AUTH_USER}
       LOKI_AUTH_PASSWORD: ${LOKI_AUTH_PASSWORD}
+      PROMTAIL_HOST_LABEL: ${PROMTAIL_HOST_LABEL:-}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
