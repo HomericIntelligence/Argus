@@ -47,7 +47,11 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 | grafana-proxy   | nginx:1.27-alpine              | Basic-auth proxy in front of Grafana (issue #321)      |
 | Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
 | Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
-| argus-exporter  | pinned GHCR image `ghcr.io/homericintelligence/argus-exporter:vX.Y.Z` (version tracked in `exporter/VERSION`, bumped via `just bump-exporter-version`) | Convert HomericIntelligence APIs to Prometheus metrics |
+| argus-exporter  | pinned GHCR image (see note)   | Convert HomericIntelligence APIs to Prometheus metrics |
+
+The `argus-exporter` image is pinned to
+`ghcr.io/homericintelligence/argus-exporter:vX.Y.Z`; the version is tracked in `exporter/VERSION`
+and bumped via `just bump-exporter-version`.
 
 ### Network topology (two-network design)
 
@@ -302,7 +306,8 @@ Argus/
 - Add new dashboards as JSON files in `dashboards/` and run `just import-dashboards`.
 - Alert rules in `rules/` also take effect after `just reload-prometheus`.
 - Use `just test-scrape` to verify the `up` metric for all targets before declaring a scrape job healthy.
-- Run only the individual tests relevant to your change during local development; CI/CD runs the complete test suite and coverage gates.
+- Run only the individual tests relevant to your change during local development; CI/CD runs the
+  complete test suite and coverage gates.
 - Use `pixi run pytest -q tests/path/to/test_file.py -k test_name --no-cov` (or the
   repository's equivalent targeted command) for focused local validation. Do not run
   the full test suite locally when CI/CD will execute it.
