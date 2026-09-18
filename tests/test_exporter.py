@@ -6,6 +6,7 @@ connections are made during the test suite.
 """
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import logging
@@ -23,7 +24,7 @@ from tests.helpers_http import live_server
 # Make the exporter importable without running __main__ logic
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
-import exporter.exporter as exporter_mod
+exporter_mod = importlib.import_module("exporter.exporter")
 
 
 def _make_response(data: dict | None = None, status: int = 200) -> MagicMock:
