@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- CI `Test exporter` job now installs `just`, so tests that shell out to
+  `just` (e.g. `TestJustRecipeGuard`) no longer fail with `FileNotFoundError`.
+- CI `Lint Python` job pins `ruff==0.16.4` to stop unpinned-install drift
+  from introducing new findings.
+- Bumped `pip` to `>=26.2` in the pixi `lint` env (fixes PYSEC-2026-3721
+  flagged by `pip-audit`).
+
 ## Upgrade Guide: v0.1.0 → v0.2.0
 
 This release is not backwards-compatible with v0.1.0 deployments without operator action.
@@ -52,11 +61,15 @@ multi-arch image at `ghcr.io/homericintelligence/atlas:v0.2.0`.
 
 ### Added
 
-- Atlas service (M1–M6): Go module with Chi server, SSE endpoint,
-  NATS/JetStream subscribers, Tailscale sources, service probe matrix,
-  hosts page, Agamemnon poller, agents/task detail pages with live SSE
-  event tail, Grafana iframe matrix (8 panels), NATS monitoring page,
-  Mnemosyne skill registry browser, pluggable auth middleware
+- Atlas M1 (skeleton): Go module with Chi server
+- Atlas M2 (NATS/SSE): SSE endpoint, NATS/JetStream subscribers
+- Atlas M3 (Tailscale/probe matrix): Tailscale sources, service probe
+  matrix, hosts page
+- Atlas M4 (pollers/detail pages): Agamemnon poller, agents/task detail
+  pages with live SSE event tail
+- Atlas M5 (dashboard pages): Grafana iframe matrix (8 panels), NATS
+  monitoring page, Mnemosyne skill registry browser
+- Atlas M6 (auth/metrics/hardening): pluggable auth middleware
   (none/basic/bearer), `/metrics` Prometheus exposition, alert rules,
   e2e tests, architecture doc
 - **NATS spine wiring** — `internal/nats.Subscriber` is now instantiated

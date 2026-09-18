@@ -1,17 +1,22 @@
+# Owners are individual usernames because the HomericIntelligence org
+# has no `argus-maintainers` or `security` teams yet (issue #369).
+# When those teams are created, replace @mvillmow with
+# @HomericIntelligence/<team-slug> on the relevant lines.
+
 # Default owner for all files
-* @HomericIntelligence/argus-maintainers
+* @mvillmow
 
 # Prometheus scrape configs and alert rules — security-sensitive (metric poisoning, alert suppression)
-/configs/prometheus.yml @HomericIntelligence/argus-maintainers @HomericIntelligence/security
-/rules/ @HomericIntelligence/argus-maintainers @HomericIntelligence/security
+/configs/prometheus.yml @mvillmow
+/rules/ @mvillmow
 
 # Grafana dashboards and datasource provisioning
-/configs/grafana/ @HomericIntelligence/argus-maintainers
-/dashboards/ @HomericIntelligence/argus-maintainers
+/configs/grafana/ @mvillmow
+/dashboards/ @mvillmow
 
 # Loki and Promtail configs — log pipeline (log injection risk)
-/configs/loki.yml @HomericIntelligence/argus-maintainers @HomericIntelligence/security
-/configs/promtail.yml @HomericIntelligence/argus-maintainers @HomericIntelligence/security
+/configs/loki.yml @mvillmow
+/configs/promtail.yml @mvillmow
 
 # CI/CD and GitHub configuration
-/.github/ @HomericIntelligence/argus-maintainers
+/.github/ @mvillmow

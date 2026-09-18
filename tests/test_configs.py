@@ -1,7 +1,8 @@
 """
 Validate that all YAML config files parse correctly and have required top-level keys.
-Uses only stdlib: yaml, pathlib, unittest.
+Uses only stdlib: re, yaml, pathlib, unittest.
 """
+import re
 import unittest
 from pathlib import Path
 from typing import Any, ClassVar
@@ -15,6 +16,69 @@ CONFIGS_DIR = REPO_ROOT / "configs"
 def load_yaml(path: Path) -> dict:
     with path.open() as f:
         return yaml.safe_load(f)
+
+
+_IPV4_PREFIX = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3}):")
+
+
+def _normalize_port(entry: Any) -> tuple[str, str | None, str, str]:
+    """Normalize a docker-compose port entry to (host_ip, published, target, protocol).
+
+    Compose spec: omitting host_ip (short- or long-form) binds to 0.0.0.0.
+    See https://github.com/compose-spec/compose-spec/blob/main/spec.md#ports.
+
+    Short-form parsing anchors on the optional leading IPv4 address, then
+    rsplits the remainder on its last ':'. This preserves shell-variable
+    substrings like '${VAR:-default}' that contain a ':' (used in the live
+    docker-compose.yml for Grafana and exporter ports).
+    """
+    if isinstance(entry, int) and not isinstance(entry, bool):
+        return ("0.0.0.0", None, str(entry), "tcp")
+
+    if isinstance(entry, dict):
+        host_ip = str(entry.get("host_ip", "0.0.0.0"))
+        published = entry.get("published")
+        target = str(entry.get("target", ""))
+        protocol = str(entry.get("protocol", "tcp"))
+        return (
+            host_ip,
+            None if published is None else str(published),
+            target,
+            protocol,
+        )
+
+    s = str(entry)
+    if "/" in s:
+        s, protocol = s.rsplit("/", 1)
+    else:
+        protocol = "tcp"
+
+    match = _IPV4_PREFIX.match(s)
+    if match:
+        host_ip = match.group(1)
+        s = s[match.end():]
+    else:
+        host_ip = "0.0.0.0"
+
+    if ":" in s:
+        published, target = s.rsplit(":", 1)
+        return (host_ip, published, target, protocol)
+    return (host_ip, None, s, protocol)
+
+
+def _assert_no_wildcards(services: dict[str, Any], allowed: set[str]) -> None:
+    """Fail if any service port entry resolves to a host_ip outside ``allowed``."""
+    for svc_name, svc in services.items():
+        for raw in svc.get("ports", []):
+            host_ip, published, target, protocol = _normalize_port(raw)
+            if host_ip not in allowed:
+                raise AssertionError(
+                    f"Service '{svc_name}' port entry {raw!r} normalizes to "
+                    f"host_ip={host_ip!r} (target={target}, proto={protocol}), "
+                    f"which is not in allowed set {allowed}. Use "
+                    f"'127.0.0.1:{published or target}:{target}' for short-form, "
+                    f"or add 'host_ip: 127.0.0.1' for long-form."
+                )
 
 
 class TestPrometheusConfig(unittest.TestCase):
@@ -75,6 +139,71 @@ class TestLokiConfig(unittest.TestCase):
     def test_limits_config_has_retention_period(self):
         assert "retention_period" in self.config["limits_config"]
 
+    def test_auth_enabled_is_true(self):
+        """Issue #209: Loki must reject credential-less requests."""
+        assert self.config.get("auth_enabled") is True, (
+            "auth_enabled must be true — Loki is otherwise an open-access "
+            "log endpoint (audit finding #25)"
+        )
+
+
+class TestLokiDatasourceAuth(unittest.TestCase):
+    """Issue #209: Grafana's Loki datasource and Promtail's push client must
+    authenticate, with credentials sourced from the environment — never
+    hardcoded literals."""
+
+    def setUp(self):
+        self.datasources = load_yaml(CONFIGS_DIR / "grafana" / "datasources.yml")
+        self.promtail = load_yaml(CONFIGS_DIR / "promtail.yml")
+
+    def _loki_datasource(self) -> dict:
+        return next(ds for ds in self.datasources["datasources"] if ds["type"] == "loki")
+
+    def test_loki_datasource_basic_auth_enabled(self):
+        assert self._loki_datasource().get("basicAuth") is True
+
+    def test_loki_datasource_basic_auth_user_from_env(self):
+        user = self._loki_datasource().get("basicAuthUser", "")
+        assert user.startswith("$"), (
+            f"basicAuthUser must use env interpolation, got: {user!r}"
+        )
+
+    def test_loki_datasource_basic_auth_password_from_env(self):
+        password = self._loki_datasource().get("secureJsonData", {}).get(
+            "basicAuthPassword", ""
+        )
+        assert password.startswith("$"), (
+            f"secureJsonData.basicAuthPassword must use env interpolation, "
+            f"got: {password!r}"
+        )
+
+    def test_loki_datasource_url_not_direct_loki(self):
+        url = self._loki_datasource()["url"]
+        assert "loki-proxy" in url and "loki:3100" not in url, (
+            f"Loki datasource must go through loki-proxy, got: {url!r}"
+        )
+
+    def test_promtail_push_client_has_basic_auth(self):
+        client = self.promtail["clients"][0]
+        assert "basic_auth" in client, (
+            "promtail push client must send basic auth (issue #209)"
+        )
+        assert client["basic_auth"]["username"] == "${LOKI_AUTH_USER}"
+        assert client["basic_auth"]["password"] == "${LOKI_AUTH_PASSWORD}"
+
+    def test_compose_passes_loki_credentials_to_promtail_and_grafana(self):
+        """Structural guard against forgotten env wiring: config files
+        reference LOKI_AUTH_USER/LOKI_AUTH_PASSWORD, so both services that
+        consume them must actually receive the variables."""
+        compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        for service in ("promtail", "grafana"):
+            env = compose["services"][service].get("environment", {})
+            for var in ("LOKI_AUTH_USER", "LOKI_AUTH_PASSWORD"):
+                assert env.get(var) == f"${{{var}}}", (
+                    f"{service} environment must pass {var} through "
+                    f"(issue #209); got: {env.get(var)!r}"
+                )
+
 
 class TestPromtailConfig(unittest.TestCase):
     def setUp(self):
@@ -101,48 +230,41 @@ class TestPromtailConfig(unittest.TestCase):
     def test_scrape_configs_is_list(self):
         assert isinstance(self.config["scrape_configs"], list)
 
-    def test_syslog_job_host_label_uses_env_var(self):
-        syslog_job = next(
-            (j for j in self.config["scrape_configs"] if j.get("job_name") == "syslog"),
-            None,
-        )
-        assert syslog_job is not None, "syslog scrape job not found"
-        labels = syslog_job["static_configs"][0]["labels"]
-        assert "host" in labels, "syslog job missing 'host' label"
-        assert labels["host"].startswith("${"), (
-            "host label must use env var substitution (${HOSTNAME:-...}), "
-            f"got hardcoded value: {labels['host']!r}"
-        )
-
-    def test_syslog_job_host_label_has_fallback(self):
-        syslog_job = next(
-            (j for j in self.config["scrape_configs"] if j.get("job_name") == "syslog"),
-            None,
-        )
-        assert syslog_job is not None
-        host_val = syslog_job["static_configs"][0]["labels"]["host"]
-        assert ":-" in host_val, (
-            "host label env var should have a fallback default (e.g. ${HOSTNAME:-hermes}), "
-            f"got: {host_val!r}"
-        )
-
-    def test_syslog_host_label_is_not_hardcoded(self):
-        """host label must use env var substitution, not a hardcoded hostname."""
-        syslog_job = next(
-            (j for j in self.config["scrape_configs"] if j.get("job_name") == "syslog"),
-            None,
-        )
-        assert syslog_job is not None, "syslog scrape job not found"
-        labels = syslog_job["static_configs"][0]["labels"]
-        host_val = labels.get("host", "")
-        assert host_val.startswith("${"), (
-            f"host label must use env var substitution, got hardcoded: {host_val!r}"
-        )
-
     def test_syslog_host_label_uses_env_var(self):
         """host label must reference HOSTNAME via env var expansion syntax."""
         raw = (CONFIGS_DIR / "promtail.yml").read_text()
         assert "HOSTNAME" in raw, "host label must reference ${HOSTNAME} for portability"
+
+    def test_all_jobs_have_env_var_host_label(self):
+        """Issue #254: every scrape job must carry a `host` label using env
+        var substitution (${PROMTAIL_HOST_LABEL:-${HOSTNAME}}) so Loki
+        streams are filterable by host wherever the stack is deployed.
+        Adding a new scrape job without a host label breaks consistent
+        Loki filtering — extend HOST_LABELED_JOBS below.
+        """
+        HOST_LABELED_JOBS = {"syslog", "hermes", "nats"}
+
+        jobs_by_name = {
+            j["job_name"]: j for j in self.config["scrape_configs"]
+        }
+        # The audit set must cover every configured job — a new job added
+        # to promtail.yml without updating this set fails loudly.
+        assert set(jobs_by_name) == HOST_LABELED_JOBS, (
+            f"scrape jobs {set(jobs_by_name)} != audited set {HOST_LABELED_JOBS}; "
+            "update HOST_LABELED_JOBS and give the new job a host label"
+        )
+        for job_name in HOST_LABELED_JOBS:
+            labels = jobs_by_name[job_name]["static_configs"][0]["labels"]
+            assert "host" in labels, f"{job_name!r} job missing 'host' label"
+            host_val = labels["host"]
+            assert host_val.startswith("${"), (
+                f"{job_name!r} host label must use env var substitution, "
+                f"got hardcoded: {host_val!r}"
+            )
+            assert ":-" in host_val, (
+                f"{job_name!r} host label must have a fallback "
+                f"(${{PROMTAIL_HOST_LABEL:-${{HOSTNAME}}}}), got: {host_val!r}"
+            )
 
     def test_redaction_enabled_jobs_have_secret_patterns(self):
         """All jobs that read host/app logs containing user-supplied data must
@@ -263,6 +385,42 @@ class TestGrafanaDatasourcesConfig(unittest.TestCase):
             for field in required_fields:
                 assert field in ds, f"Datasource missing field '{field}': {ds}"
 
+    def _alertmanager_datasource(self) -> dict:
+        ds = next(
+            (d for d in self.config["datasources"] if d["type"] == "alertmanager"),
+            None,
+        )
+        assert ds is not None, "Alertmanager datasource not found (issue #345)"
+        return ds
+
+    def test_alertmanager_datasource_present(self) -> None:
+        assert self._alertmanager_datasource()["name"] == "Alertmanager"
+
+    def test_alertmanager_datasource_url(self) -> None:
+        assert (
+            self._alertmanager_datasource()["url"] == "http://alertmanager:9093"
+        )
+
+    def test_alertmanager_datasource_uid_stable(self) -> None:
+        assert self._alertmanager_datasource()["uid"] == "alertmanager"
+
+    def test_alertmanager_datasource_implementation(self) -> None:
+        assert (
+            self._alertmanager_datasource()["jsonData"]["implementation"]
+            == "prometheus"
+        )
+
+    def test_alertmanager_datasource_not_default(self) -> None:
+        assert self._alertmanager_datasource().get("isDefault") is not True
+
+    def test_alertmanager_datasource_handle_grafana_managed_alerts_disabled(
+        self,
+    ) -> None:
+        assert (
+            self._alertmanager_datasource()["jsonData"]["handleGrafanaManagedAlerts"]
+            is False
+        )
+
 
 class TestGrafanaDashboardsConfig(unittest.TestCase):
     def setUp(self):
@@ -288,6 +446,23 @@ class TestGrafanaDashboardsConfig(unittest.TestCase):
         for provider in self.config["providers"]:
             for field in required_fields:
                 assert field in provider, f"Provider missing field '{field}': {provider}"
+
+
+class TestDockerComposePromtailEnv(unittest.TestCase):
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.env = self.compose["services"]["promtail"].get("environment", {})
+
+    def test_promtail_receives_hostname(self) -> None:
+        assert "HOSTNAME" in self.env, (
+            "promtail must receive HOSTNAME for host-label expansion"
+        )
+
+    def test_promtail_receives_host_label_override(self) -> None:
+        assert "PROMTAIL_HOST_LABEL" in self.env, (
+            "promtail must receive PROMTAIL_HOST_LABEL so the override branch "
+            "of ${PROMTAIL_HOST_LABEL:-${HOSTNAME}} is reachable"
+        )
 
 
 class TestDockerComposeNetworkIsolation(unittest.TestCase):
@@ -360,6 +535,17 @@ class TestDockerComposePortBindings(unittest.TestCase):
         assert "loki-proxy" in dep_names
         assert "loki" not in dep_names, "grafana should depend on loki-proxy, not loki directly"
 
+    def test_grafana_depends_on_alertmanager(self) -> None:
+        deps: Any = self.compose["services"]["grafana"].get("depends_on", [])
+        if isinstance(deps, dict):
+            dep_names = list(deps.keys())
+        else:
+            dep_names = list(deps)
+        assert "alertmanager" in dep_names, (
+            "grafana must depend on alertmanager so the provisioned "
+            "Alertmanager datasource does not race a cold start (issue #345)"
+        )
+
     def test_loki_datasource_url_uses_proxy(self) -> None:
         datasources = load_yaml(CONFIGS_DIR / "grafana" / "datasources.yml")["datasources"]
         loki_ds = next(ds for ds in datasources if ds["type"] == "loki")
@@ -401,17 +587,24 @@ class TestDockerComposePorts(unittest.TestCase):
             f"Prometheus must not bind to 0.0.0.0:9090, got: {ports}"
         )
 
-    def test_grafana_port_is_loopback_bound(self) -> None:
-        ports = self._ports("grafana")
-        assert any(str(p).startswith("127.0.0.1:") for p in ports), (
-            f"Grafana must bind to 127.0.0.1, got: {ports}"
+    def test_grafana_has_no_host_port_binding(self) -> None:
+        """Since #321 Grafana has no host port; traffic goes via grafana-proxy."""
+        assert "ports" not in self.services["grafana"], (
+            "grafana must not publish a host port (reach it through grafana-proxy)"
         )
 
-    def test_grafana_port_not_open_bound(self) -> None:
-        ports = self._ports("grafana")
-        assert not any(str(p) == "3000:3000" or str(p) == "3001:3000" for p in ports), (
-            f"Grafana must not bind to 0.0.0.0, got: {ports}"
+    def test_grafana_proxy_port_is_loopback_bound(self) -> None:
+        ports = self._ports("grafana-proxy")
+        assert any(str(p).startswith("127.0.0.1:") for p in ports), (
+            f"grafana-proxy must bind to 127.0.0.1, got: {ports}"
         )
+
+    def test_grafana_proxy_port_not_open_bound(self) -> None:
+        ports = self._ports("grafana-proxy")
+        assert not any(
+            str(p).split(":")[-2] in ("3000", "3001") and str(p).startswith(("3000:", "3001:"))
+            for p in ports
+        ), f"grafana-proxy must not bind to 0.0.0.0, got: {ports}"
 
     def test_exporter_port_is_loopback_bound(self) -> None:
         ports = self._ports("argus-exporter")
@@ -426,29 +619,137 @@ class TestDockerComposePorts(unittest.TestCase):
         )
 
     def test_no_wildcard_port_bindings(self) -> None:
-        services = self.compose.get("services", {})
-        for svc_name, svc in services.items():
-            for port_entry in svc.get("ports", []):
-                port_str = str(port_entry)
-                parts = port_str.split(":")
-                if len(parts) == 1:
-                    self.fail(
-                        f"Service '{svc_name}' has bare port binding '{port_str}' "
-                        f"(implicit 0.0.0.0). Use '127.0.0.1:{port_str}:{port_str}' instead."
-                    )
-                elif len(parts) == 2:
-                    self.fail(
-                        f"Service '{svc_name}' binds port '{port_str}' on 0.0.0.0. "
-                        f"Use '127.0.0.1:{parts[0]}:{parts[1]}' instead."
-                    )
-                else:
-                    bind_ip = parts[0]
-                    self.assertIn(
-                        bind_ip,
-                        self.ALLOWED_BINDINGS,
-                        f"Service '{svc_name}' port '{port_str}' binds to '{bind_ip}', "
-                        f"not in allowed set {self.ALLOWED_BINDINGS}.",
-                    )
+        _assert_no_wildcards(self.compose.get("services", {}), self.ALLOWED_BINDINGS)
+
+    def test_wildcard_check_catches_longform_without_host_ip(self) -> None:
+        services: dict[str, Any] = {
+            "foo": {"ports": [{"target": 9090, "published": 9090}]}
+        }
+        with self.assertRaises(AssertionError):
+            _assert_no_wildcards(services, self.ALLOWED_BINDINGS)
+
+    def test_wildcard_check_accepts_longform_with_loopback_host_ip(self) -> None:
+        services: dict[str, Any] = {
+            "foo": {
+                "ports": [
+                    {"target": 9090, "published": 9090, "host_ip": "127.0.0.1"}
+                ]
+            }
+        }
+        _assert_no_wildcards(services, self.ALLOWED_BINDINGS)
+
+    def test_wildcard_check_catches_bare_int_port(self) -> None:
+        services: dict[str, Any] = {"foo": {"ports": [9090]}}
+        with self.assertRaises(AssertionError):
+            _assert_no_wildcards(services, self.ALLOWED_BINDINGS)
+
+
+class TestPortNormalization(unittest.TestCase):
+    """Table-driven tests for the docker-compose port-entry normalizer.
+
+    Issue #322: long-form (dict) port entries must resolve host_ip correctly
+    so a missing host_ip is treated as the Compose default (0.0.0.0).
+    """
+
+    def test_short_form_ipv4_published_target(self) -> None:
+        assert _normalize_port("127.0.0.1:9090:9090") == (
+            "127.0.0.1",
+            "9090",
+            "9090",
+            "tcp",
+        )
+
+    def test_short_form_shell_variable_grafana(self) -> None:
+        assert _normalize_port("127.0.0.1:${GRAFANA_PORT:-3001}:3000") == (
+            "127.0.0.1",
+            "${GRAFANA_PORT:-3001}",
+            "3000",
+            "tcp",
+        )
+
+    def test_short_form_shell_variable_exporter(self) -> None:
+        assert _normalize_port("127.0.0.1:${EXPORTER_PORT:-9100}:9100") == (
+            "127.0.0.1",
+            "${EXPORTER_PORT:-9100}",
+            "9100",
+            "tcp",
+        )
+
+    def test_short_form_without_host_ip(self) -> None:
+        assert _normalize_port("9090:9090") == ("0.0.0.0", "9090", "9090", "tcp")
+
+    def test_short_form_single_part(self) -> None:
+        assert _normalize_port("9090") == ("0.0.0.0", None, "9090", "tcp")
+
+    def test_bare_int(self) -> None:
+        assert _normalize_port(9090) == ("0.0.0.0", None, "9090", "tcp")
+
+    def test_short_form_udp_protocol(self) -> None:
+        assert _normalize_port("9090:9090/udp") == ("0.0.0.0", "9090", "9090", "udp")
+
+    def test_long_form_with_loopback_host_ip(self) -> None:
+        entry = {"target": 9090, "published": 9090, "host_ip": "127.0.0.1"}
+        assert _normalize_port(entry) == ("127.0.0.1", "9090", "9090", "tcp")
+
+    def test_long_form_without_host_ip_defaults_to_wildcard(self) -> None:
+        entry = {"target": 9090, "published": 9090}
+        assert _normalize_port(entry) == ("0.0.0.0", "9090", "9090", "tcp")
+
+    def test_long_form_udp_protocol(self) -> None:
+        entry = {"target": 9090, "published": 9090, "protocol": "udp"}
+        assert _normalize_port(entry) == ("0.0.0.0", "9090", "9090", "udp")
+
+
+class TestDockerComposeGrafanaAdminUser(unittest.TestCase):
+    """Verify that the Grafana admin username is configurable via env var.
+
+    Issue #183: GF_SECURITY_ADMIN_USER must be wired to GRAFANA_ADMIN_USER
+    (default 'admin') instead of being left to Grafana's built-in default,
+    and import-dashboards.sh must not hardcode the 'admin' username.
+    """
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.grafana_env = self.compose["services"]["grafana"]["environment"]
+
+    def test_grafana_admin_user_is_configurable(self) -> None:
+        assert self.grafana_env.get("GF_SECURITY_ADMIN_USER") == "${GRAFANA_ADMIN_USER:-admin}", (
+            "GF_SECURITY_ADMIN_USER must be set from ${GRAFANA_ADMIN_USER:-admin}"
+        )
+
+    def test_import_script_does_not_hardcode_admin_user(self) -> None:
+        script = (REPO_ROOT / "scripts" / "import-dashboards.sh").read_text()
+        assert 'GRAFANA_AUTH="admin:' not in script, (
+            "import-dashboards.sh must not hardcode the 'admin' username in GRAFANA_AUTH"
+        )
+        assert 'GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"' in script, (
+            "import-dashboards.sh must default GRAFANA_ADMIN_USER from the environment"
+        )
+
+
+class TestComposePromtailHostname(unittest.TestCase):
+    """Regression guard for issue #352 (follow-up to #132).
+
+    Promtail must declare a stable ``hostname:`` so Loki labels logs with a
+    human-readable host instead of the container's ephemeral runtime ID
+    (see AGENTS.md "Operator Notes").
+    """
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.promtail = self.compose["services"]["promtail"]
+
+    def test_promtail_hostname_key_present(self) -> None:
+        assert "hostname" in self.promtail, (
+            "promtail service must declare a 'hostname:' key "
+            "(see AGENTS.md Operator Notes; issue #352)"
+        )
+
+    def test_promtail_hostname_non_empty(self) -> None:
+        hostname = self.promtail.get("hostname")
+        assert hostname is not None and str(hostname).strip() != "", (
+            f"promtail 'hostname:' must be non-empty, got: {hostname!r}"
+        )
 
 
 if __name__ == "__main__":

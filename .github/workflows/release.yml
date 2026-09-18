@@ -56,12 +56,36 @@ jobs:
           print(f"OK: tag {tag} matches pixi.toml version {actual_version}")
           EOF
 
-      - name: Create GitHub Release
+      # Package the deployable exporter source (stdlib-only single-file code +
+      # its container build recipe) into a versioned tarball with a checksum.
+      # Staging under a versioned top-level directory keeps extraction tidy.
+      - name: Package exporter artifact
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p "dist/argus-exporter-$TAG"
+          cp exporter/exporter.py exporter/Dockerfile "dist/argus-exporter-$TAG/"
+          tar -czf "dist/argus-exporter-$TAG.tar.gz" -C dist "argus-exporter-$TAG"
+          # Generate the checksum from inside dist/ so the file records bare
+          # filenames — `sha256sum -c` works in any flat download directory.
+          (
+            cd dist
+            sha256sum "argus-exporter-$TAG.tar.gz" > "argus-exporter-$TAG.tar.gz.sha256"
+          )
+
+      # Assets are passed positionally to `gh release create` so a single
+      # call both creates the release and attaches the artifacts — there is
+      # no window where the release exists without its assets, and a
+      # successful step means the release is complete (no partial state on
+      # transient failure).
+      - name: Create GitHub Release & upload artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "$TAG" \
+            "dist/argus-exporter-$TAG.tar.gz" \
+            "dist/argus-exporter-$TAG.tar.gz.sha256" \
             --generate-notes \
             --title "Release $TAG"
 
@@ -84,7 +108,7 @@ jobs:
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0

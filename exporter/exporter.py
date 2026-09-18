@@ -13,14 +13,80 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # LOG_LEVEL env var (default INFO) controls log verbosity at runtime so
 # operators can flip to DEBUG (e.g. for HTTP access logs) without a redeploy.
 # Accepts standard logging level names: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+#
+# LOG_FORMAT env var (default json): "json" emits one JSON object per log line
+# on stdout so Loki/Grafana can query fields like client_ip/path/status_code
+# individually (`{container="argus-exporter"} | json | status=~"5.."`).
+# "text" restores the previous plaintext format as a rollback escape hatch.
+# In text mode the named logger keeps propagate=True so records fall through
+# to root's basicConfig handler unchanged; in JSON mode it owns a dedicated
+# handler and cuts propagation to avoid double emission.
 _LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+_LOG_FORMAT = os.environ.get("LOG_FORMAT", "json").lower()
+
+# Top-level JSON keys this formatter owns; extras colliding with them get a
+# ctx_ prefix so user context is never silently dropped.
+_RESERVED_JSON_FIELDS = frozenset({
+    "timestamp", "level", "logger", "message", "exception", "stack_info",
+})
+
+
+class _JsonFormatter(logging.Formatter):
+    """Format each LogRecord as a single-line JSON object.
+
+    Extras passed via ``extra=`` are flattened as top-level keys so they become
+    individually queryable fields in Loki/Grafana. Keys colliding with the
+    formatter's reserved fields get a ``ctx_`` prefix instead of being lost.
+    """
+
+    _DEFAULT_ATTRS: frozenset[str] = (
+        frozenset(
+            logging.LogRecord("x", logging.INFO, "x", 0, "x", None, None).__dict__
+        )
+        | {"message", "msg", "args"}
+    )
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Render one record as compact JSON (UTF-8 friendly)."""
+        payload: dict[str, object] = {
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            # getMessage() resolves lazy %-style args into the final message.
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            payload["stack_info"] = self.formatStack(record.stack_info)
+        for key, value in record.__dict__.items():
+            if key in _JsonFormatter._DEFAULT_ATTRS:
+                continue
+            out_key = f"ctx_{key}" if key in _RESERVED_JSON_FIELDS else key
+            payload[out_key] = value
+        return json.dumps(payload, default=str, ensure_ascii=False)
+
+
 logging.basicConfig(level=_LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("homeric-exporter")
+
+if _LOG_FORMAT == "json":
+    # Attach the JSON formatter to the named logger only — third-party loggers
+    # keep root's plaintext formatting. setLevel is required because once
+    # propagation is cut, only this logger's own level gates emission.
+    _json_handler = logging.StreamHandler()
+    _json_handler.setFormatter(_JsonFormatter())
+    log.addHandler(_json_handler)
+    log.setLevel(_LOG_LEVEL)
+    log.propagate = False
 
 AGAMEMNON_URL     = os.environ.get("AGAMEMNON_URL",     "http://172.20.0.1:8080")
 NESTOR_URL        = os.environ.get("NESTOR_URL",        "http://172.20.0.1:8081")
@@ -79,11 +145,16 @@ def _health_check(url: str, ca_file: str | None = None) -> int:
 
 _METRIC_HELP: dict[str, str] = {
     "hi_agamemnon_health":                    "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise",
-    "hi_agents_total":                        "Total number of agents registered in Agamemnon",
+    "hi_agents_count":                        "Number of agents registered in Agamemnon",
     "hi_agents_online":                       "Number of agents with status=online",
     "hi_agents_offline":                      "Number of agents with status!=online",
     "hi_agent_online":                        "1 if this individual agent is online, 0 otherwise",
-    "hi_tasks_total":                         "Total number of tasks known to Agamemnon",
+    "hi_tasks_count":                         "Number of tasks known to Agamemnon",
+    # Deprecated aliases (#426): gauges must not carry the counter-reserved
+    # _total suffix. Kept for one scrape-retention window so live Prometheus
+    # data survives the rename; removal tracked as a follow-up.
+    "hi_agents_total":                        "(deprecated, use hi_agents_count) Number of agents registered in Agamemnon",
+    "hi_tasks_total":                         "(deprecated, use hi_tasks_count) Number of tasks known to Agamemnon",
     "hi_tasks_by_status":                     "Task count grouped by status label",
     "hi_nestor_health":                       "1 if Nestor /v1/health returned HTTP 200, 0 otherwise",
     "hi_nestor_research_active":              "Number of active research jobs in Nestor",
@@ -110,7 +181,7 @@ def collect() -> str:
     lines: list[str] = []
     emitted_types: set[str] = set()
 
-    def gauge(name: str, help: str, value: float, labels: dict | None = None) -> None:
+    def gauge(name: str, value: float, labels: dict | None = None) -> None:
         lstr = ",".join(f'{k}="{v}"' for k, v in (labels or {}).items())
         if name not in emitted_types:
             help_text = _METRIC_HELP.get(name, "")
@@ -146,7 +217,7 @@ def collect() -> str:
     }
 
     # ── Agamemnon health ───────────────────────────────────────────────────
-    gauge("hi_agamemnon_health", "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise", agamemnon_health)
+    gauge("hi_agamemnon_health", agamemnon_health)
 
     # ── Agamemnon agents ───────────────────────────────────────────────────
     d = _fetch(f"{AGAMEMNON_URL}/v1/agents", AGAMEMNON_TLS_CA)
@@ -155,12 +226,12 @@ def collect() -> str:
         total   = len(agents)
         online  = sum(1 for a in agents if a.get("status") == "online")
         offline = total - online
-        gauge("hi_agents_total",   "Total number of agents registered in Agamemnon", total)
-        gauge("hi_agents_online",  "Number of agents with status=online", online)
-        gauge("hi_agents_offline", "Number of agents with status!=online", offline)
+        gauge("hi_agents_count",   total)
+        gauge("hi_agents_total",   total)
+        gauge("hi_agents_online",  online)
+        gauge("hi_agents_offline", offline)
         for ag in agents:
             gauge("hi_agent_online",
-                  "1 if the individual agent is online, 0 otherwise",
                   1 if ag.get("status") == "online" else 0,
                   {"name":    ag.get("name", "unknown"),
                    "host":    ag.get("host", "unknown"),
@@ -169,42 +240,43 @@ def collect() -> str:
     # ── Agamemnon tasks ────────────────────────────────────────────────────
     if tasks_data:
         tasks = tasks_data.get("tasks", [])
-        gauge("hi_tasks_total", "Total number of tasks known to Agamemnon", len(tasks))
+        gauge("hi_tasks_count", len(tasks))
+        gauge("hi_tasks_total", len(tasks))
         status_counts: dict[str, int] = {}
         for task in tasks:
             s = task.get("status", "unknown")
             status_counts[s] = status_counts.get(s, 0) + 1
         for status, count in status_counts.items():
-            gauge("hi_tasks_by_status", "Task count partitioned by status label", count, {"status": status})
+            gauge("hi_tasks_by_status", count, {"status": status})
 
     # ── Nestor health + research stats ────────────────────────────────────
-    gauge("hi_nestor_health", "1 if Nestor /v1/health returned HTTP 200, 0 otherwise", nestor_health)
+    gauge("hi_nestor_health", nestor_health)
 
     if nestor_stats:
-        gauge("hi_nestor_research_active",    "Number of research jobs currently active in Nestor",    nestor_stats.get("active", 0))
-        gauge("hi_nestor_research_completed", "Number of research jobs completed in Nestor",           nestor_stats.get("completed", 0))
-        gauge("hi_nestor_research_pending",   "Number of research jobs pending in Nestor",             nestor_stats.get("pending", 0))
+        gauge("hi_nestor_research_active",    nestor_stats.get("active", 0))
+        gauge("hi_nestor_research_completed", nestor_stats.get("completed", 0))
+        gauge("hi_nestor_research_pending",   nestor_stats.get("pending", 0))
 
     # ── NATS ───────────────────────────────────────────────────────────────
     if nats_varz:
-        gauge("nats_connections",    "Current number of client connections to NATS",              nats_varz.get("connections", 0))
-        gauge("nats_in_msgs",        "Current inbound message rate from NATS server",             nats_varz.get("in_msgs", 0))
-        gauge("nats_out_msgs",       "Current outbound message rate from NATS server",            nats_varz.get("out_msgs", 0))
-        gauge("nats_in_bytes",       "Current inbound bytes rate from NATS server",               nats_varz.get("in_bytes", 0))
-        gauge("nats_out_bytes",      "Current outbound bytes rate from NATS server",              nats_varz.get("out_bytes", 0))
-        gauge("nats_slow_consumers", "Number of slow consumer connections detected by NATS",      nats_varz.get("slow_consumers", 0))
+        gauge("nats_connections",    nats_varz.get("connections", 0))
+        gauge("nats_in_msgs",        nats_varz.get("in_msgs", 0))
+        gauge("nats_out_msgs",       nats_varz.get("out_msgs", 0))
+        gauge("nats_in_bytes",       nats_varz.get("in_bytes", 0))
+        gauge("nats_out_bytes",      nats_varz.get("out_bytes", 0))
+        gauge("nats_slow_consumers", nats_varz.get("slow_consumers", 0))
 
     if nats_jsz:
-        gauge("nats_jetstream_streams",   "Number of JetStream streams",                              nats_jsz.get("streams", 0))
-        gauge("nats_jetstream_consumers", "Number of JetStream consumers",                            nats_jsz.get("consumers", 0))
-        gauge("nats_jetstream_messages",  "Total messages stored across all JetStream streams",       nats_jsz.get("messages", 0))
-        gauge("nats_jetstream_bytes",     "Total bytes stored across all JetStream streams",          nats_jsz.get("bytes", 0))
+        gauge("nats_jetstream_streams",   nats_jsz.get("streams", 0))
+        gauge("nats_jetstream_consumers", nats_jsz.get("consumers", 0))
+        gauge("nats_jetstream_messages",  nats_jsz.get("messages", 0))
+        gauge("nats_jetstream_bytes",     nats_jsz.get("bytes", 0))
 
     # ── exporter self ──────────────────────────────────────────────────────
-    gauge("homeric_exporter_scrape_timestamp_seconds", "Unix timestamp (seconds) when the last scrape completed", time.time())
-    gauge("homeric_exporter_scrape_duration_seconds",  "Duration in seconds of the last upstream scrape cycle",  time.time() - start)
+    gauge("homeric_exporter_scrape_timestamp_seconds", time.time())
+    gauge("homeric_exporter_scrape_duration_seconds",  time.time() - start)
     for upstream, count in fetch_errors.items():
-        gauge("homeric_exporter_fetch_errors",  "Number of fetch failures per upstream service",             count, {"upstream": upstream})
+        gauge("homeric_exporter_fetch_errors", count, {"upstream": upstream})
 
     return "\n".join(lines) + "\n"
 
@@ -225,6 +297,31 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        """Emit an access-log record with structured, individually queryable fields.
+
+        Overrides BaseHTTPRequestHandler.log_request so client IP, method,
+        path, status, and response size travel as ``extra=`` fields (rendered
+        as top-level JSON keys) instead of being baked into the message text.
+        """
+        requestline: str = getattr(self, "requestline", "")
+        safe_requestline = requestline.replace("\r", " ").replace("\n", " ")
+        safe_method = safe_requestline.split(" ", 1)[0]
+        safe_path = self.path.split("?", 1)[0].replace("\r", " ").replace("\n", " ")
+        address = getattr(self, "client_address", None)
+        log.debug(
+            "%s %s",
+            safe_requestline,
+            code,
+            extra={
+                "client_ip": str(address[0]) if address else "-",
+                "method": safe_method,
+                "path": safe_path,
+                "status_code": str(code),
+                "response_bytes": str(size),
+            },
+        )
 
     def log_message(self, fmt: str, *args: object) -> None:
         log.debug(fmt, *args)

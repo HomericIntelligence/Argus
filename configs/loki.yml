@@ -1,5 +1,9 @@
 ---
-auth_enabled: false
+# Issue #209: authentication required. With auth_enabled true, Loki rejects
+# credential-less requests; the basic-auth username becomes the tenant ID
+# (/ready and /metrics stay reachable for healthchecks).
+# Rollback: revert this flag to false to restore anonymous access.
+auth_enabled: true
 
 server:
   http_listen_port: 3100

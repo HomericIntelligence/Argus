@@ -9,13 +9,22 @@ CHANGELOG="${REPO_ROOT}/CHANGELOG.md"
 GENERATE_SCRIPT="${REPO_ROOT}/scripts/generate-changelog.sh"
 
 usage() {
-    echo "Usage: $0 <patch|minor|major>" >&2
+    echo "Usage: $0 <patch|minor|major> [--allow-empty]" >&2
+    echo "  --allow-empty   Insert a placeholder section when no commits exist since last tag." >&2
+    echo "  (env) BUMP_ALLOW_EMPTY=1  Same as --allow-empty." >&2
     exit 1
 }
 
-[[ $# -ne 1 ]] && usage
-BUMP_TYPE="$1"
-[[ "$BUMP_TYPE" =~ ^(patch|minor|major)$ ]] || usage
+ALLOW_EMPTY="${BUMP_ALLOW_EMPTY:-0}"
+BUMP_TYPE=""
+for arg in "$@"; do
+    case "$arg" in
+        --allow-empty) ALLOW_EMPTY=1 ;;
+        patch|minor|major) BUMP_TYPE="$arg" ;;
+        *) usage ;;
+    esac
+done
+[[ -z "$BUMP_TYPE" ]] && usage
 
 # Read current version from pixi.toml using Python tomllib
 CURRENT_VERSION=$(python3 - "$PIXI_TOML" <<'EOF'
@@ -44,11 +53,42 @@ TODAY=$(date +%Y-%m-%d)
 
 echo "Bumping ${CURRENT_VERSION} → ${NEW_VERSION} (${BUMP_TYPE})"
 
-# Update version in pixi.toml (safe: only replaces the exact version line)
-sed -i "s/^version = \"${CURRENT_VERSION}\"$/version = \"${NEW_VERSION}\"/" "$PIXI_TOML"
-
-# Generate changelog entries since last tag
+# Generate changelog entries since last tag (read-only; safe before mutations)
 CHANGELOG_BODY=$(bash "$GENERATE_SCRIPT")
+
+# Detect empty body (whitespace-only). generate-changelog.sh prints only
+# non-empty sections, so an empty body means no commits since the last tag.
+if [[ -z "${CHANGELOG_BODY//[[:space:]]/}" ]]; then
+    if [[ "$ALLOW_EMPTY" == "1" ]]; then
+        echo "Warning: no commits since last tag; inserting placeholder section." >&2
+        CHANGELOG_BODY=$'### Changed\n\n- (no changes since last release)'
+    else
+        echo "Error: no commits since last v* tag — refusing to create an empty CHANGELOG section." >&2
+        echo "       Add commits first, or rerun with --allow-empty (or BUMP_ALLOW_EMPTY=1)." >&2
+        exit 1
+    fi
+fi
+
+replace_in_file() {
+    local file=$1
+    local old=$2
+    local new=$3
+    python3 - "$file" "$old" "$new" <<'PYEOF'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+content = path.read_text()
+updated = content.replace(old, new, 1)
+if updated == content:
+    raise SystemExit(f"ERROR: expected text not found in {path}")
+path.write_text(updated)
+PYEOF
+}
+
+replace_in_file "$PIXI_TOML" "version = \"${CURRENT_VERSION}\"" "version = \"${NEW_VERSION}\""
 
 # Build the new versioned section
 NEW_SECTION="## [${NEW_VERSION}] - ${TODAY}"$'\n\n'"${CHANGELOG_BODY}"

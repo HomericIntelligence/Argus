@@ -5,6 +5,7 @@
   "labels": ["dependencies"],
   "commitMessagePrefix": "chore(deps):",
   "ignorePaths": [],
+  "disabledManagers": ["pip_requirements"],
   "packageRules": [
     {
       "matchManagers": ["pixi"],

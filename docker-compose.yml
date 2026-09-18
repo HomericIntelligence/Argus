@@ -133,9 +133,34 @@ services:
           memory: 64m
           cpus: "0.10"
 
+  grafana-proxy:
+    image: nginx:1.27-alpine
+    container_name: argus-grafana-proxy
+    restart: unless-stopped
+    user: "101:101"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:80"
+    volumes:
+      # Loaded before default.conf (conf.d/*.conf includes alphabetically)
+      - ./configs/nginx/grafana-map.conf:/etc/nginx/conf.d/00-map.conf:ro
+      - ./configs/nginx/grafana.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./secrets/htpasswd-grafana:/etc/nginx/htpasswd:ro
+    networks:
+      - argus
+    depends_on:
+      - grafana
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.10"
+
   promtail:
     image: grafana/promtail:3.1.2
     container_name: ${PROMTAIL_CONTAINER_NAME:-argus-promtail}
+    hostname: ${PROMTAIL_HOSTNAME:-hermes}
     restart: unless-stopped
     user: "65534:65534"
     cap_drop: [ALL]
@@ -153,6 +178,10 @@ services:
       - /tmp/hermes.log:/logs/hermes.log:ro
     environment:
       HOSTNAME: ${HOSTNAME}
+      # Loki basic auth (issue #209); expanded in promtail.yml via -config.expand-env
+      LOKI_AUTH_USER: ${LOKI_AUTH_USER}
+      LOKI_AUTH_PASSWORD: ${LOKI_AUTH_PASSWORD}
+      PROMTAIL_HOST_LABEL: ${PROMTAIL_HOST_LABEL:-}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
@@ -183,10 +212,46 @@ services:
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
+      # Enables POST /-/reload (and /-/quit). Safe because 9093 is bound
+      # loopback-only; required by `just reload-alertmanager` (#177).
+      - "--web.enable-lifecycle"
     networks:
       - argus
     depends_on:
       - prometheus
+
+  # One-shot init container: chown the grafana_data named volume to 472:472
+  # before grafana starts (grafana runs as user "472:472" and cannot fix
+  # ownership itself on a root-owned volume). Docker named volumes are created
+  # root-owned by default and the local volume driver has no uid/gid option.
+  # Closes #332; follow-up to #127.
+  grafana-init:
+    image: alpine:3.20
+    container_name: argus-grafana-init
+    restart: "no"
+    # Runs as root by design — fixing ownership requires CAP_CHOWN over files
+    # owned by another UID. Everything else is dropped; no network; read-only
+    # rootfs; exits immediately after chown/chmod.
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    network_mode: none
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "1"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        chown -R 472:472 /var/lib/grafana
+        chmod 750 /var/lib/grafana
 
   grafana:
     image: grafana/grafana:11.2.2
@@ -200,8 +265,9 @@ services:
       options:
         max-size: "50m"
         max-file: "3"
-    ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    # No host port since #321: all browser traffic goes through grafana-proxy.
+    expose:
+      - "3000"
     volumes:
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - ./configs/grafana:/etc/grafana/provisioning:ro
@@ -209,24 +275,30 @@ services:
       - ./certs/grafana.key:/etc/grafana/tls/grafana.key:ro
       - grafana_data:/var/lib/grafana
     environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      # Loki datasource basic auth via $__env interpolation in datasources.yml (issue #209)
+      LOKI_AUTH_USER: ${LOKI_AUTH_USER}
+      LOKI_AUTH_PASSWORD: ${LOKI_AUTH_PASSWORD}
       GF_SERVER_PROTOCOL: https
       GF_SERVER_CERT_FILE: /etc/grafana/tls/grafana.crt
       GF_SERVER_CERT_KEY: /etc/grafana/tls/grafana.key
       # Pin Grafana's external URL so it ignores untrusted Host headers
-      # (host-header injection mitigation). Grafana is bound to
-      # 127.0.0.1:${GRAFANA_PORT:-3001} on the host and only reachable via
-      # local browser, SSH tunnel, or VPN — so the default root URL points
-      # at loopback. Override GF_SERVER_ROOT_URL in .env if you front
-      # Grafana with a reverse proxy on a different hostname.
-      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-https://localhost:${GRAFANA_PORT:-3001}/}
+      # (host-header injection mitigation). Since #321 Grafana has no host
+      # port; browsers reach it via the nginx basic-auth proxy on
+      # 127.0.0.1:${GRAFANA_PORT:-3001} (HTTP on loopback — the proxy hop is
+      # plain HTTP by design; the threat model here is unauthenticated
+      # access, not passive eavesdropping on loopback). Override
+      # GF_SERVER_ROOT_URL in .env if you front Grafana with a TLS-capable
+      # reverse proxy on a different hostname.
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://localhost:${GRAFANA_PORT:-3001}/}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -234,8 +306,15 @@ services:
     networks:
       - argus
     depends_on:
-      - prometheus
-      - loki-proxy
+      prometheus:
+        condition: service_started
+      loki-proxy:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+      grafana-init:
+        # Grafana must not touch the volume until ownership is fixed.
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -243,7 +322,11 @@ services:
           cpus: "0.25"
 
   argus-exporter:
-    image: python:3.11-slim
+    # Pinned to the published GHCR semver tag; kept in sync with
+    # exporter/VERSION by `just bump-exporter-version` and enforced by
+    # scripts/check-exporter-image-version.py (closes #393). Override
+    # EXPORTER_IMAGE in .env for local dev builds.
+    image: ${EXPORTER_IMAGE:-ghcr.io/homericintelligence/argus-exporter:v0.1.0}
     container_name: ${EXPORTER_CONTAINER_NAME:-argus-exporter}
     restart: unless-stopped
     user: "1000:1000"
@@ -259,9 +342,7 @@ services:
     ports:
       - "127.0.0.1:${EXPORTER_PORT:-9100}:9100"
     volumes:
-      - ./exporter/exporter.py:/exporter.py:ro
       - ./certs/ca.crt:/certs/ca.crt:ro
-    command: python /exporter.py
     environment:
       AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
       NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
@@ -273,8 +354,9 @@ services:
       NESTOR_TLS_CA: ""
       NATS_TLS_CA: ""
     healthcheck:
-      # The python:3.11-slim image does not ship wget; use python stdlib instead.
-      # Probe split across imports + check to satisfy yamllint line-length:120.
+      # Mirrors the HEALTHCHECK baked into the exporter image (python-based,
+      # no wget). Probe split across imports + check to satisfy
+      # yamllint line-length:120.
       test:
         - "CMD"
         - "python"
@@ -306,7 +388,11 @@ services:
       ATLAS_AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
       ATLAS_NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
       ATLAS_NATS_MON_URL: ${NATS_URL:-http://172.24.0.1:8222}
-      ATLAS_GRAFANA_URL: "http://argus-grafana:3000"
+      # Atlas is on the argus bridge and reaches Grafana directly over its
+      # internal HTTPS endpoint, bypassing grafana-proxy by design (both
+      # sit inside the trust boundary; the proxy adds no security for
+      # server-to-server traffic inside the stack).
+      ATLAS_GRAFANA_URL: "https://argus-grafana:3000"
       ATLAS_LOKI_URL: "http://argus-loki-proxy:80"
       ATLAS_PROMETHEUS_URL: "http://argus-prometheus:9090"
       # Atlas defaults to bearer auth and refuses to start without
@@ -336,6 +422,8 @@ services:
     image: python:3.11.10-slim
     container_name: argus-debug-shell
     profiles: [dev]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     command: sleep infinity
     networks:
       - argus

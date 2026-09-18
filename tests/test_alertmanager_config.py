@@ -152,3 +152,11 @@ class TestDockerComposeAlertmanager:
     def test_restart_policy(self, compose_config: dict) -> None:
         svc = compose_config["services"]["alertmanager"]
         assert svc.get("restart") == "unless-stopped"
+
+    def test_alertmanager_lifecycle_flag_enabled(self, compose_config: dict) -> None:
+        svc = compose_config["services"]["alertmanager"]
+        command = svc.get("command", [])
+        assert "--web.enable-lifecycle" in command, (
+            "alertmanager needs --web.enable-lifecycle so 'just reload-alertmanager' "
+            "can POST /-/reload (issue #177)"
+        )
