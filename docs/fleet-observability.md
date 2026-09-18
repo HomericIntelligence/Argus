@@ -24,7 +24,7 @@ The fixture contracts for this feature are:
    log or metrics label.
 
    | Setting | Use |
-   |---|---|
+   | --- | --- |
    | `FLEET_METRICS_ENABLED=true` | Explicit opt-in; the default is false. |
    | `AGAMEMNON_URL` | Existing Agamemnon HTTP(S) base URL, without userinfo, query or fragment. |
    | `AGAMEMNON_API_KEY` | Operator-supplied key for the Fleet Bearer header. A missing or invalid key makes Fleet unavailable. |
@@ -90,7 +90,7 @@ agree with their related records. A valid canonical
 That link alone does not verify GitHub issue eligibility.
 
 | Observation set | Exposed result |
-|---|---|
+| --- | --- |
 | Complete empty set or consistent inactive/nonactive records | Completeness 1; all four activity series are emitted, with zero where no agent qualifies. |
 | Complete set with qualifying agents | Completeness 1; four series count distinct qualifying agents by activity and work kind. |
 | Missing, malformed, stale, disconnected, hydrated, awaiting-observation, old-generation or inconsistent potentially admitted records | Completeness 0; all four activity count samples are omitted. |
