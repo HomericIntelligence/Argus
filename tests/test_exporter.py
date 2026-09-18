@@ -6,8 +6,8 @@ connections are made during the test suite.
 """
 from __future__ import annotations
 
-import importlib
 import copy
+import importlib
 import io
 import json
 import logging
