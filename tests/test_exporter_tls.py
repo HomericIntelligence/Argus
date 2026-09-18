@@ -5,14 +5,25 @@ import importlib
 import os
 import ssl
 import sys
+import threading
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # Helpers to import the exporter module with specific env vars set
 # ---------------------------------------------------------------------------
 
 EXPORTER_PATH = str(Path(__file__).parent.parent / "exporter")
+
+
+@pytest.fixture(autouse=True)
+def _disable_fleet_for_legacy_tests(monkeypatch):
+    monkeypatch.setenv("FLEET_METRICS_ENABLED", "false")
+    monkeypatch.delenv("AGAMEMNON_API_KEY", raising=False)
 
 
 def _import_exporter(env: dict[str, str]):
@@ -207,3 +218,111 @@ class TestCollectTlsEnvWiring:
         health_ca_files = {c[2] for c in calls if c[0] == "health"}
         assert ca_path in fetch_ca_files, "CA file not passed to _fetch"
         assert ca_path in health_ca_files, "CA file not passed to _health_check"
+
+
+def _collect_fleet_module(mod):
+    with (
+        patch.dict(os.environ, {"FLEET_METRICS_ENABLED": "true", "AGAMEMNON_API_KEY": "synthetic-fleet-key"}),
+        patch.object(mod, "_fetch", return_value={"agents": []}),
+        patch.object(mod, "_health_check", return_value=1),
+    ):
+        return mod.collect()
+
+
+@pytest.mark.parametrize("verify", ["true", "false"])
+def test_fleet_tls_preserves_system_trust_and_development_override(verify):
+    mod = _import_exporter({"TLS_VERIFY": verify, "AGAMEMNON_TLS_CA": "", "AGAMEMNON_URL": "https://agamemnon.test"})
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.status = 200
+    response.read.return_value = b'{"items":[],"total":0}'
+    with (
+        patch("urllib.request.build_opener", wraps=urllib.request.build_opener) as build,
+        patch("urllib.request.OpenerDirector.open", return_value=response),
+    ):
+        output = _collect_fleet_module(mod)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert build.call_count == 3
+    for call in build.call_args_list:
+        handler = next(item for item in call.args if isinstance(item, urllib.request.HTTPSHandler))
+        context = handler._context
+        if verify == "true":
+            # Python versions differ in when urllib creates the default context.
+            if context is not None:
+                assert context.verify_mode == ssl.CERT_REQUIRED
+                assert context.check_hostname is True
+        else:
+            assert context.verify_mode == ssl.CERT_NONE
+            assert context.check_hostname is False
+
+
+def test_fleet_tls_invalid_ca_is_unavailable_without_a_request(tmp_path):
+    mod = _import_exporter({"TLS_VERIFY": "true", "AGAMEMNON_TLS_CA": str(tmp_path / "missing.pem"), "AGAMEMNON_URL": "https://agamemnon.test"})
+    with patch("urllib.request.OpenerDirector.open") as opened:
+        output = _collect_fleet_module(mod)
+    opened.assert_not_called()
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert "hi_fleet_recently_observed_active_agents" not in output
+    assert "hi_agents_count{} 0\n" in output
+
+
+def test_fleet_tls_uses_configured_ca_bundle(tmp_path):
+    import subprocess
+
+    ca = tmp_path / "fleet-ca.pem"
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+         "-keyout", str(tmp_path / "fleet-ca.key"), "-out", str(ca),
+         "-days", "1", "-subj", "/CN=fleet-test-ca"],
+        check=True, capture_output=True, timeout=15,
+    )
+    mod = _import_exporter({"TLS_VERIFY": "true", "AGAMEMNON_TLS_CA": str(ca), "AGAMEMNON_URL": "https://agamemnon.test"})
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.status = 200
+    response.read.return_value = b'{"items":[],"total":0}'
+    with (
+        patch("urllib.request.build_opener", wraps=urllib.request.build_opener) as build,
+        patch("urllib.request.OpenerDirector.open", return_value=response),
+    ):
+        output = _collect_fleet_module(mod)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert build.call_count == 3
+    for call in build.call_args_list:
+        context = next(item._context for item in call.args if isinstance(item, urllib.request.HTTPSHandler))
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is True
+        assert any((("commonName", "fleet-test-ca"),) in cert["subject"] for cert in context.get_ca_certs())
+
+
+@pytest.mark.parametrize("redirect_code", [301, 302, 303, 307, 308])
+def test_fleet_authenticated_redirect_is_not_followed(redirect_code):
+    received = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            received.append((self.path, self.headers.get("Authorization")))
+            self.send_response(redirect_code)
+            self.send_header("Location", f"http://127.0.0.1:{self.server.server_port}/credential-sink")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01})
+    thread.start()
+    try:
+        mod = _import_exporter({"TLS_VERIFY": "true", "AGAMEMNON_TLS_CA": "", "AGAMEMNON_URL": f"http://127.0.0.1:{server.server_port}"})
+        output = _collect_fleet_module(mod)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert len(received) == 3
+    assert {path for path, _ in received} == {f"/v1/fleet/{name}" for name in ("workers", "sessions", "executions")}
+    assert {key for _, key in received} == {"Bearer synthetic-fleet-key"}
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert "hi_fleet_recently_observed_active_agents" not in output
