@@ -8,12 +8,16 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # LOG_LEVEL env var (default INFO) controls log verbosity at runtime so
@@ -143,6 +147,238 @@ def _health_check(url: str, ca_file: str | None = None) -> int:
         return 0
 
 
+_FLEET_RESOURCES = ("workers", "sessions", "executions")
+_FLEET_ACTIVITIES = ("model_working", "tool_running")
+_FLEET_WORK_KINDS = ("issue", "interactive")
+_FLEET_EXCLUSIONS = (
+    "inactive_claim", "unobserved", "reconciliation_required", "stale",
+    "invalid_timestamp", "generation_mismatch", "missing_worker", "invalid_record",
+    "ambiguous_agent", "unknown_activity", "disconnected",
+)
+_FLEET_MAX_BYTES = 1024 * 1024
+
+
+class _FleetNoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never forward the operator's credential, including to the same origin.
+        return None
+
+
+def _fleet_configuration() -> tuple[str, str] | None:
+    key = os.environ.get("AGAMEMNON_API_KEY", "")
+    if not re.fullmatch(r"[\x21-\x7e]{1,4096}", key):
+        return None
+    try:
+        url = urllib.parse.urlsplit(AGAMEMNON_URL)
+        if (url.scheme not in ("http", "https") or not url.hostname
+                or url.username is not None or url.password is not None
+                or "?" in AGAMEMNON_URL or "#" in AGAMEMNON_URL
+                or any(c.isspace() or ord(c) < 32 for c in AGAMEMNON_URL)):
+            return None
+        if url.port is not None and not 1 <= url.port <= 65535:
+            return None
+    except ValueError:
+        return None
+    return AGAMEMNON_URL.rstrip("/"), key
+
+
+def _fleet_fetch(base: str, key: str, resource: str) -> list | None:
+    """Read one bounded list without sharing authentication or an opener."""
+    try:
+        opener = urllib.request.build_opener(
+            _FleetNoRedirect(),
+            urllib.request.HTTPSHandler(context=_build_ssl_context(AGAMEMNON_TLS_CA)),
+        )
+        request = urllib.request.Request(
+            f"{base}/v1/fleet/{resource}", headers={"Authorization": f"Bearer {key}"}, method="GET",
+        )
+        with opener.open(request, timeout=5) as response:
+            if response.status != 200:
+                return None
+            body = response.read(_FLEET_MAX_BYTES + 1)
+        if len(body) > _FLEET_MAX_BYTES:
+            return None
+        data = json.loads(body)
+        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+            return None
+        items, total = data["items"], data.get("total")
+        if type(total) is not int or total != len(items) or not 0 <= total <= 1024:
+            return None
+        ids = [row["id"] for row in items if isinstance(row, dict) and isinstance(row.get("id"), str)]
+        if len(ids) != len(set(ids)):
+            return None
+        return items
+    except urllib.error.HTTPError as error:
+        error.close()
+    except (OSError, HTTPException, ValueError, RecursionError):
+        # Fixed metric diagnostics carry failure; URLs, payloads and exception
+        # strings can contain credentials or private work and are not logged.
+        pass
+    return None
+
+
+def _fleet_string(value) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return 0 < len(value.encode("utf-8")) <= 1024
+    except UnicodeEncodeError:
+        return False
+
+
+def _fleet_positive(value) -> bool:
+    return type(value) is int and value > 0
+
+
+def _fleet_record_valid(row, kind: str) -> bool:
+    if (not isinstance(row, dict) or not isinstance(row.get("id"), str)
+            or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}", row["id"]) is None
+            or row.get("schema") != "hi/fleet/v1" or row.get("kind") != kind
+            or not _fleet_positive(row.get("generation"))):
+        return False
+    if kind == "workers":
+        return True
+    if not all(_fleet_string(row.get(field)) for field in ("workerId", "agentId", "workspace", "executionId")):
+        return False
+    if kind == "sessions" and row.get("sessionId") != row["id"]:
+        return False
+    if kind == "executions" and row["executionId"] != row["id"]:
+        return False
+    for field in ("sessionId", "taskId", "poolId"):
+        if field in row and not _fleet_string(row[field]):
+            return False
+    return isinstance(row.get("status"), str) and row.get("claimStatus") in ("unclaimed", "reserved", "claimed", "released")
+
+
+def _fleet_inactive(row: dict) -> bool:
+    status = row["status"]
+    consistent = ((row["claimStatus"] == "unclaimed" and status == "created")
+                  or (row["claimStatus"] == "released" and status in ("completed", "failed", "cancelled", "interrupted")))
+    return consistent and row.get("activity") in (None, "idle", "unknown", "disconnected")
+
+
+def _fleet_reason(row: dict, workers: dict, now: float) -> str | None:
+    if row["claimStatus"] in ("unclaimed", "released"):
+        return "invalid_record"  # Consistent inactive rows were removed first.
+    worker = workers.get(row["workerId"])
+    if worker is None:
+        return "missing_worker"
+    if "poolId" in row and row["poolId"] != worker.get("poolId"):
+        return "invalid_record"
+    if row["generation"] != worker["generation"]:
+        return "generation_mismatch"
+    if row.get("observationState") == "reconciliation_required":
+        return "reconciliation_required"
+    if row["claimStatus"] != "claimed" or row.get("observationState") != "observed":
+        return "unobserved"
+    if not _fleet_positive(row.get("sourceSequence")):
+        return "invalid_record"
+    activity = row.get("activity")
+    allowed_status = {
+        "model_working": ("running", "cancelling", "interrupting"),
+        "tool_running": ("running", "cancelling", "interrupting"),
+        "idle": ("idle", "cancelling", "interrupting"),
+        "waiting_input": ("waiting", "cancelling", "interrupting"),
+        "waiting_approval": ("waiting", "cancelling", "interrupting"),
+    }
+    if not isinstance(activity, str):
+        return "invalid_record"
+    if activity in allowed_status and row["status"] not in allowed_status[activity]:
+        return "invalid_record"
+    ages = []
+    for field in ("lastActivityAt", "lastActivityReceivedAt"):
+        try:
+            if not _fleet_string(row.get(field)):
+                return "invalid_timestamp"
+            stamp = datetime.fromisoformat(row[field])
+            if stamp.tzinfo is None:
+                return "invalid_timestamp"
+            age = now - stamp.timestamp()
+            if age < 0:
+                return "invalid_timestamp"
+            ages.append(age)
+        except (ValueError, OverflowError, OSError):
+            return "invalid_timestamp"
+    if any(age > 60 for age in ages):
+        return "stale"
+    if activity == "disconnected":
+        return "disconnected"
+    if activity not in allowed_status:
+        return "unknown_activity"
+    return None
+
+
+def _fleet_ambiguous(rows: list[dict]) -> set[int]:
+    """Representations sharing an identity or exclusive claim must agree."""
+    groups = defaultdict(list)
+    for index, row in enumerate(rows):
+        for field in ("agentId", "executionId", "sessionId", "taskId", "workspace"):
+            if field in row:
+                groups[(field, row[field])].append(index)
+    fields = ("agentId", "executionId", "workerId", "workspace", "generation", "taskId",
+              "claimStatus", "status", "observationState", "activity", "sourceSequence",
+              "lastActivityAt", "lastActivityReceivedAt")
+    ambiguous = set()
+    for indices in groups.values():
+        first = rows[indices[0]]
+        differs = any(any(row.get(field) != first.get(field) for field in fields)
+                      for row in (rows[i] for i in indices[1:]))
+        # Optional cross-links may be absent, but two supplied links must agree.
+        for field in ("sessionId", "poolId"):
+            values = {rows[i][field] for i in indices if field in rows[i]}
+            differs = differs or len(values) > 1
+        if differs:
+            ambiguous.update(indices)
+    return ambiguous
+
+
+def _collect_fleet(gauge) -> None:
+    enabled = os.environ.get("FLEET_METRICS_ENABLED", "false").lower() == "true"
+    gauge("homeric_exporter_fleet_enabled", int(enabled))
+    if not enabled:
+        return
+    lists = dict.fromkeys(_FLEET_RESOURCES)
+    configuration = _fleet_configuration()
+    if configuration is not None:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            futures = {name: pool.submit(_fleet_fetch, *configuration, name) for name in _FLEET_RESOURCES}
+            lists = {name: future.result() for name, future in futures.items()}
+    complete = all(value is not None for value in lists.values())
+    for name, value in lists.items():
+        gauge("homeric_exporter_fleet_fetch_success", int(value is not None), {"resource": name})
+    exclusions = dict.fromkeys(_FLEET_EXCLUSIONS, 0)
+    workers = {}
+    rows = []
+    for kind, items in lists.items():
+        for row in items or []:
+            if not _fleet_record_valid(row, kind):
+                exclusions["invalid_record"] += 1
+                complete = False
+            elif kind == "workers":
+                workers[row["id"]] = row
+            elif _fleet_inactive(row):
+                exclusions["inactive_claim"] += 1
+            else:
+                rows.append(row)
+    ambiguous = _fleet_ambiguous(rows)
+    counts = {(activity, kind): set() for activity in _FLEET_ACTIVITIES for kind in _FLEET_WORK_KINDS}
+    now = time.time()
+    for index, row in enumerate(rows):
+        reason = "ambiguous_agent" if index in ambiguous else _fleet_reason(row, workers, now)
+        if reason:
+            exclusions[reason] += 1
+            complete = False
+        elif row["activity"] in _FLEET_ACTIVITIES:
+            kind = "issue" if "taskId" in row else "interactive"
+            counts[row["activity"], kind].add(row["agentId"])
+    gauge("hi_fleet_activity_complete", int(complete))
+    if complete:
+        for (activity, kind), agents in counts.items():
+            gauge("hi_fleet_recently_observed_active_agents", len(agents), {"activity": activity, "work_kind": kind})
+    for reason, count in exclusions.items():
+        gauge("hi_fleet_observation_exclusions", count, {"reason": reason})
+
+
 _METRIC_HELP: dict[str, str] = {
     "hi_agamemnon_health":                    "1 if Agamemnon /v1/health returned HTTP 200, 0 otherwise",
     "hi_agents_count":                        "Number of agents registered in Agamemnon",
@@ -173,6 +409,11 @@ _METRIC_HELP: dict[str, str] = {
     "homeric_exporter_scrape_timestamp_seconds": "Unix timestamp (seconds) when the last scrape completed",
     "homeric_exporter_scrape_duration_seconds":  "Wall-clock seconds spent in the last collect() call",
     "homeric_exporter_fetch_errors":          "Number of upstream fetch failures per scrape, by upstream",
+    "homeric_exporter_fleet_enabled": "1 if Fleet observation collection is enabled, 0 otherwise",
+    "homeric_exporter_fleet_fetch_success": "1 if this bounded Fleet list read succeeded, 0 otherwise",
+    "hi_fleet_activity_complete": "1 if all potentially admitted Fleet records can be classified, 0 otherwise",
+    "hi_fleet_recently_observed_active_agents": "Distinct logical agents with recent qualifying model or tool activity",
+    "hi_fleet_observation_exclusions": "Fleet input records excluded per scrape, by fixed reason",
 }
 
 
@@ -271,6 +512,8 @@ def collect() -> str:
         gauge("nats_jetstream_consumers", nats_jsz.get("consumers", 0))
         gauge("nats_jetstream_messages",  nats_jsz.get("messages", 0))
         gauge("nats_jetstream_bytes",     nats_jsz.get("bytes", 0))
+
+    _collect_fleet(gauge)
 
     # ── exporter self ──────────────────────────────────────────────────────
     gauge("homeric_exporter_scrape_timestamp_seconds", time.time())

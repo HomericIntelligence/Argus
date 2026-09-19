@@ -87,3 +87,74 @@ suffixes on gauges where meaningful, `_total` reserved for counters):
 | `hi_jetstream_task_latency_seconds` (jetstream-consumer) | PASS — `_seconds` unit suffix. |
 | `atlas_nats_connected`, `atlas_nats_messages_processed_total` (dashboard) | PASS — gauge without suffix; counter with `_total`. |
 | `hi_jetstream_consumer_scrape_timestamp` (jetstream-consumer) | FLAGGED — gauge timestamp missing the `_seconds` unit suffix (cf. `homeric_exporter_scrape_timestamp_seconds`). Rename deferred: consumers include `rules/agent-alerts.yml` and its own test suite; tracked as follow-up. |
+
+## Fleet activity observations
+
+Fleet metrics are opt-in through `FLEET_METRICS_ENABLED` (default `false`). They
+measure recently observed activity of distinct logical agents, not current
+occupancy, tool success, or approved completion. See
+[Fleet observability](./fleet-observability.md) for configuration, source contracts,
+fetch limits, and freshness constraints.
+
+All five families are gauges with HELP and TYPE declarations:
+
+| Metric | Labels | Meaning |
+| --- | --- | --- |
+| `homeric_exporter_fleet_enabled` | None | `1` when Fleet collection is opted in; otherwise `0`. Always emitted. |
+| `homeric_exporter_fleet_fetch_success` | `resource` | `1` when the current collection obtained a bounded, valid resource list; otherwise `0`. |
+| `hi_fleet_activity_complete` | None | `1` when every potentially admitted agent can be classified under the recent-observation policy; otherwise `0`. |
+| `hi_fleet_recently_observed_active_agents` | `activity`, `work_kind` | Number of distinct qualifying logical agents in each activity/work-kind combination. Emitted only for complete classification. |
+| `hi_fleet_observation_exclusions` | `reason` | Number of input records assigned each exclusion reason in the current collection; not a cumulative counter or a count of agents. |
+
+The label domains are fixed:
+
+- `resource`: `workers`, `sessions`, `executions` (three series).
+- `activity`: `model_working`, `tool_running`; `work_kind`: `issue`, `interactive`
+  (all four combinations).
+- `reason`: `invalid_record`, `inactive_claim`, `missing_worker`,
+  `generation_mismatch`, `reconciliation_required`, `unobserved`,
+  `invalid_timestamp`, `stale`, `unknown_activity`, `disconnected`,
+  `ambiguous_agent` (eleven series).
+
+The maximum is **20 new series per exporter**: `1 + 3 + 1 + 4 + 11`.
+Upstream identifiers and arbitrary values never become Fleet label values.
+
+When disabled, only `homeric_exporter_fleet_enabled=0` is emitted; no Fleet requests
+or other Fleet samples are produced. When enabled, the exporter emits the three
+fetch-success series, completeness, and all eleven exclusion series. A complete
+empty or nonactive observation set has completeness `1` and all four activity
+counts equal to zero. A fetch/configuration failure or incomplete classification
+has completeness `0` and **omits all four activity-count samples**, even if some
+records qualify. Earlier successful counts are not reused. Legacy collection
+remains available when Fleet is unavailable.
+
+Activity credit requires claimed admission, consistent identity and lifecycle,
+the current worker generation, an observed model/tool activity, and a positive
+source sequence. Both worker observation time and controller receipt time must be
+timezone-aware and between zero and 60 seconds old, inclusive. Silence beyond
+that window is unknown; it does not prove idle work. `work_kind="issue"` requires
+a valid canonical `taskId` link and does not independently verify issue eligibility.
+
+Each excluded input record receives one deterministic reason. Ambiguity takes
+priority for otherwise potentially admitted conflicting groups. Other checks
+proceed through structural/link errors, expected inactive claims, missing worker
+or generation mismatch, reconciliation/unobserved state, sequence/lifecycle
+errors, timestamp errors/staleness, then activity. Structurally valid, consistent
+unclaimed/released records are expected inactive exclusions and do not alone make
+classification incomplete. Fetch failures are represented by fetch-success and
+completeness; they do not create invented per-record exclusions for unavailable
+input.
+
+Gate activity queries on completeness from the **current scrape**, matching the
+same scrape target:
+
+```promql
+hi_fleet_recently_observed_active_agents
+  and on(job, instance) (hi_fleet_activity_complete == 1)
+```
+
+Use the deployment's complete target-identity label set if it differs from
+`job, instance`. This gate prevents older count samples from appearing available
+when a current scrape reports incomplete Fleet data. Do not use `or vector(0)`
+to replace unavailable observations with zero, or use an older completeness
+sample as evidence for the current scrape.

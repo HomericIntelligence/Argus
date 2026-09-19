@@ -6,10 +6,12 @@ connections are made during the test suite.
 """
 from __future__ import annotations
 
+import copy
 import importlib
 import io
 import json
 import logging
+import os
 import re
 import sys
 import unittest
@@ -19,12 +21,367 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tests.helpers_http import live_server
 
 # Make the exporter importable without running __main__ logic
 REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 exporter_mod = importlib.import_module("exporter.exporter")
+
+
+@pytest.fixture(autouse=True)
+def _disable_fleet_for_legacy_tests(monkeypatch):
+    """Only controlled Fleet fixtures may opt into the additional HTTP reads."""
+    monkeypatch.setenv("FLEET_METRICS_ENABLED", "false")
+    monkeypatch.delenv("AGAMEMNON_API_KEY", raising=False)
+
+
+def _collect_fleet(resources=None, *, enabled="true", key="synthetic-fleet-key",
+                   payloads=None, failure=None, url="https://agamemnon.test"):
+    """Exercise collect with controlled HTTP responses and an exact scrape time."""
+    resources = resources or {name: [] for name in ("workers", "sessions", "executions")}
+    responses = []
+    requests = []
+
+    def open_response(request, **kwargs):
+        requests.append((request, kwargs))
+        name = request.full_url.rsplit("/", 1)[-1]
+        if failure is not None:
+            raise failure
+        items = resources[name]
+        response = _make_response({"items": items, "total": len(items)})
+        if payloads and name in payloads:
+            value = payloads[name]
+            response.read.return_value = value if isinstance(value, bytes) else json.dumps(value).encode()
+        responses.append(response)
+        return response
+
+    health, legacy = _patch_collect(agents_data={"agents": []}, tasks_data={"tasks": []})
+    environment = {"AGAMEMNON_API_KEY": key}
+    if enabled is not None:
+        environment["FLEET_METRICS_ENABLED"] = enabled
+    with (
+        patch.dict(os.environ, environment, clear=True),
+        patch.object(exporter_mod, "AGAMEMNON_URL", url),
+        patch.object(exporter_mod.time, "time", return_value=1_789_754_400.0),
+        patch("urllib.request.OpenerDirector.open", side_effect=open_response),
+        health, legacy,
+    ):
+        output = exporter_mod.collect()
+    return output, requests, responses
+
+
+def test_fleet_empty_snapshot_reports_known_zero_and_preserves_legacy():
+    output, requests, _ = _collect_fleet()
+    assert "homeric_exporter_fleet_enabled{} 1\n" in output
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    for activity in ("model_working", "tool_running"):
+        for work_kind in ("issue", "interactive"):
+            assert (
+                'hi_fleet_recently_observed_active_agents{activity="'
+                f'{activity}",work_kind="{work_kind}"}} 0\n'
+            ) in output
+    assert {r.full_url for r, _ in requests} == {
+        f"https://agamemnon.test/v1/fleet/{name}"
+        for name in ("workers", "sessions", "executions")
+    }
+    assert len(requests) == 3
+    assert "hi_agents_count{} 0\n" in output
+    assert 'homeric_exporter_fetch_errors{upstream="agamemnon"} 0\n' in output
+
+
+_FLEET_TIME = datetime.fromtimestamp(1_789_754_400.0, exporter_mod.timezone.utc).isoformat()
+_ACTIVE_METRIC = "hi_fleet_recently_observed_active_agents"
+
+
+def _fleet_resources():
+    return {
+        "workers": [{"id": "worker-1", "kind": "workers", "schema": "hi/fleet/v1",
+                     "generation": 1, "poolId": "pool-1", "status": "running"}],
+        "sessions": [],
+        "executions": [{
+            "id": "execution-1", "executionId": "execution-1", "kind": "executions",
+            "schema": "hi/fleet/v1", "workerId": "worker-1", "agentId": "agent-1",
+            "workspace": "private-workspace-canary", "generation": 1, "taskId": "task-1",
+            "claimStatus": "claimed", "status": "running", "observationState": "observed",
+            "sourceSequence": 1, "activity": "tool_running", "lastActivityAt": _FLEET_TIME,
+            "lastActivityReceivedAt": _FLEET_TIME,
+        }],
+    }
+
+
+def _fleet_samples(output):
+    return {line for line in output.splitlines()
+            if line.startswith(("hi_fleet_", "homeric_exporter_fleet_"))}
+
+
+@pytest.mark.parametrize("enabled", [None, "false", "", "0", "invalid"])
+def test_fleet_opt_out_makes_no_requests(enabled):
+    output, requests, _ = _collect_fleet(enabled=enabled)
+    assert _fleet_samples(output) == {"homeric_exporter_fleet_enabled{} 0"}
+    assert requests == []
+
+
+def test_fleet_authentication_fixed_gets_timeout_and_response_closure():
+    output, requests, responses = _collect_fleet()
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    for request, kwargs in requests:
+        assert request.get_method() == "GET"
+        assert request.get_header("Authorization") == "Bearer synthetic-fleet-key"
+        assert kwargs["timeout"] == 5
+    assert len(responses) == 3
+    for response in responses:
+        response.read.assert_called_once_with(1024 * 1024 + 1)
+        response.__exit__.assert_called_once()
+
+
+@pytest.mark.parametrize("key", ["", "\nnot-a-key", "two words", "x" * 4097, "é"],
+                         ids=["missing", "newline", "space", "too-long", "non-ascii"])
+def test_fleet_invalid_key_never_attempts_fetch(key):
+    output, requests, _ = _collect_fleet(key=key)
+    assert requests == []
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+    assert "hi_agents_count{} 0\n" in output
+
+
+@pytest.mark.parametrize("url", [
+    "file:///tmp/fleet", "https://user:private@agamemnon.test", "https://agamemnon.test?key=private",
+    "https://agamemnon.test#private", "https://", "https://agamemnon.test:bad", "https://agamemnon.test\n",
+])
+def test_fleet_invalid_upstream_never_attempts_fetch(url):
+    output, requests, _ = _collect_fleet(url=url)
+    assert requests == []
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+
+
+@pytest.mark.parametrize("failure", [
+    OSError("private-fetch-canary"), TimeoutError("private-fetch-canary"),
+    urllib.error.HTTPError("https://private-fetch-canary", 404, "private-fetch-canary", {}, None),
+])
+def test_fleet_fetch_failure_is_unknown_without_sensitive_logs(failure):
+    with patch.object(exporter_mod.log, "warning") as warning:
+        output, _, _ = _collect_fleet(failure=failure)
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+    assert "private-fetch-canary" not in output + str(warning.call_args_list)
+    assert "hi_agents_count{} 0\n" in output
+    for name in ("workers", "sessions", "executions"):
+        assert f'homeric_exporter_fleet_fetch_success{{resource="{name}"}} 0\n' in output
+
+
+@pytest.mark.parametrize("payload", [
+    b"not json", b"\xff", [], {}, {"items": [], "total": True},
+    {"items": [], "total": 0.0}, {"items": [], "total": -1}, {"items": [], "total": 1},
+    {"items": {}, "total": 0}, b" " * (1024 * 1024 + 1),
+    {"items": [{"id": "duplicate"}, {"id": "duplicate"}], "total": 2},
+], ids=["json", "utf8", "array", "empty", "bool-total", "float-total", "negative-total",
+        "mismatched-total", "non-list", "byte-overflow", "duplicate-id"])
+def test_fleet_invalid_envelope_is_unavailable(payload):
+    output, _, _ = _collect_fleet(payloads={"workers": payload})
+    assert 'homeric_exporter_fleet_fetch_success{resource="workers"} 0\n' in output
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+
+
+@pytest.mark.parametrize("size,complete", [(1024, 1), (1025, 0)])
+def test_fleet_record_limit_does_not_truncate(size, complete):
+    resources = _fleet_resources()
+    resources["executions"] = []
+    worker = resources["workers"][0]
+    resources["workers"] = [dict(worker, id=f"worker-{i}") for i in range(size)]
+    output, _, _ = _collect_fleet(resources)
+    assert f"hi_fleet_activity_complete{{}} {complete}\n" in output
+    assert (_ACTIVE_METRIC in output) == bool(complete)
+
+
+def test_fleet_byte_limit_accepts_exact_boundary():
+    body = b'{"items":[],"total":0}'
+    output, _, _ = _collect_fleet(payloads={"workers": body + b" " * (1024 * 1024 - len(body))})
+    assert "hi_fleet_activity_complete{} 1\n" in output
+
+
+def test_fleet_distinct_agents_share_runtime_and_work_kinds():
+    resources = _fleet_resources()
+    second = dict(resources["executions"][0], id="execution-2", executionId="execution-2", agentId="agent-2",
+                  taskId="task-2", workspace="workspace-2")
+    resources["executions"].append(second)
+    interactive = dict(second, id="execution-3", executionId="execution-3", agentId="agent-3",
+                       activity="model_working", workspace="workspace-3")
+    del interactive["taskId"]
+    resources["executions"].append(interactive)
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert f'{_ACTIVE_METRIC}{{activity="tool_running",work_kind="issue"}} 2\n' in output
+    assert f'{_ACTIVE_METRIC}{{activity="model_working",work_kind="interactive"}} 1\n' in output
+
+
+def _fleet_session(execution):
+    return dict(execution, id="session-1", sessionId="session-1", kind="sessions")
+
+
+def test_fleet_consistent_session_and_execution_count_once():
+    resources = _fleet_resources()
+    resources["sessions"] = [_fleet_session(resources["executions"][0])]
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert f'{_ACTIVE_METRIC}{{activity="tool_running",work_kind="issue"}} 1\n' in output
+
+
+@pytest.mark.parametrize("changes", [
+    {"agentId": "agent-other"}, {"workspace": "other"}, {"taskId": "other"},
+    {"activity": "model_working"}, {"sourceSequence": 2}, {"generation": 2},
+    {"status": "idle", "activity": "idle"}, {"executionId": "execution-other"},
+    {"lastActivityReceivedAt": "2026-09-18T17:59:59+00:00"},
+])
+def test_fleet_conflicting_admitted_representations_exclude_both(changes):
+    resources = _fleet_resources()
+    resources["sessions"] = [dict(_fleet_session(resources["executions"][0]), **changes)]
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+    assert 'hi_fleet_observation_exclusions{reason="ambiguous_agent"} 2\n' in output
+
+
+@pytest.mark.parametrize("changes,reason", [
+    ({"claimStatus": "reserved", "status": "admitted", "observationState": "awaiting_activity"}, "unobserved"),
+    ({"observationState": "reconciliation_required", "activity": "unknown"}, "reconciliation_required"),
+    ({"observationState": "awaiting_activity"}, "unobserved"),
+    ({"workerId": "missing"}, "missing_worker"),
+    ({"generation": 2}, "generation_mismatch"),
+    ({"generation": True}, "invalid_record"),
+    ({"sourceSequence": True}, "invalid_record"),
+    ({"sourceSequence": 0}, "invalid_record"),
+    ({"sourceSequence": "1"}, "invalid_record"),
+    ({"status": "created"}, "invalid_record"),
+    ({"taskId": None}, "invalid_record"),
+    ({"taskId": ""}, "invalid_record"),
+    ({"workspace": "é" * 513}, "invalid_record"),
+    ({"agentId": []}, "invalid_record"),
+    ({"id": "bad id"}, "invalid_record"),
+    ({"executionId": "different"}, "invalid_record"),
+    ({"schema": "wrong"}, "invalid_record"),
+    ({"kind": "sessions"}, "invalid_record"),
+    ({"activity": "arbitrary-private-value"}, "unknown_activity"),
+    ({"activity": "disconnected"}, "disconnected"),
+    ({"lastActivityAt": "invalid"}, "invalid_timestamp"),
+    ({"lastActivityAt": "2026-09-18T18:00:00"}, "invalid_timestamp"),
+    ({"lastActivityAt": "2026-09-18T18:00:01+00:00"}, "invalid_timestamp"),
+    ({"lastActivityAt": "2026-09-18T17:58:59+00:00"}, "stale"),
+    ({"lastActivityReceivedAt": "2026-09-18T17:58:59+00:00"}, "stale"),
+    ({"lastActivityReceivedAt": "2026-09-18T18:00:01+00:00"}, "invalid_timestamp"),
+])
+def test_fleet_incomplete_observations_never_report_zero(changes, reason):
+    resources = _fleet_resources()
+    resources["executions"][0].update(changes)
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+    assert f'hi_fleet_observation_exclusions{{reason="{reason}"}} 1\n' in output
+
+
+@pytest.mark.parametrize("status", ["running", "cancelling", "interrupting"])
+def test_fleet_exact_age_boundary_and_pending_stop_still_count(status):
+    resources = _fleet_resources()
+    resources["workers"][0]["status"] = "draining"
+    resources["executions"][0].update(status=status, lastActivityAt="2026-09-18T17:59:00+00:00")
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert f'{_ACTIVE_METRIC}{{activity="tool_running",work_kind="issue"}} 1\n' in output
+
+
+@pytest.mark.parametrize("activity,status", [("idle", "idle"), ("waiting_input", "waiting"), ("waiting_approval", "waiting")])
+def test_fleet_fresh_nonactive_observations_are_known_zero(activity, status):
+    resources = _fleet_resources()
+    resources["executions"][0].update(activity=activity, status=status)
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert f'{_ACTIVE_METRIC}{{activity="tool_running",work_kind="issue"}} 0\n' in output
+
+
+@pytest.mark.parametrize("claim,status", [("unclaimed", "created"), ("released", "completed")])
+def test_fleet_expected_inactive_claims_need_no_fresh_observation(claim, status):
+    resources = _fleet_resources()
+    row = resources["executions"][0]
+    row.update(claimStatus=claim, status=status, resolution={"verifiedApproval": False})
+    for key in ("activity", "observationState", "sourceSequence", "lastActivityAt", "lastActivityReceivedAt"):
+        row.pop(key)
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 1\n" in output
+    assert 'hi_fleet_observation_exclusions{reason="inactive_claim"} 1\n' in output
+    assert "approved" not in output
+
+
+def test_fleet_recovery_uses_no_cached_success_or_dynamic_labels():
+    resources = _fleet_resources()
+    good, _, _ = _collect_fleet(resources)
+    bad_resources = copy.deepcopy(resources)
+    bad_resources["executions"][0].update(observationState="reconciliation_required", prompt="private-prompt-canary")
+    bad, _, _ = _collect_fleet(bad_resources)
+    recovered, _, _ = _collect_fleet(resources)
+    assert _fleet_samples(good) == _fleet_samples(recovered)
+    assert "hi_fleet_activity_complete{} 0\n" in bad
+    assert _ACTIVE_METRIC not in bad
+    assert len(_fleet_samples(good)) == 20
+    for value in ("private-workspace-canary", "private-prompt-canary", "synthetic-fleet-key", "agent-1", "task-1"):
+        assert value not in good + bad + recovered
+
+
+def test_fleet_input_permutation_does_not_change_classification():
+    resources = _fleet_resources()
+    second = dict(resources["executions"][0], id="execution-2", executionId="execution-2", agentId="agent-2",
+                  taskId="task-2", workspace="workspace-2")
+    resources["executions"].append(second)
+    resources["sessions"] = [dict(_fleet_session(second), taskId="different")]
+    first, _, _ = _collect_fleet(resources)
+    resources["executions"].reverse()
+    second, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 0\n" in first
+    assert _fleet_samples(first) == _fleet_samples(second)
+
+
+def test_fleet_session_cross_link_cannot_join_different_executions():
+    resources = _fleet_resources()
+    execution = resources["executions"][0]
+    execution["sessionId"] = "session-1"
+    resources["sessions"] = [dict(_fleet_session(execution), agentId="agent-2", executionId="execution-2")]
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+    assert 'hi_fleet_observation_exclusions{reason="ambiguous_agent"} 2\n' in output
+
+
+def test_fleet_supplied_pool_link_must_match_worker():
+    resources = _fleet_resources()
+    resources["executions"][0]["poolId"] = "different-pool"
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert 'hi_fleet_observation_exclusions{reason="invalid_record"} 1\n' in output
+
+
+@pytest.mark.parametrize("field", ["taskId", "workspace"])
+def test_fleet_conflicting_task_or_workspace_owners_are_ambiguous(field):
+    resources = _fleet_resources()
+    first = resources["executions"][0]
+    second = dict(first, id="execution-2", executionId="execution-2", agentId="agent-2",
+                  taskId="task-2", workspace="workspace-2")
+    second[field] = first[field]
+    resources["executions"].append(second)
+    output, _, _ = _collect_fleet(resources)
+    assert "hi_fleet_activity_complete{} 0\n" in output
+    assert _ACTIVE_METRIC not in output
+    assert 'hi_fleet_observation_exclusions{reason="ambiguous_agent"} 2\n' in output
+
+
+def test_legacy_collect_defaults_to_no_fleet_network():
+    health, legacy = _patch_collect(agents_data={"agents": []})
+    with health, legacy, patch("urllib.request.OpenerDirector.open", side_effect=AssertionError("unexpected Fleet network")):
+        output = exporter_mod.collect()
+    assert "hi_agents_count{} 0\n" in output
+    assert _fleet_samples(output) == {"homeric_exporter_fleet_enabled{} 0"}
 
 
 def _make_response(data: dict | None = None, status: int = 200) -> MagicMock:
@@ -458,7 +815,12 @@ class TestMetricHelpCoverage(unittest.TestCase):
 
     def _run_collect(self, **kwargs):
         hc_patch, fetch_patch = _patch_collect(**kwargs)
-        with hc_patch, fetch_patch:
+        # A fully populated collection includes the optional Fleet upstream.
+        with (
+            hc_patch, fetch_patch,
+            patch.dict(os.environ, {"FLEET_METRICS_ENABLED": "true", "AGAMEMNON_API_KEY": "synthetic-fleet-key"}),
+            patch("urllib.request.OpenerDirector.open", side_effect=lambda *a, **kw: _make_response({"items": [], "total": 0})),
+        ):
             return exporter_mod.collect()
 
     def test_every_value_is_non_empty_string(self):
