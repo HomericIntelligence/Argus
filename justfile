@@ -45,8 +45,12 @@ gen-htpasswd:
 # Credential rotation entry point — discoverable via `just --list`.
 alias rotate-htpasswd := gen-htpasswd
 
+# Refuse to start when .env is absent — prevents silent fallback defaults (issue #214)
+check-env:
+    @test -f .env || { echo "ERROR: .env not found. Run 'cp .env.example .env' and set GF_ADMIN_PASSWORD before starting." >&2; exit 1; }
+
 # Start all observability services
-start: gen-htpasswd
+start: check-env gen-htpasswd
     #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -f secrets/htpasswd ]; then
@@ -69,7 +73,7 @@ status:
     {{compose_cmd}} ps
 
 # Restart all services (stop then start)
-restart: gen-htpasswd
+restart: check-env gen-htpasswd
     ./scripts/check-grafana-password.sh
     {{compose_cmd}} down
     {{compose_cmd}} up -d
