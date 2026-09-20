@@ -222,6 +222,25 @@ new to the stack frequently trip on:
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.
+11. **Grafana login lockout is fixed at 5 attempts / 5 minutes.** Five failed
+    logins within a 5-minute window lock the account for the rest of that
+    window; the threshold and window are hardcoded in Grafana OSS and cannot
+    be tuned via env var (`GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION`
+    must stay `"false"` to keep protection on). Sessions expire after 8h
+    absolute / 30m idle, and self-signup/org creation are disabled — all
+    pinned in `docker-compose.yml`.
+
+    Two controls that issue #200 also names are **not** delivered here, and
+    they are why #200 stays open rather than closing with this change:
+
+    - **Multi-factor authentication** is not built into Grafana OSS. The
+      upstream documentation states plainly that MFA/2FA is unavailable, so
+      MFA has to come from an OIDC/SAML identity provider in front of
+      Grafana. Until one is configured, the compensating controls are a
+      strong admin password in `.env` plus loopback-only binding.
+    - **Fine-grained RBAC** is Enterprise-only; OSS 11.2 exposes org and basic
+      roles only. This deployment is single-admin, so RBAC stays off — revisit
+      if multi-user access is introduced.
 
 ## Metric Catalog
 
