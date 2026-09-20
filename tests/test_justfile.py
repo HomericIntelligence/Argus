@@ -64,6 +64,30 @@ def test_no_cut_d_colon_credential_extraction() -> None:
 
 
 # ---------------------------------------------------------------------------
+# wget flag portability (issue #198)
+# ---------------------------------------------------------------------------
+
+
+def test_no_combined_qO_flag_in_justfile() -> None:
+    """The combined `-qO-` flag is not portable across GNU and BusyBox wget."""
+    content = _justfile_content()
+    assert "-qO-" not in content, (
+        "Non-portable combined '-qO-' wget flag found in justfile"
+    )
+
+
+def test_reload_prometheus_uses_post_data() -> None:
+    """reload-prometheus must POST to /-/reload using space-separated flags."""
+    content = _justfile_content()
+    assert "--post-data=''" in content, (
+        "reload-prometheus recipe missing --post-data='' for HTTP POST"
+    )
+    assert "http://localhost:9090/-/reload" in content, (
+        "reload-prometheus recipe missing /-/reload endpoint"
+    )
+
+
+# ---------------------------------------------------------------------------
 # rotate-htpasswd alias (issue #227)
 # ---------------------------------------------------------------------------
 
