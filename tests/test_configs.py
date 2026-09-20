@@ -753,7 +753,7 @@ class TestComposePromtailHostname(unittest.TestCase):
 
 
 class TestPrometheusLifecycleAndHealthcheck(unittest.TestCase):
-    """Issue #198: Prometheus reload endpoint and wget flag portability."""
+    """Issue #198 reload endpoint plus #210 TLS healthcheck probe."""
 
     def setUp(self) -> None:
         self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
@@ -775,11 +775,22 @@ class TestPrometheusLifecycleAndHealthcheck(unittest.TestCase):
             f"prometheus healthcheck uses non-portable '-qO-' wget flag: {test_cmd!r}"
         )
 
-    def test_prometheus_healthcheck_uses_portable_flags(self) -> None:
-        """Prometheus healthcheck must use space-separated -q -O flags (BusyBox-safe)."""
+    def test_prometheus_healthcheck_probes_https_with_promtool(self) -> None:
+        """Prometheus serves TLS, so the probe must not be a BusyBox wget.
+
+        #198 pinned the space-separated `-q -O /dev/stdout` wget form for the
+        plaintext probe. #210 turned Prometheus TLS-only, and BusyBox wget
+        cannot complete a handshake against it (it sends a malformed ECDHE
+        point), so the probe now uses the in-image promtool over https://.
+        """
         test_cmd: Any = self.prometheus["healthcheck"]["test"]
-        assert "-q" in str(test_cmd)
-        assert "/dev/stdout" in str(test_cmd)
+        cmd = [str(part) for part in test_cmd]
+        assert cmd[:2] == ["CMD", "/bin/promtool"], (
+            f"prometheus healthcheck must use the in-image promtool, got: {cmd!r}"
+        )
+        assert any(part.startswith("--url=https://") for part in cmd), (
+            f"prometheus healthcheck must probe https:// (TLS-only server), got: {cmd!r}"
+        )
 
 
 if __name__ == "__main__":
