@@ -50,7 +50,7 @@ the drift test `tests/test_doc_drift.py` keeps this table in sync with compose.
 | grafana-proxy      | nginx:1.27-alpine                        | Basic-auth proxy in front of Grafana (issue #321)      |
 | promtail           | grafana/promtail:3.1.2                   | Tail container logs and ship to Loki                   |
 | grafana            | grafana/grafana:11.2.2                   | Visualize metrics and logs                             |
-| grafana-init       | alpine:3.20                              | One-shot chown of the Grafana data volume before start  |
+| grafana-init       | alpine:3.20                              | One-shot chown of the Grafana data volume pre-start    |
 | argus-exporter     | pinned GHCR image (see note)             | Convert HomericIntelligence APIs to Prometheus metrics |
 | argus-dashboard    | ghcr.io/homericintelligence/atlas:v0.2.0 | Unified Atlas dashboard UI (:3002)                     |
 | jetstream-consumer | built locally (see note)                 | Durable JetStream pull subscriber for event metrics    |
