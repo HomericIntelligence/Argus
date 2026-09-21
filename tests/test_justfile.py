@@ -140,8 +140,38 @@ def test_reload_prometheus_uses_post_data() -> None:
     assert "--post-data=''" in content, (
         "reload-prometheus recipe missing --post-data='' for HTTP POST"
     )
-    assert "http://localhost:9090/-/reload" in content, (
-        "reload-prometheus recipe missing /-/reload endpoint"
+    assert "https://localhost:9090/-/reload" in content, (
+        "reload-prometheus recipe missing the /-/reload endpoint"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Prometheus HTTPS probes (issue #206)
+# ---------------------------------------------------------------------------
+
+
+def test_no_plaintext_prometheus_probe_in_justfile() -> None:
+    """Prometheus serves HTTPS since the web config split, so no http probe may survive."""
+    content = _justfile_content()
+    assert "http://localhost:9090" not in content, (
+        "the justfile still probes Prometheus over plaintext http; it serves "
+        "HTTPS since configs/prometheus-web.yml landed (#206)"
+    )
+
+
+def test_test_scrape_uses_https() -> None:
+    """test-scrape must query the Prometheus HTTPS endpoint."""
+    content = _justfile_content()
+    assert "https://localhost:9090/api/v1/query?query=up" in content, (
+        "test-scrape must query Prometheus over https"
+    )
+
+
+def test_prometheus_probes_skip_self_signed_verification() -> None:
+    """Both in-container probes must accept our self-signed certificate."""
+    content = _justfile_content()
+    assert content.count("--no-check-certificate") >= 2, (
+        "reload-prometheus and test-scrape must both pass --no-check-certificate"
     )
 
 

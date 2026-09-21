@@ -46,8 +46,9 @@ else
 fi
 
 echo ""
-info "Checking Prometheus (http://localhost:9090)"
-PROM_UP=$(curl -s --connect-timeout 3 "http://localhost:9090/api/v1/query?query=up" 2>/dev/null || echo "")
+info "Checking Prometheus (https://localhost:9090)"
+# Prometheus serves HTTPS with our self-signed CA, hence -k on this host-side probe.
+PROM_UP=$(curl -sk --connect-timeout 3 "https://localhost:9090/api/v1/query?query=up" 2>/dev/null || echo "")
 if [[ -n "$PROM_UP" ]]; then
     ok "Prometheus reachable"
     command -v jq &>/dev/null && echo "$PROM_UP" | jq -r '.data.result[] | "  job=\(.metric.job) up=\(.value[1])"' 2>/dev/null

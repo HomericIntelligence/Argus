@@ -554,6 +554,102 @@ class TestDockerComposePortBindings(unittest.TestCase):
         )
 
 
+class TestPrometheusWebConfigSplit(unittest.TestCase):
+    """Issue #206: the scrape config and the web config must be separate files.
+
+    Prometheus loads `--config.file` and `--web.config.file` with two different,
+    equally strict parsers. Each rejects the other's keys, so one file serving
+    both roles is a hard startup failure:
+
+        field tls_server_config not found in type config.plain
+
+    The generic "does the YAML parse" checks cannot catch that, so the split is
+    pinned here.
+    """
+
+    # Top-level keys that only the *scrape* loader accepts.
+    SCRAPE_ONLY_KEYS: ClassVar[set[str]] = {
+        "global",
+        "alerting",
+        "rule_files",
+        "scrape_configs",
+        "remote_write",
+        "remote_read",
+        "storage",
+        "tracing",
+    }
+    # Top-level keys that only the *web* loader accepts.
+    WEB_ONLY_KEYS: ClassVar[set[str]] = {
+        "tls_server_config",
+        "http_server_config",
+        "basic_auth_users",
+    }
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.prometheus = self.compose["services"]["prometheus"]
+
+    def test_scrape_config_carries_no_web_only_keys(self) -> None:
+        scrape = load_yaml(CONFIGS_DIR / "prometheus.yml")
+        offending = self.WEB_ONLY_KEYS & set(scrape)
+        assert not offending, (
+            f"configs/prometheus.yml contains web-only keys {sorted(offending)}; "
+            "the scrape loader rejects these and Prometheus refuses to start (#206)"
+        )
+
+    def test_web_config_exists_and_carries_no_scrape_only_keys(self) -> None:
+        web_path = CONFIGS_DIR / "prometheus-web.yml"
+        assert web_path.exists(), (
+            "configs/prometheus-web.yml must exist so --web.config.file has a "
+            "web-only file to load (#206)"
+        )
+        web = load_yaml(web_path)
+        assert "tls_server_config" in web, (
+            "prometheus-web.yml must define tls_server_config (HTTPS server)"
+        )
+        offending = self.SCRAPE_ONLY_KEYS & set(web)
+        assert not offending, (
+            f"configs/prometheus-web.yml contains scrape-only keys "
+            f"{sorted(offending)}; the web loader rejects these (#206)"
+        )
+
+    def test_web_config_flag_points_at_the_mounted_web_file(self) -> None:
+        command = self.prometheus.get("command", [])
+        assert isinstance(command, list)
+        flags = [c for c in command if str(c).startswith("--web.config.file=")]
+        assert flags == ["--web.config.file=/etc/prometheus/web.yml"], (
+            f"prometheus --web.config.file must be /etc/prometheus/web.yml, got {flags}"
+        )
+        mounts = [str(v) for v in self.prometheus.get("volumes", [])]
+        assert any(
+            m.startswith("./configs/prometheus-web.yml:/etc/prometheus/web.yml") for m in mounts
+        ), f"prometheus must mount configs/prometheus-web.yml at /etc/prometheus/web.yml: {mounts}"
+
+    def test_healthcheck_probes_https(self) -> None:
+        raw = self.prometheus["healthcheck"]["test"]
+        test_cmd = " ".join(str(p) for p in raw) if isinstance(raw, list) else str(raw)
+        assert "https://localhost:9090/-/ready" in test_cmd, (
+            f"prometheus healthcheck must probe https://localhost:9090/-/ready, got {test_cmd!r}"
+        )
+        assert "--no-check-certificate" in test_cmd, (
+            "healthcheck must skip verification of the self-signed cert"
+        )
+
+    def test_atlas_queries_prometheus_over_https_with_ca(self) -> None:
+        atlas = self.compose["services"]["argus-dashboard"]
+        env = atlas["environment"]
+        assert env["ATLAS_PROMETHEUS_URL"].startswith("https://"), (
+            f"Atlas must reach Prometheus over HTTPS, got {env['ATLAS_PROMETHEUS_URL']!r}"
+        )
+        assert env.get("SSL_CERT_FILE"), (
+            "Atlas needs SSL_CERT_FILE: the distroless image has no system trust bundle"
+        )
+        mounts = [str(v) for v in atlas.get("volumes", [])]
+        assert any("ca.crt" in m for m in mounts), (
+            f"Atlas must mount the CA certificate, got volumes: {mounts}"
+        )
+
+
 class TestDockerComposePorts(unittest.TestCase):
     # Only the loopback address is permitted as a host port binding.
     # Rationale: every Argus service exposes either metrics, dashboards, or

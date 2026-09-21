@@ -161,12 +161,12 @@ logs SERVICE:
 reload-prometheus:
     {{compose_cmd}} restart prometheus
 
-    {{compose_cmd}} exec prometheus wget -q -O /dev/stdout --post-data='' http://localhost:9090/-/reload && echo "Prometheus config reloaded."
+    {{compose_cmd}} exec prometheus wget --no-check-certificate -q -O /dev/stdout --post-data='' https://localhost:9090/-/reload && echo "Prometheus config reloaded."
 
 # Query Prometheus to verify all scrape targets are up (Prometheus is internal-only)
 test-scrape:
     @echo "Querying Prometheus for 'up' metric..."
-    {{compose_cmd}} exec prometheus wget -q -O /dev/stdout "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
+    {{compose_cmd}} exec prometheus wget --no-check-certificate -q -O /dev/stdout "https://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
 
 
 # Smoke-test that Promtail renders the host label from ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
