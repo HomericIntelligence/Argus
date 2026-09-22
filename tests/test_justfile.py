@@ -86,6 +86,33 @@ def test_import_dashboards_uses_gf_admin_password() -> None:
     )
 
 
+def test_import_dashboards_exports_container_cmd() -> None:
+    """import-dashboards must export CONTAINER_CMD like every other script recipe.
+
+    Issue #354: scripts invoked by recipes consistently receive
+    ``CONTAINER_CMD`` so container-based logic can pick docker vs podman.
+    import-dashboards.sh only uses curl today, but the env var must be
+    present if it ever grows a container call.
+    """
+    match = re.search(
+        r"^import-dashboards:(.*?)(?=^\S|\Z)", _justfile_content(), re.MULTILINE | re.DOTALL
+    )
+    assert match, "import-dashboards recipe not found in justfile"
+    assert "CONTAINER_CMD={{container_cmd}}" in match.group(1), (
+        "import-dashboards recipe must export CONTAINER_CMD={{container_cmd}} "
+        "so scripts inherit the resolved container runtime"
+    )
+
+
+def test_script_recipes_export_container_cmd() -> None:
+    """Every recipe that runs a scripts/*.sh wrapper must pass CONTAINER_CMD."""
+    content = _justfile_content()
+    assert content.count("CONTAINER_CMD={{container_cmd}}") >= 3, (
+        "backup, restore, and import-dashboards recipes should all export "
+        "CONTAINER_CMD={{container_cmd}}"
+    )
+
+
 def test_no_cut_d_colon_credential_extraction() -> None:
     """Credential extraction via 'cut -d: -f2' must be gone from the justfile."""
     content = _justfile_content()

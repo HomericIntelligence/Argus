@@ -234,7 +234,7 @@ import-dashboards:
         echo "       at the repository root, then re-run 'just import-dashboards'." >&2
         exit 1
     fi
-    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
+    CONTAINER_CMD={{container_cmd}} GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
 
 # === Versioning ===
 
