@@ -9,10 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Removed silent `admin` fallbacks from `docker-compose.yml` and `justfile`.
-  Both now fail fast, and the duplicate `GRAFANA_ADMIN_PASSWORD` name is gone
-  in favour of the single documented `GF_ADMIN_PASSWORD`. CI workflows inject
-  `GF_ADMIN_PASSWORD` for compose validation. Regression tests added.
-  (#318, follow-up to #124)
+  `docker-compose.yml` now uses `${GF_ADMIN_PASSWORD:?...}` and fails the render
+  when the value is absent; the duplicate `GRAFANA_ADMIN_PASSWORD` name is gone
+  in favour of the single documented `GF_ADMIN_PASSWORD`. `GF_ADMIN_PASSWORD` is
+  deliberately not bound to a Just variable, so `just` reports a missing value
+  through the per-recipe guard that names `.env` rather than through a raw
+  parser error. CI workflows inject `GF_ADMIN_PASSWORD` for compose validation.
+  Regression tests added. (#318, follow-up to #124)
 
 ### Fixed
 
