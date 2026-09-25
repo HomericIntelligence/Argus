@@ -624,15 +624,31 @@ class TestPrometheusWebConfigSplit(unittest.TestCase):
         assert any(
             m.startswith("./configs/prometheus-web.yml:/etc/prometheus/web.yml") for m in mounts
         ), f"prometheus must mount configs/prometheus-web.yml at /etc/prometheus/web.yml: {mounts}"
+        assert any(
+            m.startswith("./configs/prometheus-http-config.yml:/etc/prometheus/http-config.yml")
+            for m in mounts
+        ), f"prometheus must mount the promtool HTTP client config: {mounts}"
+
+    def test_promtool_http_config_uses_argus_ca(self) -> None:
+        http_config = load_yaml(CONFIGS_DIR / "prometheus-http-config.yml")
+        assert http_config["tls_config"]["ca_file"] == "/etc/prometheus/tls/ca.crt", (
+            "promtool must verify Prometheus with the Argus CA certificate"
+        )
 
     def test_healthcheck_probes_https(self) -> None:
         raw = self.prometheus["healthcheck"]["test"]
         test_cmd = " ".join(str(p) for p in raw) if isinstance(raw, list) else str(raw)
-        assert "https://localhost:9090/-/ready" in test_cmd, (
-            f"prometheus healthcheck must probe https://localhost:9090/-/ready, got {test_cmd!r}"
+        assert "--url=https://localhost:9090" in test_cmd, (
+            f"prometheus healthcheck must target the HTTPS Prometheus endpoint, got {test_cmd!r}"
         )
-        assert "--no-check-certificate" in test_cmd, (
-            "healthcheck must skip verification of the self-signed cert"
+        assert "promtool check ready" in test_cmd, (
+            f"prometheus healthcheck must use the CA-aware promtool client, got {test_cmd!r}"
+        )
+        assert "--http.config.file=/etc/prometheus/http-config.yml" in test_cmd, (
+            "healthcheck must use the CA-aware promtool HTTP client"
+        )
+        assert "--no-check-certificate" not in test_cmd, (
+            "healthcheck must not bypass certificate verification"
         )
 
     def test_atlas_queries_prometheus_over_https_with_ca(self) -> None:

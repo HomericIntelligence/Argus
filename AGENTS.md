@@ -298,6 +298,7 @@ All metrics include `# HELP` and `# TYPE` lines.
 Argus/
 ├── configs/
 │   ├── prometheus.yml        # Scrape configs
+│   ├── prometheus-web.yml    # Prometheus HTTPS web server config
 │   ├── alertmanager.yml      # Alertmanager routing config
 │   ├── loki.yml              # Loki server config
 │   ├── promtail.yml          # Log scraping config

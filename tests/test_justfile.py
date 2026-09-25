@@ -134,14 +134,17 @@ def test_no_combined_qO_flag_in_justfile() -> None:
     )
 
 
-def test_reload_prometheus_uses_post_data() -> None:
-    """reload-prometheus must POST to /-/reload using space-separated flags."""
+def test_reload_prometheus_uses_verified_https_post() -> None:
+    """reload-prometheus must POST to /-/reload over the CA-verified endpoint."""
     content = _justfile_content()
-    assert "--post-data=''" in content, (
-        "reload-prometheus recipe missing --post-data='' for HTTP POST"
+    assert "-X POST" in content, (
+        "reload-prometheus recipe must use an explicit HTTP POST"
     )
     assert "https://localhost:9090/-/reload" in content, (
         "reload-prometheus recipe missing the /-/reload endpoint"
+    )
+    assert "--cacert certs/ca.crt" in content, (
+        "reload-prometheus recipe must verify the Argus CA certificate"
     )
 
 
@@ -167,11 +170,14 @@ def test_test_scrape_uses_https() -> None:
     )
 
 
-def test_prometheus_probes_skip_self_signed_verification() -> None:
-    """Both in-container probes must accept our self-signed certificate."""
+def test_prometheus_probes_verify_argus_ca() -> None:
+    """Prometheus operator probes must verify the Argus CA certificate."""
     content = _justfile_content()
-    assert content.count("--no-check-certificate") >= 2, (
-        "reload-prometheus and test-scrape must both pass --no-check-certificate"
+    assert content.count("--cacert certs/ca.crt") >= 2, (
+        "reload-prometheus and test-scrape must both pass the Argus CA"
+    )
+    assert "--no-check-certificate" not in content, (
+        "Prometheus probes must not bypass certificate verification"
     )
 
 

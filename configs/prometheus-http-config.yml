@@ -1,0 +1,5 @@
+# HTTP client settings for promtool checks run inside the Prometheus container.
+# BusyBox wget in the pinned Prometheus image cannot verify a custom CA, so
+# promtool uses this file to validate the HTTPS endpoint against the Argus CA.
+tls_config:
+  ca_file: /etc/prometheus/tls/ca.crt

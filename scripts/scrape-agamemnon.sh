@@ -47,8 +47,9 @@ fi
 
 echo ""
 info "Checking Prometheus (https://localhost:9090)"
-# Prometheus serves HTTPS with our self-signed CA, hence -k on this host-side probe.
-PROM_UP=$(curl -sk --connect-timeout 3 "https://localhost:9090/api/v1/query?query=up" 2>/dev/null || echo "")
+# Prometheus serves HTTPS with the Argus CA. Verify it instead of bypassing
+# certificate validation so the probe detects an expired or mis-signed cert.
+PROM_UP=$(curl --fail --silent --show-error --cacert certs/ca.crt --connect-timeout 3 "https://localhost:9090/api/v1/query?query=up" 2>/dev/null || echo "")
 if [[ -n "$PROM_UP" ]]; then
     ok "Prometheus reachable"
     command -v jq &>/dev/null && echo "$PROM_UP" | jq -r '.data.result[] | "  job=\(.metric.job) up=\(.value[1])"' 2>/dev/null

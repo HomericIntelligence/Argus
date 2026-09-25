@@ -144,8 +144,8 @@ just stop && just start
 This means `https://` was used against a service that is still serving plain
 HTTP. Check:
 
-1. Is the target service configured with TLS? (Prometheus `tls_server_config`,
-   Loki `http_tls_config`, etc.)
+1. Is the target service configured with TLS? (Prometheus `tls_server_config`
+   in `configs/prometheus-web.yml`, Loki `http_tls_config`, etc.)
 2. Are the certificates mounted correctly? Check
    `docker compose logs <service>` for TLS init errors.
 3. Did `just gen-certs` complete without errors?

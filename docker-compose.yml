@@ -34,6 +34,7 @@ services:
       # loaders each reject the other's keys, so one file for both roles stops
       # Prometheus from starting (issue #206).
       - ./configs/prometheus-web.yml:/etc/prometheus/web.yml:ro
+      - ./configs/prometheus-http-config.yml:/etc/prometheus/http-config.yml:ro
       - ./rules:/etc/prometheus/rules:ro
       - ./certs/prometheus.crt:/etc/prometheus/tls/prometheus.crt:ro
       - ./certs/prometheus.key:/etc/prometheus/tls/prometheus.key:ro
@@ -70,10 +71,17 @@ services:
       - "--web.enable-lifecycle"
     # String-form (CMD-SHELL) with space-separated wget flags — BusyBox-safe
     # (`-qO-` is not portable across GNU vs BusyBox wget). Closes #198.
-    # HTTPS since the web config above enables TLS; the certificate is signed by
-    # our own CA, so this in-container liveness probe skips verification.
+    # HTTPS since the web config above enables TLS. The pinned Prometheus image
+    # ships BusyBox wget, which cannot verify a custom CA, so use promtool's
+    # CA-aware HTTP client for the in-container readiness probe.
     healthcheck:
-      test: "wget --no-check-certificate -q -O /dev/stdout https://localhost:9090/-/ready || exit 1"
+      test:
+        - CMD
+        - promtool
+        - check
+        - ready
+        - --http.config.file=/etc/prometheus/http-config.yml
+        - --url=https://localhost:9090
       interval: 30s
       timeout: 10s
       retries: 3
