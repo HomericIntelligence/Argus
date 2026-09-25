@@ -925,11 +925,14 @@ class TestPrometheusLifecycleAndHealthcheck(unittest.TestCase):
             f"prometheus healthcheck uses non-portable '-qO-' wget flag: {test_cmd!r}"
         )
 
-    def test_prometheus_healthcheck_uses_portable_flags(self) -> None:
-        """Prometheus healthcheck must use space-separated -q -O flags (BusyBox-safe)."""
+    def test_prometheus_healthcheck_uses_ca_aware_promtool(self) -> None:
+        """Prometheus healthcheck must use the CA-aware promtool client."""
         test_cmd: Any = self.prometheus["healthcheck"]["test"]
-        assert "-q" in str(test_cmd)
-        assert "/dev/stdout" in str(test_cmd)
+        rendered = str(test_cmd)
+        assert "promtool" in rendered
+        assert "check" in rendered
+        assert "ready" in rendered
+        assert "--http.config.file=/etc/prometheus/http-config.yml" in rendered
 
 
 if __name__ == "__main__":
