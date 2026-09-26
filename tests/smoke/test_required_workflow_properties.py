@@ -64,6 +64,30 @@ REQUIRED_JOB_NAMES = frozenset(
 )
 
 
+SMOKE_SCRIPT = ROOT / "scripts" / "smoke-stack.sh"
+
+
+def test_smoke_stack_builds_the_working_tree_exporter() -> None:
+    """The smoke stack must not scrape the published argus-exporter image.
+
+    `argus-exporter` resolves to `EXPORTER_IMAGE` (default: the published
+    ghcr.io tag) and its Dockerfile COPYs exporter.py into the image instead of
+    bind-mounting it, so a smoke run against the default image never exercises
+    the source under review. The released build's collect() takes 10.0s
+    against unreachable upstreams, which is exactly Prometheus' scrape_timeout,
+    so `up == 0` and the gate fails on a fix that is already committed.
+    """
+    script = SMOKE_SCRIPT.read_text()
+    build = script.index("-t \"$SMOKE_EXPORTER_IMAGE\"")
+    export = script.index('export EXPORTER_IMAGE="$SMOKE_EXPORTER_IMAGE"')
+    up = script.index("up -d --wait")
+    assert build < export < up, (
+        "smoke-stack.sh must build the exporter and export EXPORTER_IMAGE "
+        f"before bringing the stack up (build={build}, export={export}, up={up})"
+    )
+    assert "exporter/" in script, "the smoke exporter build must use ./exporter"
+
+
 def test_required_workflow_exists() -> None:
     assert WORKFLOW.exists(), f"Workflow file not found: {WORKFLOW}"
 

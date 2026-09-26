@@ -31,6 +31,7 @@ import json
 import os
 import re
 import ssl
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -46,13 +47,22 @@ DASHBOARDS_DIR = ROOT / "dashboards"
 
 # Jobs that must report up == 1 without external upstreams reachable.
 # Excluded deliberately:
-#   jetstream-consumer — its NATS_URL is hardcoded to a host-gateway address
-#     that is unreachable in CI (docker-compose.yml).
+#   jetstream-consumer — it does come up in CI (it serves /metrics whether or
+#     not NATS is reachable, since its NATS_URL is a host-gateway address), but
+#     it emits no event metrics until a real event flows, so it is covered by
+#     the source-declaration layer below rather than by a scrape assertion.
 #   nomad              — gateway target; no Nomad agent in CI.
 REQUIRED_JOBS = ("homeric-exporter", "prometheus", "alertmanager", "atlas")
 
 # Metric identifiers of interest inside dashboard PromQL / pipeline sources.
 METRIC_IDENT_RE = re.compile(r"\b(?:hi_|nats_|homeric_exporter_)[a-z0-9_]*")
+
+# `up` is a sampled gauge: a scrape that failed during startup is recorded as
+# 0 and stays 0 for a whole scrape_interval, even after the target recovers.
+# Asserting it once, immediately after the stack reports ready, therefore
+# tests the poll timing rather than the pipeline. Poll to a deadline instead.
+SETTLE_TIMEOUT_SECONDS = 120
+POLL_INTERVAL_SECONDS = 5
 
 # Counter/histogram family suffixes that may or may not be present on either
 # side of the dashboard-vs-pipeline comparison (e.g. rate(X_total[1m]) vs X).
@@ -87,6 +97,42 @@ def _prom_query(promql: str) -> list[dict]:
     if data["status"] != "success":
         raise AssertionError(f"Prometheus query failed for {promql!r}: {data}")
     return list(data["data"]["result"])
+
+
+def _poll_until(check, describe_failure):
+    """Poll ``check`` until it returns a truthy value or the deadline passes.
+
+    Returns the truthy value. On timeout, calls ``describe_failure`` (which
+    raises) so the assertion message carries Prometheus' own ``lastError``
+    rather than a bare "expected 1, got 0".
+    """
+    deadline = time.monotonic() + SETTLE_TIMEOUT_SECONDS
+    result = check()
+    while not result and time.monotonic() < deadline:
+        time.sleep(POLL_INTERVAL_SECONDS)
+        result = check()
+    if not result:
+        describe_failure()
+    return result
+
+
+def _target_diagnostics() -> str:
+    """Render Prometheus target health, including each failing lastError."""
+    try:
+        targets = json.loads(_get(f"{PROM_URL}/api/v1/targets"))["data"]["activeTargets"]
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never mask the failure
+        return f"(could not read {PROM_URL}/api/v1/targets: {exc})"
+    lines = []
+    for target in targets:
+        lines.append(
+            f"  {target['labels'].get('job', '?')}: health={target['health']} "
+            f"lastError={target.get('lastError') or '-'}"
+        )
+    return "\n".join(lines)
+
+
+def _up_by_job() -> dict:
+    return {s["metric"].get("job"): s["value"][1] for s in _prom_query("up")}
 
 
 def _normalize(name: str) -> str:
@@ -137,23 +183,40 @@ def test_prometheus_ready() -> None:
 
 def test_required_jobs_up() -> None:
     """Every job that serves /metrics without external upstreams reports up == 1."""
-    up_by_job = {
-        series["metric"].get("job"): series["value"][1]
-        for series in _prom_query("up")
-    }
-    missing = [job for job in REQUIRED_JOBS if job not in up_by_job]
-    assert not missing, f"jobs absent from `up`: {missing} (all jobs: {up_by_job})"
-    down = [job for job in REQUIRED_JOBS if up_by_job[job] != "1"]
-    assert not down, f"required jobs reporting up != 1: {down} (all jobs: {up_by_job})"
+
+    def all_required_up() -> bool:
+        observed = _up_by_job()
+        return all(observed.get(job) == "1" for job in REQUIRED_JOBS)
+
+    def fail() -> None:
+        observed = _up_by_job()
+        missing = [job for job in REQUIRED_JOBS if job not in observed]
+        down = [job for job in REQUIRED_JOBS if observed.get(job) != "1"]
+        raise AssertionError(
+            f"required jobs not up after {SETTLE_TIMEOUT_SECONDS}s: "
+            f"absent={missing} down={down} (all jobs: {observed})\n"
+            f"prometheus targets:\n{_target_diagnostics()}"
+        )
+
+    _poll_until(all_required_up, fail)
 
 
 def test_exporter_self_metrics_queryable() -> None:
     """The exporter → Prometheus hop returns real values, not just an up state."""
-    series = _prom_query("homeric_exporter_scrape_timestamp_seconds > 0")
-    assert len(series) >= 1, (
-        "homeric_exporter_scrape_timestamp_seconds > 0 returned no series; "
-        "Prometheus is not storing exporter samples"
-    )
+
+    def exporter_samples_present() -> bool:
+        return len(_prom_query("homeric_exporter_scrape_timestamp_seconds > 0")) >= 1
+
+    def fail() -> None:
+        raise AssertionError(
+            "homeric_exporter_scrape_timestamp_seconds > 0 returned no series "
+            f"after {SETTLE_TIMEOUT_SECONDS}s; Prometheus is not storing exporter "
+            f"samples. A scrape that exceeds Prometheus' 10s scrape_timeout is "
+            f"recorded as up == 0, which points at collect() latency.\n"
+            f"prometheus targets:\n{_target_diagnostics()}"
+        )
+
+    _poll_until(exporter_samples_present, fail)
 
 
 def test_dashboard_metrics_exist_in_pipeline() -> None:
@@ -161,7 +224,18 @@ def test_dashboard_metrics_exist_in_pipeline() -> None:
     prometheus_names = set(json.loads(_get(f"{PROM_URL}/api/v1/label/__name__/values"))["data"])
     universe = {name for name in prometheus_names}
 
-    exporter_body = _get(EXPORTER_METRICS_URL).decode()
+    # A cold exporter against unreachable upstreams spends one 5s upstream
+    # timeout per collect(); give the fetch room and turn a timeout into a
+    # diagnosable failure rather than a bare socket TimeoutError.
+    try:
+        exporter_body = _get(EXPORTER_METRICS_URL, timeout=30.0).decode()
+    except (TimeoutError, OSError) as exc:
+        raise AssertionError(
+            f"exporter /metrics at {EXPORTER_METRICS_URL} did not answer within "
+            f"30s ({exc}). Prometheus' scrape_timeout is 10s, so a slow "
+            f"collect() also shows up as up == 0.\n"
+            f"prometheus targets:\n{_target_diagnostics()}"
+        ) from exc
     for line in exporter_body.splitlines():
         if line.startswith("#"):
             continue

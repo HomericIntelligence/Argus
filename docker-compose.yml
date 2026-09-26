@@ -274,9 +274,13 @@ services:
     command:
       - "--config.file=/run/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
-      # Enables POST /-/reload (and /-/quit). Safe because 9093 is bound
-      # loopback-only; required by `just reload-alertmanager` (#177).
-      - "--web.enable-lifecycle"
+      # NOTE: no --web.enable-lifecycle here. Alertmanager removed that flag;
+      # `prom/alertmanager:v0.32.1` exits with "unknown long flag" when it is
+      # passed, so the container crash-looped and Prometheus recorded
+      # up{job="alertmanager"} == 0 (found by the #210 live-stack smoke job).
+      # POST /-/reload is unconditionally served in 0.32.1, so
+      # `just reload-alertmanager` still works against the loopback-only 9093
+      # binding (#177).
     networks:
       - argus
     depends_on:
