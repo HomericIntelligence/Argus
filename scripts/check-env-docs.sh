@@ -62,7 +62,10 @@ in_list() {
     local needle="$1"
     shift
     local item
-    for item in ${1+"$@"}; do
+    # `"$@"` rather than ${1+"$@"}: with the list emptied by shift, bash 3.2
+    # expands the latter to `0`, which the runner reports as an ambiguous
+    # redirect. Quoted "$@" expands to nothing when there are no arguments.
+    for item in "$@"; do
         [[ "$item" == "$needle" ]] && return 0
     done
     return 1
@@ -96,35 +99,37 @@ done < <(
 # Extract every backticked uppercase name from the AGENTS.md environment
 # region. The generic form (any [A-Z][A-Z0-9_]{2,} token) is intentional:
 # a prefix-limited variant would miss documented names like AGAMEMNON_URL.
-# doc_var_lines[i] is the file line number of the first mention of doc_vars[i].
-# awk is used instead of `sed -n` + `grep -oE` so the absolute line number
-# survives the region filter and the reverse-drift report can point an author
-# straight at the offending line. POSIX awk only: no gawk match() arrays.
+# Kept as sed + grep -oE: both are available and behave identically on the
+# bash 3.2 macOS runner. Do not move the interval into an awk program --
+# mawk builds do not implement {n,}.
 doc_vars=()
-doc_var_lines=()
-while IFS='|' read -r doc_var doc_line; do
+while IFS= read -r doc_var; do
     doc_vars+=("$doc_var")
-    doc_var_lines+=("$doc_line")
 done < <(
-    # awk emits every backticked span as NAME|LINE. The variable-shaped
-    # filter is left to grep -E on purpose: mawk builds (Debian, and a common
-    # ubuntu runner default) do not implement {n,} interval expressions, so the
-    # interval must not live inside the awk program.
-    awk -v start="${DOC_SECTION_START}" -v end="${DOC_SECTION_END}" '
-        $0 ~ start { inregion = 1; next }
-        $0 ~ end   { inregion = 0 }
-        !inregion   { next }
-        {
-            rest = $0
-            while (match(rest, /`[^`]+`/)) {
-                print substr(rest, RSTART + 1, RLENGTH - 2) "|" NR
-                rest = substr(rest, RSTART + RLENGTH)
-            }
-        }
-    ' "$DOC_FILE" \
-        | grep -E '^[A-Z][A-Z0-9_]{2,}\|[0-9]+$' \
-        | sort -t'|' -k1,1 -u
+    sed -n "/${DOC_SECTION_START}/,/${DOC_SECTION_END}/p" "$DOC_FILE" \
+        | grep -oE '`[A-Z][A-Z0-9_]{2,}`' \
+        | sed 's/`//g' \
+        | sort -u
 )
+
+# Absolute line number of the first mention of a documented name, for the
+# reverse-drift report. Computed only on the failure path so the happy path
+# stays a single pass. $var is an uppercase name, so it carries no regex
+# metacharacters; backticks are added via printf to keep the shell from
+# reading them as command substitution.
+doc_line_for() {
+    local var="$1"
+    local start_line rel pattern
+    start_line="$(grep -n -m1 -E "${DOC_SECTION_START}" "$DOC_FILE" | cut -d: -f1)"
+    printf -v pattern '`%s`' "$var"
+    rel="$(sed -n "/${DOC_SECTION_START}/,/${DOC_SECTION_END}/p" "$DOC_FILE" \
+        | grep -n -m1 -oE "$pattern" | cut -d: -f1)"
+    if [[ -z "$start_line" || -z "$rel" ]]; then
+        printf 'unknown line'
+        return 0
+    fi
+    printf '%s' "$(( start_line + rel - 1 ))"
+}
 
 # Both lists are sorted and duplicate-free, so a linear scan is exact.
 missing_docs=()
@@ -150,19 +155,6 @@ for var in ${doc_vars[@]+"${doc_vars[@]}"}; do
     fi
 done
 
-# First mention line for a documented name, or "unknown line".
-line_for_var() {
-    local want="$1"
-    local i
-    for i in "${!doc_vars[@]}"; do
-        if [[ "${doc_vars[$i]}" == "$want" ]]; then
-            printf '%s' "${doc_var_lines[$i]}"
-            return 0
-        fi
-    done
-    printf 'unknown line'
-}
-
 if (( ${#missing_docs[@]} > 0 || ${#unknown_docs[@]} > 0 )); then
     if (( ${#missing_docs[@]} > 0 )); then
         echo "::error::.env.example defines variables undocumented in ${DOC_FILE}:" >&2
@@ -176,7 +168,7 @@ if (( ${#missing_docs[@]} > 0 || ${#unknown_docs[@]} > 0 )); then
     if (( ${#unknown_docs[@]} > 0 )); then
         echo "::error::${DOC_FILE} documents variables absent from .env.example:" >&2
         for var in "${unknown_docs[@]}"; do
-            echo "  - $var (${DOC_FILE}:$(line_for_var "$var"))" >&2
+            echo "  - $var (${DOC_FILE}:$(doc_line_for "$var"))" >&2
         done
         echo >&2
         echo "Add each variable (with a brief comment and default) to .env.example," >&2

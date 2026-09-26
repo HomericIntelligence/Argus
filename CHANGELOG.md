@@ -17,7 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `scripts/check-env-docs.sh` reverse-drift failures now report the offending
   `AGENTS.md` line and name `DOC_ONLY_ALLOWLIST` as the escape hatch, instead of
-  listing a bare token that reads like a real `.env.example` defect.
+  listing a bare token that reads like a real `.env.example` defect. The
+  membership scan also uses a quoted `"$@"` so it stays correct when bash 3.2
+  expands an empty `${1+"$@"}` to `0` (the macOS CI runner).
 - CI `Test exporter` job now installs `just`, so tests that shell out to
   `just` (e.g. `TestJustRecipeGuard`) no longer fail with `FileNotFoundError`.
 - CI `Lint Python` job pins `ruff==0.16.4` to stop unpinned-install drift

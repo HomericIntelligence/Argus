@@ -128,6 +128,23 @@ class TestDriftDetection:
 
 
 class TestAllowlists:
+    def test_empty_doc_region_reports_drift_without_shell_errors(
+        self, tmp_path: Path
+    ) -> None:
+        # With no documented names the membership scan is called with an empty
+        # list. `${1+"$@"}` expands to `0` there under bash 3.2, which the
+        # macOS runner reports as an ambiguous redirect; the scan must stay
+        # silent and report ordinary drift instead.
+        env_copy, doc_copy = make_fixture_repo(tmp_path)
+        doc_copy.write_text(
+            "# Contract\n\n## Environment Variables\n\nNothing here yet.\n\n"
+            "## Scrape Targets\n\nnone\n"
+        )
+        result = run_script(str(env_copy), str(doc_copy))
+        assert result.returncode == 1
+        assert "ambiguous redirect" not in result.stderr
+        assert "GF_ADMIN_PASSWORD" in result.stderr
+
     def test_commented_env_entry_counts_as_defined(self, tmp_path: Path) -> None:
         # "# FOO=..." is documented-by-comment, same contract as
         # scripts/check-env-example.sh.
