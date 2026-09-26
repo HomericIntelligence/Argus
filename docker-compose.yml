@@ -61,8 +61,13 @@ services:
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.config.file=/run/prometheus/prometheus.yml"
+      # Enables POST /-/reload and POST /-/quit on :9090. Reachable by any
+      # container on the `argus` bridge; acceptable given the trusted internal topology.
+      - "--web.enable-lifecycle"
+    # String-form (CMD-SHELL) with space-separated wget flags — BusyBox-safe
+    # (`-qO-` is not portable across GNU vs BusyBox wget). Closes #198.
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      test: "wget -q -O /dev/stdout http://localhost:9090/-/ready || exit 1"
       interval: 30s
       timeout: 10s
       retries: 3
@@ -181,6 +186,7 @@ services:
       # Loki basic auth (issue #209); expanded in promtail.yml via -config.expand-env
       LOKI_AUTH_USER: ${LOKI_AUTH_USER}
       LOKI_AUTH_PASSWORD: ${LOKI_AUTH_PASSWORD}
+      PROMTAIL_HOST_LABEL: ${PROMTAIL_HOST_LABEL:-}
     command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
@@ -205,11 +211,48 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:9093:9093"
+    environment:
+      # Slack incoming webhook used by the 'slack' receiver (see #344).
+      # When SLACK_WEBHOOK_URL is empty the default route falls back to the
+      # 'null' receiver, so a fresh clone boots with no paging configured.
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SLACK_CHANNEL: ${SLACK_CHANNEL:-argus-alerts}
     volumes:
-      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./configs/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
       - alertmanager_data:/alertmanager
+    tmpfs:
+      # Writable scratch for the rendered alertmanager.yml (the template is
+      # mounted read-only). Sized small — only one tiny YAML file lives here.
+      # prom/alertmanager runs as nobody/nogroup = 65534.
+      - /run/alertmanager:size=1m,mode=0700,uid=65534,gid=65534
+    # Render the env-var placeholders in alertmanager.yml.tmpl into a writable
+    # tmpfs file, then exec the official entrypoint — same sed-based pattern
+    # as the prometheus service above. With no SLACK_WEBHOOK_URL set, alerts
+    # route to the retained 'null' receiver instead of failing delivery.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        if [ -n "$${SLACK_WEBHOOK_URL:-}" ]; then
+          default_receiver='slack'
+        else
+          # Placeholder keeps the YAML schema-valid; the default route points
+          # at 'null' in this mode so the slack receiver is never used.
+          SLACK_WEBHOOK_URL='http://localhost:1/disabled'
+          default_receiver='null'
+          echo "WARN: SLACK_WEBHOOK_URL unset; alerts routed to 'null' (logged only)" >&2
+        fi
+        sed \
+          -e "s|\$${ALERTMANAGER_DEFAULT_RECEIVER}|$${default_receiver}|g" \
+          -e "s|\$${SLACK_WEBHOOK_URL}|$${SLACK_WEBHOOK_URL}|g" \
+          -e "s|\$${SLACK_CHANNEL}|$${SLACK_CHANNEL}|g" \
+          /etc/alertmanager/alertmanager.yml.tmpl \
+          > /run/alertmanager/alertmanager.yml
+        exec /bin/alertmanager "$@"
+      - "alertmanager"
     command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--config.file=/run/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
       # Enables POST /-/reload (and /-/quit). Safe because 9093 is bound
       # loopback-only; required by `just reload-alertmanager` (#177).
@@ -275,9 +318,27 @@ services:
       - grafana_data:/var/lib/grafana
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: "${GF_ADMIN_PASSWORD:?set GF_ADMIN_PASSWORD in .env}"
       GF_PATHS_PROVISIONING: /etc/grafana/provisioning
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # --- Auth hardening (issue #200) -------------------------------------
+      # Brute-force lockout: Grafana OSS hardcodes 5 failed logins within a
+      # 5-minute window; this key must stay "false" (double negative =
+      # protection enabled). The threshold and window are NOT tunable in OSS.
+      GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION: "false"
+      # Session lifetimes ([auth] keys verified against
+      # grafana/grafana@v11.2.2/conf/defaults.ini). Absolute cap 8h; idle
+      # sessions expire after 30m.
+      GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION: "8h"
+      GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION: "30m"
+      # Registration surface reduction: no self-signup, no org creation by
+      # non-admin users (single-admin deployment).
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      # RBAC decision: Grafana fine-grained RBAC is Enterprise-only; OSS 11.2
+      # offers org/basic roles only. This deployment is single-admin and
+      # loopback-bound, so RBAC stays off. Revisit if multi-user access is
+      # introduced.
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"

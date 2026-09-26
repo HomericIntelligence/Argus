@@ -2,6 +2,13 @@
 # recipe runs — every variable in `.env` is exported to the recipe's process.
 # Several recipes depend on this, including `import-dashboards`, which reads
 # GF_ADMIN_PASSWORD and GRAFANA_ADMIN_USER from the environment.
+#
+# Required env vars (set in `.env`; see `.env.example` for the canonical list):
+#   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
+#                       only so `just --list` works without `.env`; production
+#                       deployments MUST override this.
+#   AGAMEMNON_URL       Agamemnon API base URL (default http://172.20.0.1:8080).
+#   GRAFANA_PORT        Host port Grafana is published on (default 3001).
 set dotenv-load
 
 # === Variables ===
@@ -9,8 +16,8 @@ set dotenv-load
 compose_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "podman-compose" } else { "docker compose" }
 container_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "podman" } else { "docker" }
 
-AGAMEMNON_URL := "http://172.20.0.1:8080"
-GRAFANA_PORT := "3001"
+AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL", "http://172.20.0.1:8080")
+GRAFANA_PORT := env_var_or_default("GRAFANA_PORT", "3001")
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GRAFANA_ADMIN_USER := env_var_or_default("GRAFANA_ADMIN_USER", "admin")
 GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
@@ -45,8 +52,12 @@ gen-htpasswd:
 # Credential rotation entry point — discoverable via `just --list`.
 alias rotate-htpasswd := gen-htpasswd
 
+# Refuse to start when .env is absent — prevents silent fallback defaults (issue #214)
+check-env:
+    @test -f .env || { echo "ERROR: .env not found. Run 'cp .env.example .env' and set GF_ADMIN_PASSWORD before starting." >&2; exit 1; }
+
 # Start all observability services
-start: gen-htpasswd
+start: check-env gen-htpasswd
     #!/usr/bin/env bash
     set -euo pipefail
     if [ ! -f secrets/htpasswd ]; then
@@ -69,7 +80,7 @@ status:
     {{compose_cmd}} ps
 
 # Restart all services (stop then start)
-restart: gen-htpasswd
+restart: check-env gen-htpasswd
     ./scripts/check-grafana-password.sh
     {{compose_cmd}} down
     {{compose_cmd}} up -d
@@ -79,7 +90,7 @@ clean:
     {{compose_cmd}} down -v
 
 # Validate docker-compose config, YAML files, and required runtime files
-validate: check-env-example validate-promtail
+validate: check-env-example validate-promtail check-ports-static
     #!/usr/bin/env bash
     set -euo pipefail
     {{compose_cmd}} config --quiet
@@ -110,6 +121,15 @@ validate-promtail:
         -check-syntax
     @echo "promtail config OK."
 
+# Static check: assert every docker-compose.yml port binding is loopback-only
+# (issue #327). Stack-independent — safe on cold hosts.
+check-ports-static:
+    pixi run pytest tests/test_port_bindings.py -q --no-cov
+
+# Runtime check: assert the running stack has no 0.0.0.0 host bindings (#327)
+check-ports:
+    @COMPOSE_CMD="{{compose_cmd}}" bash scripts/check-ports.sh
+
 # Hot-reload dev loop for the dashboard (templ generate --watch + air in parallel)
 dev:
     @command -v templ >/dev/null 2>&1 || { echo "templ not found on PATH. Install: go install github.com/a-h/templ/cmd/templ@v0.3.1001"; exit 1; }
@@ -124,6 +144,10 @@ test:
 # Run the complete coverage-gated pytest suite in CI/CD; do not run locally.
 test-unit:
     pixi run test-unit
+
+# Run linters (ruff) across the repository
+lint:
+    pixi run ruff check .
 
 # === Security ===
 
@@ -141,13 +165,17 @@ logs SERVICE:
 reload-prometheus:
     {{compose_cmd}} restart prometheus
 
-    {{compose_cmd}} exec prometheus wget -qO- http://localhost:9090/-/reload --post-data='' && echo "Prometheus config reloaded."
+    {{compose_cmd}} exec prometheus wget -q -O /dev/stdout --post-data='' http://localhost:9090/-/reload && echo "Prometheus config reloaded."
 
 # Query Prometheus to verify all scrape targets are up (Prometheus is internal-only)
 test-scrape:
     @echo "Querying Prometheus for 'up' metric..."
-    {{compose_cmd}} exec prometheus wget -qO- "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
+    {{compose_cmd}} exec prometheus wget -q -O /dev/stdout "http://localhost:9090/api/v1/query?query=up" | jq '.data.result[] | {job: .metric.job, instance: .metric.instance, up: .value[1]}'
 
+
+# Smoke-test that Promtail renders the host label from ${PROMTAIL_HOST_LABEL:-${HOSTNAME}}
+test-promtail-host-label:
+    COMPOSE_CMD="{{compose_cmd}}" ./scripts/test-promtail-host-label.sh
 
 # Debug Prometheus from inside its container (port not exposed to host)
 debug-prometheus:
@@ -210,7 +238,7 @@ import-dashboards:
         echo "       at the repository root, then re-run 'just import-dashboards'." >&2
         exit 1
     fi
-    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
+    CONTAINER_CMD={{container_cmd}} GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
 
 # === Versioning ===
 

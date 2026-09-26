@@ -448,6 +448,23 @@ class TestGrafanaDashboardsConfig(unittest.TestCase):
                 assert field in provider, f"Provider missing field '{field}': {provider}"
 
 
+class TestDockerComposePromtailEnv(unittest.TestCase):
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.env = self.compose["services"]["promtail"].get("environment", {})
+
+    def test_promtail_receives_hostname(self) -> None:
+        assert "HOSTNAME" in self.env, (
+            "promtail must receive HOSTNAME for host-label expansion"
+        )
+
+    def test_promtail_receives_host_label_override(self) -> None:
+        assert "PROMTAIL_HOST_LABEL" in self.env, (
+            "promtail must receive PROMTAIL_HOST_LABEL so the override branch "
+            "of ${PROMTAIL_HOST_LABEL:-${HOSTNAME}} is reachable"
+        )
+
+
 class TestDockerComposeNetworkIsolation(unittest.TestCase):
     """Verify that the argus-loki internal network is correctly configured.
 
@@ -595,10 +612,68 @@ class TestDockerComposePorts(unittest.TestCase):
             f"argus-exporter must bind to 127.0.0.1:*:9100, got: {ports}"
         )
 
+    def test_grafana_password_uses_canonical_env_var(self) -> None:
+        """Grafana must consume the single documented variable and fail fast.
+
+        The stack carried two names for one secret: `GF_ADMIN_PASSWORD` for
+        just-based tooling and `GRAFANA_ADMIN_PASSWORD` for compose. A
+        deployment that set only one of them came up with a different admin
+        password than the tooling expected. Compose now reads the documented
+        name and requires it, so an unset value stops the stack instead of
+        silently falling back to the published `admin` default (issue #317).
+        """
+        grafana_env = self.compose["services"]["grafana"].get("environment", {})
+        expected = "${GF_ADMIN_PASSWORD:?set GF_ADMIN_PASSWORD in .env}"
+        assert grafana_env.get("GF_SECURITY_ADMIN_PASSWORD") == expected, (
+            "Grafana must require the documented GF_ADMIN_PASSWORD variable"
+        )
+
+    def test_grafana_does_not_use_legacy_password_variable(self) -> None:
+        compose_text = (REPO_ROOT / "docker-compose.yml").read_text()
+        assert "GRAFANA_ADMIN_PASSWORD" not in compose_text
+
     def test_grafana_anonymous_access_disabled(self) -> None:
         env = self.services["grafana"].get("environment", {})
         assert env.get("GF_AUTH_ANONYMOUS_ENABLED") == "false", (
             f"GF_AUTH_ANONYMOUS_ENABLED must be 'false', got: {env.get('GF_AUTH_ANONYMOUS_ENABLED')}"
+        )
+
+    def test_grafana_brute_force_protection_enabled(self) -> None:
+        # Double negative: the key disables protection, so "false" means the
+        # built-in lockout (5 failed logins / 5-minute window, hardcoded in
+        # Grafana OSS) is active.
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION") == "false", (
+            "GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION must be 'false' "
+            "(brute-force lockout enabled), got: "
+            f"{env.get('GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION')}"
+        )
+
+    def test_grafana_session_lifetime_set(self) -> None:
+        # Both keys are valid [auth] settings in grafana/grafana@v11.2.2.
+        env = self.services["grafana"].get("environment", {})
+        max_lifetime = env.get("GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION")
+        inactive_lifetime = env.get("GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION")
+        assert max_lifetime, (
+            "GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION must be set (absolute "
+            f"session cap), got: {max_lifetime!r}"
+        )
+        assert inactive_lifetime, (
+            "GF_AUTH_LOGIN_MAXIMUM_INACTIVE_LIFETIME_DURATION must be set "
+            f"(idle session timeout), got: {inactive_lifetime!r}"
+        )
+
+    def test_grafana_signup_disabled(self) -> None:
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_USERS_ALLOW_SIGN_UP") == "false", (
+            f"GF_USERS_ALLOW_SIGN_UP must be 'false', got: {env.get('GF_USERS_ALLOW_SIGN_UP')}"
+        )
+
+    def test_grafana_org_create_disabled(self) -> None:
+        env = self.services["grafana"].get("environment", {})
+        assert env.get("GF_USERS_ALLOW_ORG_CREATE") == "false", (
+            f"GF_USERS_ALLOW_ORG_CREATE must be 'false', got: "
+            f"{env.get('GF_USERS_ALLOW_ORG_CREATE')}"
         )
 
     def test_no_wildcard_port_bindings(self) -> None:
@@ -733,6 +808,36 @@ class TestComposePromtailHostname(unittest.TestCase):
         assert hostname is not None and str(hostname).strip() != "", (
             f"promtail 'hostname:' must be non-empty, got: {hostname!r}"
         )
+
+
+class TestPrometheusLifecycleAndHealthcheck(unittest.TestCase):
+    """Issue #198: Prometheus reload endpoint and wget flag portability."""
+
+    def setUp(self) -> None:
+        self.compose = load_yaml(REPO_ROOT / "docker-compose.yml")
+        self.prometheus = self.compose["services"]["prometheus"]
+
+    def test_prometheus_lifecycle_flag_present(self) -> None:
+        """--web.enable-lifecycle must be set so POST /-/reload works."""
+        command: Any = self.prometheus.get("command", [])
+        assert isinstance(command, list)
+        assert "--web.enable-lifecycle" in command, (
+            "prometheus command must include --web.enable-lifecycle "
+            "(required for POST /-/reload in just reload-prometheus)"
+        )
+
+    def test_prometheus_healthcheck_no_combined_qO(self) -> None:
+        """Prometheus healthcheck must not use the non-portable `-qO-` flag."""
+        test_cmd: Any = self.prometheus["healthcheck"]["test"]
+        assert "-qO-" not in str(test_cmd), (
+            f"prometheus healthcheck uses non-portable '-qO-' wget flag: {test_cmd!r}"
+        )
+
+    def test_prometheus_healthcheck_uses_portable_flags(self) -> None:
+        """Prometheus healthcheck must use space-separated -q -O flags (BusyBox-safe)."""
+        test_cmd: Any = self.prometheus["healthcheck"]["test"]
+        assert "-q" in str(test_cmd)
+        assert "/dev/stdout" in str(test_cmd)
 
 
 if __name__ == "__main__":

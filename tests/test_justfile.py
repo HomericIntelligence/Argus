@@ -23,6 +23,37 @@ def _justfile_content() -> str:
 
 
 # ---------------------------------------------------------------------------
+# .env override wiring (issue #410)
+# ---------------------------------------------------------------------------
+
+
+def test_agamemnon_url_overridable() -> None:
+    """AGAMEMNON_URL must accept .env overrides via env_var_or_default."""
+    assert 'AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL"' in _justfile_content(), (
+        "AGAMEMNON_URL is hardcoded; must use env_var_or_default to honor .env"
+    )
+
+
+def test_grafana_port_overridable() -> None:
+    """GRAFANA_PORT must accept .env overrides via env_var_or_default."""
+    assert 'GRAFANA_PORT := env_var_or_default("GRAFANA_PORT"' in _justfile_content(), (
+        "GRAFANA_PORT is hardcoded; must use env_var_or_default to honor .env"
+    )
+
+
+def test_env_example_has_no_duplicate_keys() -> None:
+    """`.env.example` must define each key at most once."""
+    keys: list[str] = []
+    for line in (REPO_ROOT / ".env.example").read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        keys.append(line.split("=", 1)[0])
+    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    assert not duplicates, f"Duplicate keys in .env.example: {duplicates}"
+
+
+# ---------------------------------------------------------------------------
 # Hardcoded-credential guards (pre-existing coverage — do not drop)
 # ---------------------------------------------------------------------------
 
@@ -55,11 +86,62 @@ def test_import_dashboards_uses_gf_admin_password() -> None:
     )
 
 
+def test_import_dashboards_exports_container_cmd() -> None:
+    """import-dashboards must export CONTAINER_CMD like every other script recipe.
+
+    Issue #354: scripts invoked by recipes consistently receive
+    ``CONTAINER_CMD`` so container-based logic can pick docker vs podman.
+    import-dashboards.sh only uses curl today, but the env var must be
+    present if it ever grows a container call.
+    """
+    match = re.search(
+        r"^import-dashboards:(.*?)(?=^\S|\Z)", _justfile_content(), re.MULTILINE | re.DOTALL
+    )
+    assert match, "import-dashboards recipe not found in justfile"
+    assert "CONTAINER_CMD={{container_cmd}}" in match.group(1), (
+        "import-dashboards recipe must export CONTAINER_CMD={{container_cmd}} "
+        "so scripts inherit the resolved container runtime"
+    )
+
+
+def test_script_recipes_export_container_cmd() -> None:
+    """Every recipe that runs a scripts/*.sh wrapper must pass CONTAINER_CMD."""
+    content = _justfile_content()
+    assert content.count("CONTAINER_CMD={{container_cmd}}") >= 3, (
+        "backup, restore, and import-dashboards recipes should all export "
+        "CONTAINER_CMD={{container_cmd}}"
+    )
+
+
 def test_no_cut_d_colon_credential_extraction() -> None:
     """Credential extraction via 'cut -d: -f2' must be gone from the justfile."""
     content = _justfile_content()
     assert "cut -d:" not in content, (
         "Credential extraction via 'cut -d:' still present in justfile"
+    )
+
+
+# ---------------------------------------------------------------------------
+# wget flag portability (issue #198)
+# ---------------------------------------------------------------------------
+
+
+def test_no_combined_qO_flag_in_justfile() -> None:
+    """The combined `-qO-` flag is not portable across GNU and BusyBox wget."""
+    content = _justfile_content()
+    assert "-qO-" not in content, (
+        "Non-portable combined '-qO-' wget flag found in justfile"
+    )
+
+
+def test_reload_prometheus_uses_post_data() -> None:
+    """reload-prometheus must POST to /-/reload using space-separated flags."""
+    content = _justfile_content()
+    assert "--post-data=''" in content, (
+        "reload-prometheus recipe missing --post-data='' for HTTP POST"
+    )
+    assert "http://localhost:9090/-/reload" in content, (
+        "reload-prometheus recipe missing /-/reload endpoint"
     )
 
 
@@ -112,3 +194,47 @@ def test_alias_dry_run_dispatches_to_gen_htpasswd() -> None:
     # `just -n` prints shebang recipe bodies to stderr
     combined = result.stdout + result.stderr
     assert "htpasswd -nbB loki" in combined
+
+
+# ---------------------------------------------------------------------------
+# .env presence guard (issue #214)
+# ---------------------------------------------------------------------------
+
+
+def _check_env_body() -> str:
+    """Return the body of the check-env recipe (up to the next comment block)."""
+    content = _justfile_content()
+    start = content.index("\ncheck-env:\n")
+    end = content.find("\n# ", start)
+    return content[start:] if end == -1 else content[start:end]
+
+
+def test_check_env_recipe_present() -> None:
+    """The check-env guard recipe must exist in the justfile."""
+    assert "\ncheck-env:\n" in _justfile_content(), "check-env recipe not found in justfile"
+
+
+def test_start_depends_on_check_env() -> None:
+    """start must declare the check-env dependency so the guard runs first."""
+    assert "start: check-env" in _justfile_content(), (
+        "start recipe does not depend on check-env"
+    )
+
+
+def test_restart_depends_on_check_env() -> None:
+    """restart must declare the check-env dependency so the guard runs first."""
+    assert "restart: check-env" in _justfile_content(), (
+        "restart recipe does not depend on check-env"
+    )
+
+
+def test_check_env_exits_nonzero() -> None:
+    """check-env must exit non-zero when .env is missing."""
+    assert "exit 1" in _check_env_body(), "check-env recipe does not exit non-zero"
+
+
+def test_check_env_remediation_mentions_env_example() -> None:
+    """check-env's remediation hint must point at .env.example."""
+    assert ".env.example" in _check_env_body(), (
+        "check-env remediation hint does not mention .env.example"
+    )
