@@ -6,8 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- `.env.example` no longer offers `GRAFANA_ADMIN_PASSWORD`. `docker-compose.yml`
+  has read `GF_ADMIN_PASSWORD` for Grafana since #662, so the second name was a
+  dead knob that the new env-doc drift gate would otherwise have required the
+  agent contract to document.
+
 ### Fixed
 
+- `scripts/check-env-docs.sh` reverse-drift failures now report the offending
+  `AGENTS.md` line and name `DOC_ONLY_ALLOWLIST` as the escape hatch, instead of
+  listing a bare token that reads like a real `.env.example` defect. The
+  membership scan also uses a quoted `"$@"` so it stays correct when bash 3.2
+  expands an empty `${1+"$@"}` to `0` (the macOS CI runner).
 - CI `Test exporter` job now installs `just`, so tests that shell out to
   `just` (e.g. `TestJustRecipeGuard`) no longer fail with `FileNotFoundError`.
 - CI `Lint Python` job pins `ruff==0.16.4` to stop unpinned-install drift
