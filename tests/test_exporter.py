@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import sys
 import unittest
 import urllib.error
@@ -422,6 +423,51 @@ class TestHealthCheck(unittest.TestCase):
         with patch("urllib.request.urlopen", side_effect=_urlopen_raises):
             result = exporter_mod._health_check("http://fake/health")
         self.assertEqual(result, 0)
+
+    def test_returns_0_for_every_relevant_error_type(self):
+        """The broad-catch contract must hold for each error path a probe can hit.
+
+        `_health_check` catches `Exception` so a probe never propagates (issue
+        #272). The generic-exception test above does not distinguish the concrete
+        types, so cover the ones a scrape can actually raise: transport
+        failures, a response error, a timeout, and a URL urllib cannot parse.
+        """
+        cases = {
+            "oserror": OSError("connection refused"),
+            "urlerror": urllib.error.URLError("name or service not known"),
+            "http_error": urllib.error.HTTPError(
+                "http://fake/health", 500, "server error", {}, None
+            ),
+            "timeout": TimeoutError("timed out"),
+            "ssl_error": ssl.SSLError("certificate verify failed"),
+            "value_error": ValueError("unknown url type: 'ftp'"),
+        }
+        for name, error in cases.items():
+            with (
+                self.subTest(error_type=name),
+                patch("urllib.request.urlopen", side_effect=error),
+            ):
+                self.assertEqual(
+                    exporter_mod._health_check("http://fake/health"),
+                    0,
+                    f"{name} must be swallowed and reported as 0",
+                )
+
+    def test_returns_0_when_tls_context_cannot_be_built(self):
+        """A missing or unreadable CA file must not escape the probe.
+
+        `_build_ssl_context(ca_file)` is called *inside* the guarded block, so a
+        bad CA path is an error path of `_health_check` itself (issue #272).
+        """
+        with patch.object(
+            exporter_mod, "_build_ssl_context", side_effect=FileNotFoundError("no CA")
+        ):
+            self.assertEqual(
+                exporter_mod._health_check(
+                    "https://fake/health", ca_file="/missing/ca.pem"
+                ),
+                0,
+            )
 
 
 # ---------------------------------------------------------------------------
