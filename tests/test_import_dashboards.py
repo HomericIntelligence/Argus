@@ -21,7 +21,11 @@ class TestImportDashboardsScript(unittest.TestCase):
 
     def test_script_fails_without_password(self) -> None:
         """Script must exit non-zero and print ERROR when GF_ADMIN_PASSWORD is unset."""
-        env = {k: v for k, v in os.environ.items() if k != "GF_ADMIN_PASSWORD"}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"GF_ADMIN_PASSWORD", "GRAFANA_ADMIN_PASSWORD"}
+        }
         # Use an invalid port so no real network call can succeed even if the guard is missing.
         env["GRAFANA_PORT"] = "0"
         result = subprocess.run(
@@ -29,11 +33,31 @@ class TestImportDashboardsScript(unittest.TestCase):
             env=env,
             capture_output=True,
             text=True,
-        check=False,
+            check=False,
         )
         assert result.returncode != 0, "Script should exit non-zero when password is unset"
         assert "ERROR" in result.stderr, (
             f"Expected 'ERROR' in stderr, got: {result.stderr!r}"
+        )
+
+    def test_startup_guard_does_not_interpolate_the_password(self) -> None:
+        """start and restart must not put the admin password on a command line.
+
+        `just` expands `{{GF_ADMIN_PASSWORD}}` before it runs a recipe line, so
+        an interpolation places the plaintext password in the argument vector
+        of the `sh -cu` process that runs the line. That value is readable
+        through `/proc/<pid>/cmdline` and `ps`, and `just` echoes the expanded
+        line to standard output. The guard reads the variable from the
+        environment instead: `set dotenv-load` exports it, and the script
+        sources `.env` when it is unset (review finding pr-662-round1/F-001).
+        """
+        source = JUSTFILE.read_text()
+        assert "{{GF_ADMIN_PASSWORD}}" not in source, (
+            "no recipe may interpolate the Grafana admin password into a "
+            "command line; pass it through the environment instead"
+        )
+        assert source.count("./scripts/check-grafana-password.sh") == 2, (
+            "start and restart must both call the startup guard"
         )
 
     def test_script_exits_with_useful_message_on_401(self) -> None:

@@ -91,6 +91,22 @@ def test_pixi_tasks_have_just_recipes() -> None:
     )
 
 
+def test_lint_and_validate_tasks_defined() -> None:
+    """The justfile's lint/validate entry points must be reachable via pixi (issue #415).
+
+    Contributors who only know `pixi run` had no way to lint or validate the
+    repo without falling back to `just`. Both tasks now delegate to the
+    justfile recipe, which stays the source of truth.
+    """
+    tasks = _pixi_tasks()
+    assert tasks.get("lint") == "just lint", (
+        "pixi.toml must define `lint = \"just lint\"` so pixi delegates to the justfile"
+    )
+    assert tasks.get("validate") == "just validate", (
+        "pixi.toml must define `validate = \"just validate\"` so pixi delegates to the justfile"
+    )
+
+
 def test_pixi_just_commands_consistent() -> None:
     """Every shared task's command must stay consistent across pixi and just.
 

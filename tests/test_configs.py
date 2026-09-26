@@ -612,6 +612,26 @@ class TestDockerComposePorts(unittest.TestCase):
             f"argus-exporter must bind to 127.0.0.1:*:9100, got: {ports}"
         )
 
+    def test_grafana_password_uses_canonical_env_var(self) -> None:
+        """Grafana must consume the single documented variable and fail fast.
+
+        The stack carried two names for one secret: `GF_ADMIN_PASSWORD` for
+        just-based tooling and `GRAFANA_ADMIN_PASSWORD` for compose. A
+        deployment that set only one of them came up with a different admin
+        password than the tooling expected. Compose now reads the documented
+        name and requires it, so an unset value stops the stack instead of
+        silently falling back to the published `admin` default (issue #317).
+        """
+        grafana_env = self.compose["services"]["grafana"].get("environment", {})
+        expected = "${GF_ADMIN_PASSWORD:?set GF_ADMIN_PASSWORD in .env}"
+        assert grafana_env.get("GF_SECURITY_ADMIN_PASSWORD") == expected, (
+            "Grafana must require the documented GF_ADMIN_PASSWORD variable"
+        )
+
+    def test_grafana_does_not_use_legacy_password_variable(self) -> None:
+        compose_text = (REPO_ROOT / "docker-compose.yml").read_text()
+        assert "GRAFANA_ADMIN_PASSWORD" not in compose_text
+
     def test_grafana_anonymous_access_disabled(self) -> None:
         env = self.services["grafana"].get("environment", {})
         assert env.get("GF_AUTH_ANONYMOUS_ENABLED") == "false", (
