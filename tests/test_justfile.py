@@ -23,6 +23,37 @@ def _justfile_content() -> str:
 
 
 # ---------------------------------------------------------------------------
+# .env override wiring (issue #410)
+# ---------------------------------------------------------------------------
+
+
+def test_agamemnon_url_overridable() -> None:
+    """AGAMEMNON_URL must accept .env overrides via env_var_or_default."""
+    assert 'AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL"' in _justfile_content(), (
+        "AGAMEMNON_URL is hardcoded; must use env_var_or_default to honor .env"
+    )
+
+
+def test_grafana_port_overridable() -> None:
+    """GRAFANA_PORT must accept .env overrides via env_var_or_default."""
+    assert 'GRAFANA_PORT := env_var_or_default("GRAFANA_PORT"' in _justfile_content(), (
+        "GRAFANA_PORT is hardcoded; must use env_var_or_default to honor .env"
+    )
+
+
+def test_env_example_has_no_duplicate_keys() -> None:
+    """`.env.example` must define each key at most once."""
+    keys: list[str] = []
+    for line in (REPO_ROOT / ".env.example").read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        keys.append(line.split("=", 1)[0])
+    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    assert not duplicates, f"Duplicate keys in .env.example: {duplicates}"
+
+
+# ---------------------------------------------------------------------------
 # Hardcoded-credential guards (pre-existing coverage — do not drop)
 # ---------------------------------------------------------------------------
 
@@ -52,6 +83,33 @@ def test_import_dashboards_uses_gf_admin_password() -> None:
     content = _justfile_content()
     assert "GF_ADMIN_PASSWORD" in content, (
         "import-dashboards recipe does not reference GF_ADMIN_PASSWORD"
+    )
+
+
+def test_import_dashboards_exports_container_cmd() -> None:
+    """import-dashboards must export CONTAINER_CMD like every other script recipe.
+
+    Issue #354: scripts invoked by recipes consistently receive
+    ``CONTAINER_CMD`` so container-based logic can pick docker vs podman.
+    import-dashboards.sh only uses curl today, but the env var must be
+    present if it ever grows a container call.
+    """
+    match = re.search(
+        r"^import-dashboards:(.*?)(?=^\S|\Z)", _justfile_content(), re.MULTILINE | re.DOTALL
+    )
+    assert match, "import-dashboards recipe not found in justfile"
+    assert "CONTAINER_CMD={{container_cmd}}" in match.group(1), (
+        "import-dashboards recipe must export CONTAINER_CMD={{container_cmd}} "
+        "so scripts inherit the resolved container runtime"
+    )
+
+
+def test_script_recipes_export_container_cmd() -> None:
+    """Every recipe that runs a scripts/*.sh wrapper must pass CONTAINER_CMD."""
+    content = _justfile_content()
+    assert content.count("CONTAINER_CMD={{container_cmd}}") >= 3, (
+        "backup, restore, and import-dashboards recipes should all export "
+        "CONTAINER_CMD={{container_cmd}}"
     )
 
 

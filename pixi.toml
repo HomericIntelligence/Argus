@@ -34,6 +34,8 @@ status    = "just status"
 test      = "python -m pytest tests/ -v"
 test-unit = "python -m pytest tests/ -v --cov=exporter --cov-report=term-missing --cov-report=xml"
 test-smoke = "bash scripts/smoke-stack.sh"
+lint      = "just lint"
+validate  = "just validate"
 
 [feature.lint.dependencies]
 python = ">=3.13,<3.14"

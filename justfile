@@ -2,6 +2,13 @@
 # recipe runs — every variable in `.env` is exported to the recipe's process.
 # Several recipes depend on this, including `import-dashboards`, which reads
 # GF_ADMIN_PASSWORD and GRAFANA_ADMIN_USER from the environment.
+#
+# Required env vars (set in `.env`; see `.env.example` for the canonical list):
+#   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
+#                       only so `just --list` works without `.env`; production
+#                       deployments MUST override this.
+#   AGAMEMNON_URL       Agamemnon API base URL (default http://172.20.0.1:8080).
+#   GRAFANA_PORT        Host port Grafana is published on (default 3001).
 set dotenv-load
 
 # === Variables ===
@@ -9,8 +16,8 @@ set dotenv-load
 compose_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "podman-compose" } else { "docker compose" }
 container_cmd := if `command -v podman-compose 2>/dev/null || true` != "" { "podman" } else { "docker" }
 
-AGAMEMNON_URL := "http://172.20.0.1:8080"
-GRAFANA_PORT := "3001"
+AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL", "http://172.20.0.1:8080")
+GRAFANA_PORT := env_var_or_default("GRAFANA_PORT", "3001")
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GRAFANA_ADMIN_USER := env_var_or_default("GRAFANA_ADMIN_USER", "admin")
 GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
@@ -144,6 +151,10 @@ test-unit:
 test-smoke:
     pixi run test-smoke
 
+# Run linters (ruff) across the repository
+lint:
+    pixi run ruff check .
+
 # === Security ===
 
 # Run pip-audit CVE scan over the default + lint environments (mirrors .github/workflows/security.yml)
@@ -233,7 +244,7 @@ import-dashboards:
         echo "       at the repository root, then re-run 'just import-dashboards'." >&2
         exit 1
     fi
-    GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
+    CONTAINER_CMD={{container_cmd}} GRAFANA_PORT={{GRAFANA_PORT}} GRAFANA_ADMIN_USER={{GRAFANA_ADMIN_USER}} GF_ADMIN_PASSWORD="${GF_ADMIN_PASSWORD}" ./scripts/import-dashboards.sh
 
 # === Versioning ===
 
