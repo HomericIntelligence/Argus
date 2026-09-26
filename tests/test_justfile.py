@@ -134,15 +134,59 @@ def test_no_combined_qO_flag_in_justfile() -> None:
     )
 
 
-def test_reload_prometheus_uses_post_data() -> None:
-    """reload-prometheus must POST to /-/reload using space-separated flags."""
+def test_reload_prometheus_uses_verified_https_post() -> None:
+    """reload-prometheus must POST to /-/reload over the CA-verified endpoint."""
     content = _justfile_content()
-    assert "--post-data=''" in content, (
-        "reload-prometheus recipe missing --post-data='' for HTTP POST"
+    assert "-X POST" in content, (
+        "reload-prometheus recipe must use an explicit HTTP POST"
     )
-    assert "http://localhost:9090/-/reload" in content, (
-        "reload-prometheus recipe missing /-/reload endpoint"
+    assert "https://localhost:9090/-/reload" in content, (
+        "reload-prometheus recipe missing the /-/reload endpoint"
     )
+    assert "--cacert certs/ca.crt" in content, (
+        "reload-prometheus recipe must verify the Argus CA certificate"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Prometheus HTTPS probes (issue #206)
+# ---------------------------------------------------------------------------
+
+
+def test_no_plaintext_prometheus_probe_in_justfile() -> None:
+    """Prometheus serves HTTPS since the web config split, so no http probe may survive."""
+    content = _justfile_content()
+    assert "http://localhost:9090" not in content, (
+        "the justfile still probes Prometheus over plaintext http; it serves "
+        "HTTPS since configs/prometheus-web.yml landed (#206)"
+    )
+
+
+def test_test_scrape_uses_https() -> None:
+    """test-scrape must query the Prometheus HTTPS endpoint."""
+    content = _justfile_content()
+    assert "https://localhost:9090/api/v1/query?query=up" in content, (
+        "test-scrape must query Prometheus over https"
+    )
+
+
+def test_prometheus_probes_verify_argus_ca() -> None:
+    """Prometheus operator probes must verify the Argus CA certificate.
+
+    Scoped to the two Prometheus recipes rather than the whole justfile: an
+    unrelated recipe that legitimately probes an untrusted endpoint should not
+    be able to break this assertion. The per-recipe checks live with their own
+    tests.
+    """
+    content = _justfile_content()
+    assert content.count("--cacert certs/ca.crt") >= 2, (
+        "reload-prometheus and test-scrape must both pass the Argus CA"
+    )
+    for recipe in ("reload-prometheus:", "test-scrape:"):
+        body = content.split(recipe, 1)[1].split("\n\n", 1)[0]
+        assert "--no-check-certificate" not in body, (
+            f"{recipe} must not bypass certificate verification"
+        )
 
 
 # ---------------------------------------------------------------------------

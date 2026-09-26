@@ -30,6 +30,11 @@ services:
       NOMAD_ADDR: ${NOMAD_ADDR:-172.20.0.1:4646}
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml.tmpl:ro
+      # The HTTPS server settings are a *separate* file: the scrape and web
+      # loaders each reject the other's keys, so one file for both roles stops
+      # Prometheus from starting (issue #206).
+      - ./configs/prometheus-web.yml:/etc/prometheus/web.yml:ro
+      - ./configs/prometheus-http-config.yml:/etc/prometheus/http-config.yml:ro
       - ./rules:/etc/prometheus/rules:ro
       - ./certs/prometheus.crt:/etc/prometheus/tls/prometheus.crt:ro
       - ./certs/prometheus.key:/etc/prometheus/tls/prometheus.key:ro
@@ -60,14 +65,23 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
-      - "--web.config.file=/run/prometheus/prometheus.yml"
+      - "--web.config.file=/etc/prometheus/web.yml"
       # Enables POST /-/reload and POST /-/quit on :9090. Reachable by any
       # container on the `argus` bridge; acceptable given the trusted internal topology.
       - "--web.enable-lifecycle"
     # String-form (CMD-SHELL) with space-separated wget flags — BusyBox-safe
     # (`-qO-` is not portable across GNU vs BusyBox wget). Closes #198.
+    # HTTPS since the web config above enables TLS. The pinned Prometheus image
+    # ships BusyBox wget, which cannot verify a custom CA, so use promtool's
+    # CA-aware HTTP client for the in-container readiness probe.
     healthcheck:
-      test: "wget -q -O /dev/stdout http://localhost:9090/-/ready || exit 1"
+      test:
+        - CMD
+        - promtool
+        - check
+        - ready
+        - --http.config.file=/etc/prometheus/http-config.yml
+        - --url=https://localhost:9090
       interval: 30s
       timeout: 10s
       retries: 3
@@ -443,8 +457,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3002:3002"
+    volumes:
+      # Atlas queries Grafana and Prometheus over HTTPS, and the distroless
+      # image ships no system trust bundle. Go's crypto/x509 honours
+      # SSL_CERT_FILE, so this mount is its only trust source for our self-signed
+      # CA.
+      - ./certs/ca.crt:/certs/ca.crt:ro
     environment:
       ATLAS_LISTEN_ADDR: ":3002"
+      SSL_CERT_FILE: "/certs/ca.crt"
       ATLAS_AGAMEMNON_URL: ${AGAMEMNON_URL:-http://172.20.0.1:8080}
       ATLAS_NESTOR_URL: ${NESTOR_URL:-http://172.20.0.1:8081}
       ATLAS_NATS_MON_URL: ${NATS_URL:-http://172.24.0.1:8222}
@@ -454,7 +475,7 @@ services:
       # server-to-server traffic inside the stack).
       ATLAS_GRAFANA_URL: "https://argus-grafana:3000"
       ATLAS_LOKI_URL: "http://argus-loki-proxy:80"
-      ATLAS_PROMETHEUS_URL: "http://argus-prometheus:9090"
+      ATLAS_PROMETHEUS_URL: "https://argus-prometheus:9090"
       # Atlas defaults to bearer auth and refuses to start without
       # ATLAS_AUTH_BEARER_TOKEN. Operators who genuinely need an
       # unauthenticated dashboard (single-host dev, fully isolated
