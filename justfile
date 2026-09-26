@@ -150,6 +150,10 @@ test:
 test-unit:
     pixi run test-unit
 
+# Run linters (ruff) across the repository
+lint:
+    pixi run ruff check .
+
 # === Security ===
 
 # Run pip-audit CVE scan over the default + lint environments (mirrors .github/workflows/security.yml)

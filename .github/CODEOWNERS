@@ -20,3 +20,11 @@
 
 # CI/CD and GitHub configuration
 /.github/ @mvillmow
+
+# Top-level operational files — they set network topology, container flags, and
+# the task runner every contributor executes, so a change can alter the stack's
+# runtime without touching a configs/ path (issue #371). Kept in the same
+# root-anchored form as the security-sensitive entries above.
+/docker-compose.yml @mvillmow
+/justfile @mvillmow
+/pixi.toml @mvillmow
