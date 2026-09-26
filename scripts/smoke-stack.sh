@@ -4,8 +4,8 @@
 #
 # Idempotent: creates any missing prereqs that `just start` normally assumes
 # (see AGENTS.md operator notes). Teardown runs on success AND failure via
-# EXIT trap. No `|| true` suppressions (repo convention) except inside
-# diagnose(), where a failed diagnostic must never replace the real failure.
+# EXIT trap. No `|| true` suppressions (repo convention): diagnose() and
+# cleanup() disable errexit and print each command's exit status instead.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,20 +56,12 @@ export ATLAS_AUTH_BEARER_TOKEN="${ATLAS_AUTH_BEARER_TOKEN:-$(openssl rand -hex 3
 # On failure, dump the state that explains it BEFORE tearing the stack down.
 # Without this the job only reports `up == 0` and no reader can tell a slow
 # scrape from an unreachable target or a crash-looping container.
-diagnose() {
-    local status="$1"
-    if (( status == 0 )); then
-        return 0
-    fi
-    local targets_json
-    targets_json="$(mktemp)"
-    echo "" >&2
-    echo "::group::smoke failure diagnostics" >&2
-    echo "--- compose ps ---" >&2
-    "${COMPOSE[@]}" ps >&2 2>&1 || true
-    echo "--- prometheus targets (health / lastError) ---" >&2
-    curl -sk -o "$targets_json" https://127.0.0.1:9090/api/v1/targets || true
-    python - "$targets_json" <<'PY' >&2 2>&1 || true
+# Dump prometheus target health (each failing job carries its lastError).
+_dump_targets() {
+    local out
+    out="$(mktemp)"
+    curl -sk -o "$out" https://127.0.0.1:9090/api/v1/targets
+    python - "$out" <<'PY'
 import json
 import sys
 
@@ -84,18 +76,49 @@ else:
         last = target.get("lastError") or "-"
         print(f"  {job}: health={target['health']} lastError={last}")
 PY
-    rm -f "$targets_json"
+    rm -f "$out"
+}
+
+# Run one diagnostic and print its exit status. The caller disables errexit
+# so a failed probe cannot replace the real smoke failure, and the status
+# is printed rather than swallowed -- that is what the repo's
+# forbid-suppressions gate guards against (no `|| true`).
+run_diag() {
+    local label="$1"
+    shift
+    echo "--- ${label} ---" >&2
+    "$@"
+    echo "    [exit $?]" >&2
+    return 0
+}
+
+# On failure, dump the state that explains it BEFORE tearing the stack down.
+# Without this the job only reports `up == 0`, and no reader can tell a
+# slow scrape from an unreachable target or a crash-looping container.
+diagnose() {
+    local status="$1"
+    if (( status == 0 )); then
+        return 0
+    fi
+    set +e
+    echo "" >&2
+    echo "::group::smoke failure diagnostics" >&2
+    run_diag "compose ps" "${COMPOSE[@]}" ps
+    run_diag "prometheus targets (health / lastError)" _dump_targets
     for svc in argus-exporter argus-prometheus argus-alertmanager; do
-        echo "--- ${svc} logs (tail 40) ---" >&2
-        "${COMPOSE[@]}" logs --tail 40 "$svc" >&2 2>&1 || true
+        run_diag "${svc} logs (tail 40)" "${COMPOSE[@]}" logs --tail 40 "$svc"
     done
     echo "::endgroup::" >&2
+    set -e
+    return 0
 }
 
 cleanup() {
     local status=$?
     diagnose "$status"
-    "${COMPOSE[@]}" down -v --remove-orphans || true
+    set +e
+    "${COMPOSE[@]}" down -v --remove-orphans
+    echo "    [compose down exit $?]" >&2
     exit "$status"
 }
 trap cleanup EXIT
