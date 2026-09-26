@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub Actions pins refreshed: `prefix-dev/setup-pixi` 0.10.1 → 0.10.2,
+  `github/codeql-action` 4.37.8 → 4.37.9 (default CodeQL bundle 2.26.4),
+  `docker/setup-qemu-action` 4.2.0 → 4.3.0. All three remain pinned to commit
+  SHAs.
+
 ### Fixed
 
 - CI `Test exporter` job now installs `just`, so tests that shell out to
