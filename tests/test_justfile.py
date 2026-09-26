@@ -171,14 +171,22 @@ def test_test_scrape_uses_https() -> None:
 
 
 def test_prometheus_probes_verify_argus_ca() -> None:
-    """Prometheus operator probes must verify the Argus CA certificate."""
+    """Prometheus operator probes must verify the Argus CA certificate.
+
+    Scoped to the two Prometheus recipes rather than the whole justfile: an
+    unrelated recipe that legitimately probes an untrusted endpoint should not
+    be able to break this assertion. The per-recipe checks live with their own
+    tests.
+    """
     content = _justfile_content()
     assert content.count("--cacert certs/ca.crt") >= 2, (
         "reload-prometheus and test-scrape must both pass the Argus CA"
     )
-    assert "--no-check-certificate" not in content, (
-        "Prometheus probes must not bypass certificate verification"
-    )
+    for recipe in ("reload-prometheus:", "test-scrape:"):
+        body = content.split(recipe, 1)[1].split("\n\n", 1)[0]
+        assert "--no-check-certificate" not in body, (
+            f"{recipe} must not bypass certificate verification"
+        )
 
 
 # ---------------------------------------------------------------------------
