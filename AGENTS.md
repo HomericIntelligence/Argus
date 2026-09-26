@@ -364,6 +364,7 @@ just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoin
 just test                    # CI/CD runs the full pytest unit-test suite; use targeted pytest locally
 just check-ports             # Verify running stack's host ports are loopback-only
 just check-ports-static      # Verify docker-compose.yml ports are loopback-only (issue #327)
+just test-smoke              # Live-stack smoke tests (requires Docker; builds and tears down the stack incl. volumes)
 just backup                  # Back up data volumes to ./backups/
 ```
 
