@@ -38,16 +38,28 @@ Agents **MUST NOT** modify `docker-compose.yml` network topology, external servi
 
 ## Stack Components
 
-| Service         | Image                          | Purpose                                                |
-|-----------------|--------------------------------|--------------------------------------------------------|
-| Prometheus      | prom/prometheus:v2.54.1        | Scrape and store metrics                               |
-| Alertmanager    | prom/alertmanager:v0.32.1      | Route Prometheus alerts to receivers                   |
-| Loki            | grafana/loki:3.1.2             | Store and query log streams                            |
-| loki-proxy      | nginx:1.27-alpine              | Basic-auth proxy in front of Loki                      |
-| grafana-proxy   | nginx:1.27-alpine              | Basic-auth proxy in front of Grafana (issue #321)      |
-| Promtail        | grafana/promtail:3.1.2         | Tail container logs and ship to Loki                   |
-| Grafana         | grafana/grafana:11.2.2         | Visualize metrics and logs                             |
-| argus-exporter  | pinned GHCR image `ghcr.io/homericintelligence/argus-exporter:vX.Y.Z` (version tracked in `exporter/VERSION`, bumped via `just bump-exporter-version`) | Convert HomericIntelligence APIs to Prometheus metrics |
+Image tags are pinned here to match `docker-compose.yml` (bumped by Dependabot);
+the drift test `tests/test_doc_drift.py` keeps this table in sync with compose.
+
+| Service            | Image                                    | Purpose                                                |
+|--------------------|------------------------------------------|--------------------------------------------------------|
+| prometheus         | prom/prometheus:v2.54.1                  | Scrape and store metrics                               |
+| alertmanager       | prom/alertmanager:v0.32.1                | Route Prometheus alerts to receivers                   |
+| loki               | grafana/loki:3.1.2                       | Store and query log streams                            |
+| loki-proxy         | nginx:1.27-alpine                        | Basic-auth proxy in front of Loki                      |
+| grafana-proxy      | nginx:1.27-alpine                        | Basic-auth proxy in front of Grafana (issue #321)      |
+| promtail           | grafana/promtail:3.1.2                   | Tail container logs and ship to Loki                   |
+| grafana            | grafana/grafana:11.2.2                   | Visualize metrics and logs                             |
+| grafana-init       | alpine:3.20                              | One-shot chown of the Grafana data volume pre-start    |
+| argus-exporter     | pinned GHCR image (see note)             | Convert HomericIntelligence APIs to Prometheus metrics |
+| argus-dashboard    | ghcr.io/homericintelligence/atlas:v0.2.0 | Unified Atlas dashboard UI (:3002)                     |
+| jetstream-consumer | built locally (see note)                 | Durable JetStream pull subscriber for event metrics    |
+| debug-shell        | python:3.11.10-slim                      | Dev-only troubleshooting shell (profile: dev)          |
+
+The `argus-exporter` image is pinned to
+`ghcr.io/homericintelligence/argus-exporter:vX.Y.Z`; the version is tracked in `exporter/VERSION`
+and bumped via `just bump-exporter-version`. `jetstream-consumer` is built locally by
+docker-compose and can be pinned via `JETSTREAM_CONSUMER_IMAGE` instead.
 
 ### Network topology (two-network design)
 
@@ -135,21 +147,24 @@ Atlas dashboard variables use the `ATLAS_` prefix — see `dashboard/README.md` 
 
 ## Scrape Targets
 
-| Job              | Source Env Var   | Default Host      | Path            | What it provides              |
-|------------------|------------------|-------------------|-----------------|-------------------------------|
-| homeric-exporter | —                | argus-exporter    | /metrics        | Agent, task, NATS metrics     |
-| prometheus       | —                | localhost:9090    | /metrics        | Prometheus self-monitoring    |
-| nomad            | —                | 172.20.0.1:4646   | /v1/metrics     | Job and allocation metrics    |
+| Job                | Target                                      | Path        | What it provides                    |
+|--------------------|---------------------------------------------|-------------|-------------------------------------|
+| homeric-exporter   | argus-exporter:9100                         | /metrics    | Agamemnon, Nestor, and NATS metrics |
+| jetstream-consumer | jetstream-consumer:9101                     | /metrics    | JetStream event-rate / task-latency |
+| prometheus         | localhost:9090                              | /metrics    | Prometheus self-monitoring (HTTPS)  |
+| nomad              | `${NOMAD_ADDR}` (default `172.20.0.1:4646`) | /v1/metrics | Job and allocation metrics          |
+| atlas              | argus-dashboard:3002                        | /metrics    | Atlas dashboard self-metrics        |
+| alertmanager       | alertmanager:9093                           | /metrics    | Alertmanager pipeline health        |
 
 The exporter aggregates Agamemnon, Nestor, and NATS data and exposes them as
-Prometheus metrics on port 9100.
+Prometheus metrics on port 9100; Prometheus does **not** scrape those upstreams
+directly. Upstream URLs are set via environment in `docker-compose.yml`
+(`AGAMEMNON_URL`, `NESTOR_URL`, `NATS_URL` — see Environment Variables above).
+The Nomad target host:port is interpolated from the `NOMAD_ADDR` env var into
+the rendered config by the prometheus service entrypoint at container start.
 
-The `NATS_URL` env var (`http://172.24.0.1:8222`) addresses the host gateway,
-which the exporter container uses to reach NATS on the WSL host. Prometheus,
-in contrast, scrapes NATS at `localhost:8222` — that target is interpreted
-*inside* the prometheus container (because both Prometheus and the NATS
-host gateway resolve to the host's loopback there). The two addresses point
-at the same NATS instance from different network namespaces.
+Promtail (port 9080) is intentionally not scraped — see the note at the end of
+`configs/prometheus.yml`.
 
 ## Operator Notes
 
@@ -207,6 +222,25 @@ new to the stack frequently trip on:
    package for Windows; tasks like `just test-scrape` that pipe through `jq`
    will fail there. Windows contributors should install `jq` via `winget` or
    `choco` and put it on `$PATH`.
+11. **Grafana login lockout is fixed at 5 attempts / 5 minutes.** Five failed
+    logins within a 5-minute window lock the account for the rest of that
+    window; the threshold and window are hardcoded in Grafana OSS and cannot
+    be tuned via env var (`GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION`
+    must stay `"false"` to keep protection on). Sessions expire after 8h
+    absolute / 30m idle, and self-signup/org creation are disabled — all
+    pinned in `docker-compose.yml`.
+
+    Two controls that issue #200 also names are **not** delivered here, and
+    they are why #200 stays open rather than closing with this change:
+
+    - **Multi-factor authentication** is not built into Grafana OSS. The
+      upstream documentation states plainly that MFA/2FA is unavailable, so
+      MFA has to come from an OIDC/SAML identity provider in front of
+      Grafana. Until one is configured, the compensating controls are a
+      strong admin password in `.env` plus loopback-only binding.
+    - **Fine-grained RBAC** is Enterprise-only; OSS 11.2 exposes org and basic
+      roles only. This deployment is single-admin, so RBAC stays off — revisit
+      if multi-user access is introduced.
 
 ## Metric Catalog
 
@@ -241,7 +275,7 @@ All metrics include `# HELP` and `# TYPE` lines.
 
 ## Dashboard Descriptions
 
-- **agent-health.json** (`uid: agent-health`): Total agent count (`hi_agents_total`),
+- **agent-health.json** (`uid: agent-health`): Total agent count (`hi_agents_count`),
   online vs. offline agents (`hi_agents_online`, `hi_agents_offline`), Agamemnon
   health status. Stat and timeseries panels backed by Prometheus.
 - **nats-events.json** (`uid: nats-events`): NATS message throughput, JetStream
@@ -264,25 +298,30 @@ All metrics include `# HELP` and `# TYPE` lines.
 Argus/
 ├── configs/
 │   ├── prometheus.yml        # Scrape configs
+│   ├── alertmanager.yml      # Alertmanager routing config
 │   ├── loki.yml              # Loki server config
 │   ├── promtail.yml          # Log scraping config
 │   ├── nginx/
 │   │   ├── loki.conf         # Nginx proxy config for Loki auth
 │   │   ├── grafana.conf      # Nginx proxy config for Grafana auth (#321)
-│   │   └── grafana-map.conf  # WebSocket Connection-header map for grafana-proxy
+│   │   ├── grafana-map.conf  # WebSocket Connection-header map for grafana-proxy
+│   │   └── htpasswd.example  # Template for basic auth credentials (generated)
 │   └── grafana/
 │       ├── datasources.yml   # Auto-provision Prometheus + Loki datasources
-│       └── dashboards.yml    # Auto-provision dashboards from dashboards/
+│       ├── dashboards.yml    # Auto-provision dashboards from dashboards/
+│       └── alerting.yml      # Grafana alerting provisioning
 ├── dashboards/               # Grafana dashboard JSON files
 ├── exporter/
 │   ├── exporter.py           # Custom Prometheus exporter (stdlib only)
-│   └── Dockerfile            # Multi-stage, non-root image build
+│   └── Dockerfile            # Non-root image definition (script is bind-mounted)
+├── jetstream-consumer/
+│   └── ...                   # Durable JetStream pull subscriber (built locally)
 ├── rules/
 │   ├── agent-alerts.yml      # Prometheus alerting rules
+│   ├── atlas-alerts.yml      # Atlas dashboard alerting rules
 │   └── recording-rules.yml   # Pre-computed recording rules
-├── scripts/
-│   └── scrape-agamemnon.sh   # Manual endpoint test script
-├── tests/                    # pytest unit tests
+├── scripts/                  # Ops helpers (backup, restore, gen-htpasswd, ...)
+├── tests/                    # pytest unit / integration / smoke tests
 ├── docker-compose.yml
 ├── justfile
 └── pixi.toml
@@ -302,7 +341,8 @@ Argus/
 - Add new dashboards as JSON files in `dashboards/` and run `just import-dashboards`.
 - Alert rules in `rules/` also take effect after `just reload-prometheus`.
 - Use `just test-scrape` to verify the `up` metric for all targets before declaring a scrape job healthy.
-- Run only the individual tests relevant to your change during local development; CI/CD runs the complete test suite and coverage gates.
+- Run only the individual tests relevant to your change during local development; CI/CD runs the
+  complete test suite and coverage gates.
 - Use `pixi run pytest -q tests/path/to/test_file.py -k test_name --no-cov` (or the
   repository's equivalent targeted command) for focused local validation. Do not run
   the full test suite locally when CI/CD will execute it.
@@ -322,6 +362,8 @@ just test-scrape             # Query Prometheus /api/v1/query?query=up
 just import-dashboards       # POST each dashboard JSON to Grafana API
 just scrape-agamemnon        # Manually test Agamemnon and Nestor health endpoints
 just test                    # CI/CD runs the full pytest unit-test suite; use targeted pytest locally
+just check-ports             # Verify running stack's host ports are loopback-only
+just check-ports-static      # Verify docker-compose.yml ports are loopback-only (issue #327)
 just backup                  # Back up data volumes to ./backups/
 ```
 

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -73,6 +74,83 @@ def test_unit_tests_job_invokes_pytest() -> None:
         "unit-tests job in _required.yml does not invoke pytest — "
         "test regressions will reach main undetected"
     )
+
+
+def test_integration_tests_job_validates_images() -> None:
+    """The integration-tests job must still run docker image validation.
+
+    Guards the full validation chain (workflow -> justfile -> runner script
+    -> validator) so the docker image format check cannot be silently
+    hollowed out at any link.
+    """
+    content = WORKFLOW.read_text()
+    job_block_re = re.compile(
+        r"^  integration-tests:.*?(?=^  [a-z][a-z0-9-]*:|\Z)",
+        re.DOTALL | re.MULTILINE,
+    )
+    match = job_block_re.search(content)
+    assert match, (
+        "integration-tests job not found in _required.yml — "
+        "the required check was removed or renamed; restore it or update "
+        "this smoke test to match the new job name"
+    )
+    assert "just ci-integration-tests" in match.group(0), (
+        "integration-tests job in _required.yml no longer invokes "
+        "`just ci-integration-tests` — the docker image validation entry "
+        "point was removed; restore the containerized check step or update "
+        "this smoke test if validation moved"
+    )
+
+    justfile = (ROOT / "justfile").read_text()
+    assert "ci-integration-tests:" in justfile, (
+        "justfile no longer defines the ci-integration-tests recipe — "
+        "the workflow's image validation step would fail or no-op; "
+        "restore the recipe or update this smoke test"
+    )
+
+    runner = (ROOT / "scripts" / "run_ci_local.sh").read_text()
+    assert "scripts/validate_compose_images.py" in runner, (
+        "run_ci_local.sh no longer runs scripts/validate_compose_images.py "
+        "for integration-tests — docker image name formats go unvalidated; "
+        "restore the invocation or update this smoke test"
+    )
+
+    validator = (ROOT / "scripts" / "validate_compose_images.py").read_text()
+    required_markers = [
+        "valid_pattern",
+        "INVALID image reference format",
+        "--include=docker-compose*.yml",
+        "--include=docker-compose*.yaml",
+    ]
+    missing = [marker for marker in required_markers if marker not in validator]
+    assert not missing, (
+        f"validate_compose_images.py is missing docker image validation "
+        f"markers: {missing}. The validation logic was hollowed out — "
+        f"restore the valid_pattern regex and the grep over "
+        f"docker-compose image: lines, or update this smoke test if the "
+        f"validation moved."
+    )
+
+
+def test_coverage_artifact_includes_xml_and_html_reports() -> None:
+    workflow = _load_workflow(CI_WORKFLOW)
+    steps = workflow["jobs"]["unit-tests"]["steps"]
+    upload_steps = [s for s in steps if "upload-artifact" in s.get("uses", "")]
+    assert upload_steps, (
+        "unit-tests job in ci.yml no longer uploads a coverage artifact"
+    )
+    paths = [
+        path for step in upload_steps for path in _artifact_paths(step["with"]["path"])
+    ]
+    assert "coverage.xml" in paths, "coverage-report artifact must include coverage.xml"
+    assert "htmlcov" in paths, (
+        "coverage-report artifact must include htmlcov/ so PR reviewers "
+        "can browse the HTML coverage report"
+    )
+
+
+def _artifact_paths(path_field: str) -> list[str]:
+    return [line.strip() for line in path_field.splitlines() if line.strip()]
 
 
 def test_unit_tests_job_has_no_dependencies() -> None:
