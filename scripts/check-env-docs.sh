@@ -96,14 +96,34 @@ done < <(
 # Extract every backticked uppercase name from the AGENTS.md environment
 # region. The generic form (any [A-Z][A-Z0-9_]{2,} token) is intentional:
 # a prefix-limited variant would miss documented names like AGAMEMNON_URL.
+# doc_var_lines[i] is the file line number of the first mention of doc_vars[i].
+# awk is used instead of `sed -n` + `grep -oE` so the absolute line number
+# survives the region filter and the reverse-drift report can point an author
+# straight at the offending line. POSIX awk only: no gawk match() arrays.
 doc_vars=()
-while IFS= read -r doc_var; do
+doc_var_lines=()
+while IFS='|' read -r doc_var doc_line; do
     doc_vars+=("$doc_var")
+    doc_var_lines+=("$doc_line")
 done < <(
-    sed -n "/${DOC_SECTION_START}/,/${DOC_SECTION_END}/p" "$DOC_FILE" \
-        | grep -oE '`[A-Z][A-Z0-9_]{2,}`' \
-        | sed 's/`//g' \
-        | sort -u
+    # awk emits every backticked span as NAME|LINE. The variable-shaped
+    # filter is left to grep -E on purpose: mawk builds (Debian, and a common
+    # ubuntu runner default) do not implement {n,} interval expressions, so the
+    # interval must not live inside the awk program.
+    awk -v start="${DOC_SECTION_START}" -v end="${DOC_SECTION_END}" '
+        $0 ~ start { inregion = 1; next }
+        $0 ~ end   { inregion = 0 }
+        !inregion   { next }
+        {
+            rest = $0
+            while (match(rest, /`[^`]+`/)) {
+                print substr(rest, RSTART + 1, RLENGTH - 2) "|" NR
+                rest = substr(rest, RSTART + RLENGTH)
+            }
+        }
+    ' "$DOC_FILE" \
+        | grep -E '^[A-Z][A-Z0-9_]{2,}\|[0-9]+$' \
+        | sort -t'|' -k1,1 -u
 )
 
 # Both lists are sorted and duplicate-free, so a linear scan is exact.
@@ -130,6 +150,19 @@ for var in ${doc_vars[@]+"${doc_vars[@]}"}; do
     fi
 done
 
+# First mention line for a documented name, or "unknown line".
+line_for_var() {
+    local want="$1"
+    local i
+    for i in "${!doc_vars[@]}"; do
+        if [[ "${doc_vars[$i]}" == "$want" ]]; then
+            printf '%s' "${doc_var_lines[$i]}"
+            return 0
+        fi
+    done
+    printf 'unknown line'
+}
+
 if (( ${#missing_docs[@]} > 0 || ${#unknown_docs[@]} > 0 )); then
     if (( ${#missing_docs[@]} > 0 )); then
         echo "::error::.env.example defines variables undocumented in ${DOC_FILE}:" >&2
@@ -143,11 +176,14 @@ if (( ${#missing_docs[@]} > 0 || ${#unknown_docs[@]} > 0 )); then
     if (( ${#unknown_docs[@]} > 0 )); then
         echo "::error::${DOC_FILE} documents variables absent from .env.example:" >&2
         for var in "${unknown_docs[@]}"; do
-            echo "  - $var" >&2
+            echo "  - $var (${DOC_FILE}:$(line_for_var "$var"))" >&2
         done
         echo >&2
         echo "Add each variable (with a brief comment and default) to .env.example," >&2
         echo "or extend DOC_ONLY_ALLOWLIST in this script with a justification." >&2
+        echo "Extraction treats every backticked UPPER_SNAKE token in this section" >&2
+        echo "as a variable, so a prose acronym in backticks needs an allowlist" >&2
+        echo "entry as well. Rephrase the prose to drop the backticks instead." >&2
     fi
     exit 1
 fi

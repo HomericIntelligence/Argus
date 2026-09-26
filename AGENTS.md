@@ -100,8 +100,7 @@ to start without a `.env` file.
 
 | Variable                 | Default in .env.example            | Required | Purpose                                        |
 |--------------------------|------------------------------------|----------|------------------------------------------------|
-| `GF_ADMIN_PASSWORD`      | `changeme`                         | **Yes**  | Grafana admin password for API tooling         |
-| `GRAFANA_ADMIN_PASSWORD` | `changeme`                         | **Yes**  | Password compose hands Grafana at boot         |
+| `GF_ADMIN_PASSWORD`      | `changeme`                         | **Yes**  | Grafana admin password (API tooling and boot)  |
 | `GRAFANA_PROXY_USER`     | `grafana`                          | **Yes**  | grafana-proxy Basic Auth user (issue #321)     |
 | `GRAFANA_PROXY_PASSWORD` | `changeme`                         | **Yes**  | grafana-proxy Basic Auth password (issue #321) |
 | `AGAMEMNON_URL`          | `http://172.20.0.1:8080`           | Yes      | Agamemnon API base URL                         |
@@ -111,13 +110,6 @@ to start without a `.env` file.
 | `NOMAD_ADDR`             | `172.20.0.1:4646`                  | Yes      | Nomad metrics endpoint (`nomad` job)           |
 | `LOKI_AUTH_USER`         | `loki`                             | **Yes**  | Loki basic-auth user for the proxy             |
 | `LOKI_AUTH_PASSWORD`     | `changeme`                         | **Yes**  | Loki basic-auth password (`gen-htpasswd`)      |
-
-The two admin-password variables are deliberately distinct today:
-`just import-dashboards` authenticates to Grafana's HTTP API with
-`GF_ADMIN_PASSWORD`, while `docker-compose.yml` hands Grafana
-`GRAFANA_ADMIN_PASSWORD` at boot. A deployment that sets only one of them ends
-up serving a different password than the tooling expects, so keep both in sync
-until #317/#318 settle whether they collapse into a single name.
 
 Optional overrides (not required by `just start`):
 
@@ -149,9 +141,10 @@ Optional overrides (not required by `just start`):
   `${*_CONTAINER_NAME:-<default>}` in docker-compose.yml so operators can run
   multiple stacks side-by-side without name collisions. Leave commented unless
   renaming containers.
-- Host port overrides (`GRAFANA_PORT`, `EXPORTER_PORT`) — Grafana and the
-  exporter publish on `127.0.0.1:<PORT>`; override only when the defaults
-  collide with another service on the host.
+- Host port overrides (`GRAFANA_PORT`, `EXPORTER_PORT`) — the grafana-proxy
+  and the exporter publish on `127.0.0.1:<PORT>`; override only when the
+  defaults collide with another service on the host. Grafana itself has no
+  host port (see Operator Note 5).
 - `JETSTREAM_CONSUMER_IMAGE` — image for the jetstream-consumer service, built
   locally by docker compose by default. Override to pin a published GHCR tag
   in production.

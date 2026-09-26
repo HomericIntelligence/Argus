@@ -42,6 +42,13 @@ class TestLiveRepo:
         assert result.returncode == 0, result.stderr
         assert "OK:" in result.stdout
 
+    def test_dead_grafana_admin_password_stays_removed(self) -> None:
+        # docker-compose.yml reads GF_ADMIN_PASSWORD for Grafana (#662).
+        # GRAFANA_ADMIN_PASSWORD is dead; re-adding it to .env.example would
+        # make this gate demand documentation for a variable nothing reads.
+        env_example = (REPO_ROOT / ".env.example").read_text()
+        assert "GRAFANA_ADMIN_PASSWORD" not in env_example
+
     def test_ok_sentinel_names_no_variables(self) -> None:
         # The success line must not enumerate variable names (token hygiene).
         result = run_script()
@@ -83,6 +90,28 @@ class TestDriftDetection:
         assert result.returncode == 1
         assert "IMAGINARY_DOC_VAR" in result.stderr
         assert "absent from" in result.stderr
+
+    def test_reverse_drift_report_names_the_source_line(self, tmp_path: Path) -> None:
+        # Every backticked UPPER_SNAKE token in the region is treated as a
+        # variable, so ordinary prose acronyms fail the gate. The report has
+        # to point at the line and name the escape hatch, otherwise the
+        # failure reads like a real .env.example defect.
+        env_copy, doc_copy = make_fixture_repo(tmp_path)
+        text = doc_copy.read_text()
+        marker = "## Environment Variables\n"
+        injected = "Front Grafana with an `HTTPS` reverse proxy.\n"
+        doc_copy.write_text(text.replace(marker, marker + "\n" + injected, 1))
+        result = run_script(str(env_copy), str(doc_copy))
+        assert result.returncode == 1
+        assert "HTTPS" in result.stderr
+        # The reported line is the line the token was injected on.
+        expected_line = next(
+            i
+            for i, line in enumerate(doc_copy.read_text().splitlines(), start=1)
+            if line == injected.rstrip("\n")
+        )
+        assert f"AGENTS.md:{expected_line}" in result.stderr, result.stderr
+        assert "DOC_ONLY_ALLOWLIST" in result.stderr
 
     def test_reports_both_directions_at_once(self, tmp_path: Path) -> None:
         env_copy, doc_copy = make_fixture_repo(tmp_path)
