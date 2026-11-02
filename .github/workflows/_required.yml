@@ -242,7 +242,7 @@ jobs:
       # Cross-platform lock-file validation: exercises the osx-arm64 / win-64
       # solves declared in pixi.toml before they reach main.
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347  # v0.10.1
+        uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94  # v0.11.2
         with:
           pixi-version: v0.70.2
           cache: true
