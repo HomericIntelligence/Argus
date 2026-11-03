@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+# The Prometheus probe verifies the Argus CA, so it needs a path that does not
+# depend on the caller's working directory. Without this, running the script
+# from anywhere but the repo root makes curl fail on a missing --cacert file
+# and the operator sees "run 'just start' first" instead of the real cause.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 AGAMEMNON_URL="${1:-http://172.20.0.1:8080}"
 NESTOR_URL="${2:-http://172.20.0.1:8081}"
 
@@ -46,8 +52,10 @@ else
 fi
 
 echo ""
-info "Checking Prometheus (http://localhost:9090)"
-PROM_UP=$(curl -s --connect-timeout 3 "http://localhost:9090/api/v1/query?query=up" 2>/dev/null || echo "")
+info "Checking Prometheus (https://localhost:9090)"
+# Prometheus serves HTTPS with the Argus CA. Verify it instead of bypassing
+# certificate validation so the probe detects an expired or mis-signed cert.
+PROM_UP=$(curl --fail --silent --show-error --cacert "$REPO_ROOT/certs/ca.crt" --connect-timeout 3 "https://localhost:9090/api/v1/query?query=up" 2>/dev/null || echo "")
 if [[ -n "$PROM_UP" ]]; then
     ok "Prometheus reachable"
     command -v jq &>/dev/null && echo "$PROM_UP" | jq -r '.data.result[] | "  job=\(.metric.job) up=\(.value[1])"' 2>/dev/null

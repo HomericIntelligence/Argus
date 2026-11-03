@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `scripts/scrape-agamemnon.sh` resolves `certs/ca.crt` from the repository
+  root instead of the caller's working directory. Since the Prometheus probe
+  now verifies the CA instead of passing `-k`, running the script from outside
+  the repo root made curl fail on a missing file and the operator saw
+  "run 'just start' first" instead of the real cause.
+- `just test-scrape` and `just reload-prometheus` verify the Argus CA against
+  Prometheus' HTTPS endpoint rather than bypassing certificate validation, and
+  AGENTS.md Operator Note 8 now describes that path.
 - CI `Test exporter` job now installs `just`, so tests that shell out to
   `just` (e.g. `TestJustRecipeGuard`) no longer fail with `FileNotFoundError`.
 - CI `Lint Python` job pins `ruff==0.16.4` to stop unpinned-install drift

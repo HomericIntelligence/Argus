@@ -1,0 +1,17 @@
+---
+# Prometheus HTTPS server configuration — passed via `--web.config.file`.
+#
+# Prometheus parses its scrape config and its web config with two different,
+# equally strict loaders. The scrape loader rejects `tls_server_config`
+# (`field tls_server_config not found in type config.plain`) and the web loader
+# rejects `global:` / `scrape_configs:` (`field global not found in type
+# web.plain`). A single file serving both roles therefore stops Prometheus from
+# starting at all (issue #206), which is why this file exists separately from
+# configs/prometheus.yml.
+#
+# docker-compose.yml mounts this read-only at /etc/prometheus/web.yml. It is not
+# run through the env-var rendering entrypoint, because there is nothing in it
+# to interpolate.
+tls_server_config:
+  cert_file: /etc/prometheus/tls/prometheus.crt
+  key_file: /etc/prometheus/tls/prometheus.key

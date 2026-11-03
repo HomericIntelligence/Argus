@@ -208,11 +208,12 @@ new to the stack frequently trip on:
    directly over its internal HTTPS endpoint (`https://argus-grafana:3000`);
    both sit inside the trust boundary on the `argus` bridge, so routing
    through the proxy would add no security.
-8. **`just test-scrape` requires the stack to be running.** After the host
-   port for Prometheus was removed, `test-scrape` runs the query *inside*
-   the prometheus container via `docker exec`. Use `just debug-prometheus`,
-   `just debug-loki`, and `just debug-grafana-proxy` for ad-hoc inspection
-   (these wrappers exec into the respective containers).
+8. **`just test-scrape` requires the stack to be running.** Prometheus serves
+   HTTPS only, so `test-scrape` and `reload-prometheus` query it from the host
+   through its loopback-bound `127.0.0.1:9090` port with
+   `--cacert certs/ca.crt` rather than exec'ing into the container. Use
+   `just debug-prometheus`, `just debug-loki`, and `just debug-grafana-proxy`
+   for ad-hoc inspection (these wrappers exec into the respective containers).
 9. **`just backup` / `just restore` need a running compose project.** The
    restore script calls `docker compose stop` to quiesce services before
    replacing volume data; on a cold host with no containers, the stop is a
@@ -298,6 +299,7 @@ All metrics include `# HELP` and `# TYPE` lines.
 Argus/
 ├── configs/
 │   ├── prometheus.yml        # Scrape configs
+│   ├── prometheus-web.yml    # Prometheus HTTPS web server config
 │   ├── alertmanager.yml      # Alertmanager routing config
 │   ├── loki.yml              # Loki server config
 │   ├── promtail.yml          # Log scraping config
