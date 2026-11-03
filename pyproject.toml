@@ -5,6 +5,7 @@ addopts = "-v --strict-markers --cov=exporter --cov-report=term-missing --cov-re
 markers = [
   "integration: integration tests that exercise real external dependencies (slower; opt-in via -m integration)",
   "requires_nats: integration tests that require a real `nats-server` binary on PATH (mirrors Charybdis's REQUIRES_NATS gate)",
+  "live_stack: smoke tests against the live docker-compose stack (opt-in via scripts/smoke-stack.sh)",
 ]
 
 [tool.coverage.run]

@@ -145,6 +145,12 @@ test:
 test-unit:
     pixi run test-unit
 
+# Run live-stack smoke tests: builds the full compose stack, validates
+# exporter → Prometheus → query end-to-end, then tears the stack down
+# (destructive to smoke volumes only). Requires Docker.
+test-smoke:
+    pixi run test-smoke
+
 # Run linters (ruff) across the repository
 lint:
     pixi run ruff check .

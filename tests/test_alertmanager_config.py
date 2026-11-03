@@ -204,12 +204,25 @@ class TestDockerComposeAlertmanager:
         svc = compose_config["services"]["alertmanager"]
         assert svc.get("restart") == "unless-stopped"
 
-    def test_alertmanager_lifecycle_flag_enabled(self, compose_config: dict) -> None:
+    def test_alertmanager_command_has_no_removed_lifecycle_flag(
+        self, compose_config: dict
+    ) -> None:
+        """prom/alertmanager:v0.32.1 has no --web.enable-lifecycle flag.
+
+        Passing it makes the binary exit with "unknown long flag", so the
+        container crash-looped and Prometheus recorded up == 0 for the
+        alertmanager job. POST /-/reload is served unconditionally in 0.32.1,
+        so `just reload-alertmanager` (#177) needs no flag. Re-adding the flag
+        requires first checking `alertmanager --help` on the pinned image.
+        """
         svc = compose_config["services"]["alertmanager"]
         command = svc.get("command", [])
-        assert "--web.enable-lifecycle" in command, (
-            "alertmanager needs --web.enable-lifecycle so 'just reload-alertmanager' "
-            "can POST /-/reload (issue #177)"
+        assert "--web.enable-lifecycle" not in command, (
+            "prom/alertmanager:v0.32.1 rejects --web.enable-lifecycle and exits; "
+            "drop the flag (POST /-/reload is always enabled)"
+        )
+        assert "--config.file=/run/alertmanager/alertmanager.yml" in command, (
+            "alertmanager must still read the rendered config from tmpfs"
         )
 
     def test_slack_env_passthrough(self, compose_config: dict) -> None:

@@ -28,8 +28,14 @@ services:
       # so the gateway IP is sourced from .env instead of being hardcoded in
       # the static config file. Closes #217.
       NOMAD_ADDR: ${NOMAD_ADDR:-172.20.0.1:4646}
+      # Bearer token for the Atlas /metrics scrape (see authorization in
+      # configs/prometheus.yml). Minted per-run by scripts/smoke-stack.sh;
+      # empty by default, in which case Atlas answers 401s until configured.
+      ATLAS_AUTH_BEARER_TOKEN: ${ATLAS_AUTH_BEARER_TOKEN:-}
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml.tmpl:ro
+      - ./configs/prometheus-web.yml:/etc/prometheus/web.yml:ro
+      - ./configs/promtool-healthcheck.yml:/etc/prometheus/healthcheck.yml:ro
       - ./rules:/etc/prometheus/rules:ro
       - ./certs/prometheus.crt:/etc/prometheus/tls/prometheus.crt:ro
       - ./certs/prometheus.key:/etc/prometheus/tls/prometheus.key:ro
@@ -50,7 +56,8 @@ services:
       - |
         set -eu
         : "$${NOMAD_ADDR:?NOMAD_ADDR is required (see .env.example)}"
-        sed "s|\$${NOMAD_ADDR}|$${NOMAD_ADDR}|g" \
+        sed -e "s|\$${NOMAD_ADDR}|$${NOMAD_ADDR}|g" \
+            -e "s|\$${ATLAS_AUTH_BEARER_TOKEN}|$${ATLAS_AUTH_BEARER_TOKEN}|g" \
           /etc/prometheus/prometheus.yml.tmpl \
           > /run/prometheus/prometheus.yml
         exec /bin/prometheus "$$@"
@@ -60,14 +67,22 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
-      - "--web.config.file=/run/prometheus/prometheus.yml"
+      - "--web.config.file=/etc/prometheus/web.yml"
       # Enables POST /-/reload and POST /-/quit on :9090. Reachable by any
       # container on the `argus` bridge; acceptable given the trusted internal topology.
       - "--web.enable-lifecycle"
-    # String-form (CMD-SHELL) with space-separated wget flags — BusyBox-safe
-    # (`-qO-` is not portable across GNU vs BusyBox wget). Closes #198.
     healthcheck:
-      test: "wget -q -O /dev/stdout http://localhost:9090/-/ready || exit 1"
+      # Prometheus serves HTTPS only (TLS via --web.config.file above), probed
+      # with the in-image promtool (Go TLS stack). Busybox wget can NOT be used
+      # here: its TLS client sends a malformed ECDHE point and the handshake
+      # fails ("point is not on curve" server-side) — verified empirically.
+      test:
+        - CMD
+        - /bin/promtool
+        - check
+        - healthy
+        - --url=https://localhost:9090
+        - --http.config.file=/etc/prometheus/healthcheck.yml
       interval: 30s
       timeout: 10s
       retries: 3
@@ -102,7 +117,12 @@ services:
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      # Loki serves HTTPS only (http_tls_config in configs/loki.yml), so the
+      # probe must use https:// with --no-check-certificate (self-signed CA;
+      # localhost-only probe). Unlike prom/prometheus, this image's busybox
+      # wget delegates TLS to OpenSSL and negotiates modern TLS fine —
+      # verified empirically (closes #623).
+      test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://localhost:3100/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -254,9 +274,13 @@ services:
     command:
       - "--config.file=/run/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
-      # Enables POST /-/reload (and /-/quit). Safe because 9093 is bound
-      # loopback-only; required by `just reload-alertmanager` (#177).
-      - "--web.enable-lifecycle"
+      # NOTE: no --web.enable-lifecycle here. Alertmanager removed that flag;
+      # `prom/alertmanager:v0.32.1` exits with "unknown long flag" when it is
+      # passed, so the container crash-looped and Prometheus recorded
+      # up{job="alertmanager"} == 0 (found by the #210 live-stack smoke job).
+      # POST /-/reload is unconditionally served in 0.32.1, so
+      # `just reload-alertmanager` still works against the loopback-only 9093
+      # binding (#177).
     networks:
       - argus
     depends_on:
@@ -358,7 +382,11 @@ services:
       # reverse proxy on a different hostname.
       GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-http://localhost:${GRAFANA_PORT:-3001}/}
     healthcheck:
-      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://localhost:3000/api/health"]
+      # Grafana serves HTTPS only (GF_SERVER_PROTOCOL=https above), so the
+      # probe must use https:// with -k (self-signed CA; localhost-only
+      # probe). Real curl ships in this image; -f fails on HTTP errors so
+      # --wait gates until Grafana is actually healthy (closes #623).
+      test: ["CMD", "curl", "-skf", "https://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

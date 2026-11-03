@@ -6,8 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- `docker-compose.yml` no longer passes `--web.enable-lifecycle` to
+  Alertmanager. The flag does not exist in `prom/alertmanager:v0.32.1`, so the
+  binary exited with `unknown long flag` and the container crash-looped, which
+  Prometheus recorded as `up{job="alertmanager"} == 0`. `POST /-/reload` is
+  served unconditionally in 0.32.1, so `just reload-alertmanager` and
+  `just test-alertmanager` work again.
+
 ### Fixed
 
+- `scripts/smoke-stack.sh` builds `exporter/` from the working tree and points
+  `EXPORTER_IMAGE` at it. The `argus-exporter` service otherwise resolves to
+  the published image, whose `exporter.py` is baked in at build time, so the
+  live-stack gate never exercised the code it was reviewing.
+- `scripts/smoke-stack.sh` dumps `compose ps`, Prometheus target health with
+  each failing `lastError`, and the exporter, Prometheus, and Alertmanager
+  container logs before tearing the stack down, so a smoke failure is
+  diagnosable from the job log alone.
+- The live-stack `up` and exporter-sample assertions now poll to a deadline
+  instead of sampling once, and the dashboard cross-check turns a socket
+  timeout into an assertion that names the exporter latency budget.
 - CI `Test exporter` job now installs `just`, so tests that shell out to
   `just` (e.g. `TestJustRecipeGuard`) no longer fail with `FileNotFoundError`.
 - CI `Lint Python` job pins `ruff==0.16.4` to stop unpinned-install drift
