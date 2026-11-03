@@ -4,9 +4,14 @@
 # GF_ADMIN_PASSWORD and GRAFANA_ADMIN_USER from the environment.
 #
 # Required env vars (set in `.env`; see `.env.example` for the canonical list):
-#   GF_ADMIN_PASSWORD   Grafana admin password. The fallback below is "admin"
-#                       only so `just --list` works without `.env`; production
-#                       deployments MUST override this.
+#   GF_ADMIN_PASSWORD   Grafana admin password. Required. It is deliberately
+#                       NOT bound to a Just variable: a top-level `env_var()`
+#                       would abort at parse time and replace the actionable
+#                       per-recipe guard with a raw Just parser error. The
+#                       `import-dashboards` recipe, the script it calls, and
+#                       `docker-compose.yml` each reject an unset value by
+#                       name.
+#   GRAFANA_ADMIN_USER  Grafana admin username. Optional; defaults to "admin".
 #   AGAMEMNON_URL       Agamemnon API base URL (default http://172.20.0.1:8080).
 #   GRAFANA_PORT        Host port Grafana is published on (default 3001).
 set dotenv-load
@@ -20,7 +25,6 @@ AGAMEMNON_URL := env_var_or_default("AGAMEMNON_URL", "http://172.20.0.1:8080")
 GRAFANA_PORT := env_var_or_default("GRAFANA_PORT", "3001")
 GRAFANA_URL  := "http://localhost:" + GRAFANA_PORT
 GRAFANA_ADMIN_USER := env_var_or_default("GRAFANA_ADMIN_USER", "admin")
-GF_ADMIN_PASSWORD := env_var_or_default("GF_ADMIN_PASSWORD", "admin")
 
 # === Default ===
 

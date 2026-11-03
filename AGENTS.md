@@ -172,8 +172,11 @@ These are easy-to-miss preconditions and runtime behaviours that operators
 new to the stack frequently trip on:
 
 1. **Copy `.env.example` to `.env` first.** `just start` and `docker compose`
-   both load `.env`; without it Grafana silently falls back to its
-   built-in `admin:admin` credentials.
+   both load `.env`; without it the stack refuses to start. `docker compose`
+   fails the render on an unset `GF_ADMIN_PASSWORD` (`:?`), and the
+   `import-dashboards` recipe and `scripts/import-dashboards.sh` each reject it
+   by name with a message that points at `.env`.
+   `check-grafana-password.sh` warns on weak values (`admin`, `changeme`).
 2. **`/tmp/hermes.log` must exist on the host before `just start`.** Promtail
    bind-mounts the file. If it is missing, Docker creates an empty
    *directory* at that path, which silently breaks the mount. Run

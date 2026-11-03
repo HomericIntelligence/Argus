@@ -159,9 +159,13 @@ class TestJustRecipeGuard(unittest.TestCase):
     """Issue #262: the recipe must reject unset/empty GF_ADMIN_PASSWORD at the Just layer."""
 
     def _run_recipe(self, sandbox: Path) -> subprocess.CompletedProcess:
+        # Scrub any parent-process value so "unset" is real even for developers
+        # who export GF_ADMIN_PASSWORD in their shell (dotenv never overrides it).
+        env = {k: v for k, v in os.environ.items() if k != "GF_ADMIN_PASSWORD"}
         return subprocess.run(
             ["just", "import-dashboards"],
             cwd=sandbox,
+            env=env,
             capture_output=True,
             text=True,
             check=False,
@@ -169,7 +173,12 @@ class TestJustRecipeGuard(unittest.TestCase):
         )
 
     def test_just_recipe_rejects_unset_gf_admin_password(self) -> None:
-        """.env omitting GF_ADMIN_PASSWORD must fail at the Just layer naming the var."""
+        """Unset GF_ADMIN_PASSWORD must fail at the Just layer naming the var.
+
+        The justfile deliberately does not bind GF_ADMIN_PASSWORD to a Just
+        variable, so the recipe's own bash guard runs and emits the actionable
+        message that names both the variable and `.env`.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             sandbox = _make_sandbox(Path(tmp), "AGAMEMNON_URL=http://localhost:1\n")
             result = self._run_recipe(sandbox)
@@ -178,8 +187,9 @@ class TestJustRecipeGuard(unittest.TestCase):
             f"stderr should name GF_ADMIN_PASSWORD, got: {result.stderr!r}"
         )
         assert ".env" in result.stderr, f"stderr should mention .env, got: {result.stderr!r}"
-        # The cosmetic 'admin' fallback from env_var_or_default must NOT leak into
-        # the script invocation — if it did, the guard would pass and curl would run.
+        # No silent fallback: the old env_var_or_default(..., "admin") default
+        # must NOT leak into the script invocation — if it did, the guard would
+        # pass and curl would run.
         assert "admin:" not in result.stdout and "Importing" not in result.stdout, (
             f"fallback 'admin' appears to have leaked past the guard: {result.stdout!r}"
         )
